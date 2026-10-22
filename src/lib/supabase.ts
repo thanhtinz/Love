@@ -1,30 +1,23 @@
+import "react-native-url-polyfill/auto";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import { createClient, SupabaseClient } from "@supabase/supabase-js";
+import Constants from "expo-constants";
+
 /**
- * Client Supabase DÙNG CHUNG cho cả Auth, lưu trữ state vườn (room_state) và Realtime.
- * Dùng chung một client là bắt buộc: session đăng nhập (Supabase Auth) nằm trong client này
- * thì RLS của room_state / profiles / couples mới nhận diện được người dùng.
- * Client được LAZY-LOAD (dynamic import): không có env -> trả null và không tải
- * thư viện supabase-js vào bundle ban đầu; app chạy chế độ tài khoản LOCAL trên máy.
+ * Client Supabase dùng chung cho Auth + room_state + Realtime.
+ * URL + anon key là key CÔNG KHAI phía client (bảo mật bằng RLS), nhúng sẵn trong app:
+ * ưu tiên biến môi trường EXPO_PUBLIC_* khi build, fallback giá trị trong app.json extra.
  */
-import type { SupabaseClient } from "@supabase/supabase-js";
+const extra = (Constants.expoConfig?.extra || {}) as { supabaseUrl?: string; supabaseAnonKey?: string };
+export const SUPABASE_URL = process.env.EXPO_PUBLIC_SUPABASE_URL || extra.supabaseUrl || "";
+export const SUPABASE_ANON_KEY = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY || extra.supabaseAnonKey || "";
 
-const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-
-export const HAS_SUPABASE = Boolean(url && anonKey);
-
-let cached: SupabaseClient | null | undefined;
-let loading: Promise<SupabaseClient | null> | null = null;
-
-export async function getSupabase(): Promise<SupabaseClient | null> {
-  if (cached !== undefined) return cached;
-  if (!HAS_SUPABASE) { cached = null; return null; }
-  if (!loading) {
-    loading = import("@supabase/supabase-js")
-      .then((m) => { cached = m.createClient(url as string, anonKey as string); return cached; })
-      .catch(() => { cached = null; return null; });
+let client: SupabaseClient | null = null;
+export function getSupabase(): SupabaseClient {
+  if (!client) {
+    client = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+      auth: { storage: AsyncStorage, autoRefreshToken: true, persistSession: true, detectSessionInUrl: false },
+    });
   }
-  return loading;
+  return client;
 }
-
-/** Client đã load sẵn (nếu có) — dùng cho đường realtime không await được. */
-export function getSupabaseSync(): SupabaseClient | null { return cached ?? null; }

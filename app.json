@@ -1,0 +1,55 @@
+{
+  "expo": {
+    "android": {
+      "adaptiveIcon": {
+        "backgroundColor": "#fff1f2",
+        "foregroundImage": "./assets/android-icon-foreground.png"
+      },
+      "package": "com.thanhtinz.love",
+      "permissions": [
+        "android.permission.READ_MEDIA_IMAGES",
+        "android.permission.WRITE_EXTERNAL_STORAGE"
+      ]
+    },
+    "extra": {
+      "supabaseAnonKey": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhxeGN4bmN3c2ZkcWRqc21kcHVtIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTI2NjI3NTUsImV4cCI6MjEwODIzODc1NX0.HgtV8JlQdHzZw9SY8Afobp6DkSb5_I8d1iEB_S4RtsM",
+      "supabaseUrl": "https://xqxcxncwsfdqdjsmdpum.supabase.co"
+    },
+    "icon": "./assets/icon.png",
+    "ios": {
+      "bundleIdentifier": "com.thanhtinz.love",
+      "infoPlist": {
+        "NSPhotoLibraryAddUsageDescription": "Cho phép Khu Vườn Tình Yêu lưu ảnh khung kỷ niệm vào thư viện ảnh của bạn."
+      },
+      "supportsTablet": false
+    },
+    "name": "Khu Vườn Tình Yêu",
+    "orientation": "portrait",
+    "plugins": [
+      "expo-router",
+      "expo-sharing",
+      [
+        "expo-media-library",
+        {
+          "isAccessMediaLocationEnabled": false,
+          "photosPermission": "Cho phép Khu Vườn Tình Yêu lưu ảnh khung kỷ niệm vào thư viện ảnh của bạn.",
+          "savePhotosPermission": "Cho phép Khu Vườn Tình Yêu lưu ảnh khung kỷ niệm vào thư viện ảnh của bạn."
+        }
+      ],
+      "expo-font",
+      [
+        "expo-splash-screen",
+        {
+          "backgroundColor": "#fff1f2",
+          "image": "./assets/icon.png",
+          "imageWidth": 180,
+          "resizeMode": "contain"
+        }
+      ]
+    ],
+    "scheme": "lovecouple",
+    "slug": "love-couple-app",
+    "userInterfaceStyle": "light",
+    "version": "1.0.0"
+  }
+}

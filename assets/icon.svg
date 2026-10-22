@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#ffe4ec"/>
+      <stop offset="1" stop-color="#fff1f2"/>
+    </linearGradient>
+    <linearGradient id="canopy" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#86efac"/>
+      <stop offset="1" stop-color="#22c55e"/>
+    </linearGradient>
+  </defs>
+  <rect width="1024" height="1024" rx="220" fill="url(#bg)"/>
+  <!-- thân cây -->
+  <path d="M512 880 L492 560 Q512 520 532 560 Z" fill="#a16207"/>
+  <path d="M512 640 Q430 600 400 520 M512 620 Q600 580 622 500" stroke="#a16207" stroke-width="34" fill="none" stroke-linecap="round"/>
+  <!-- tán cây -->
+  <circle cx="512" cy="330" r="190" fill="url(#canopy)"/>
+  <circle cx="330" cy="430" r="130" fill="url(#canopy)"/>
+  <circle cx="694" cy="430" r="130" fill="url(#canopy)"/>
+  <!-- trái tim trên tán -->
+  <path d="M512 470 C430 390 372 342 372 272 C372 210 418 172 470 172 C494 172 506 186 512 196 C518 186 530 172 554 172 C606 172 652 210 652 272 C652 342 594 390 512 470 Z" fill="#f43f5e"/>
+  <!-- chậu -->
+  <path d="M382 830 L642 830 L612 960 L412 960 Z" fill="#fb923c"/>
+  <rect x="362" y="790" width="300" height="52" rx="20" fill="#f97316"/>
+  <!-- cỏ -->
+  <path d="M300 960 q10 -60 30 0 M700 960 q10 -60 30 0" stroke="#22c55e" stroke-width="14" fill="none" stroke-linecap="round"/>
+</svg>

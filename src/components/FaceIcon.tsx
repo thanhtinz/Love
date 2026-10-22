@@ -1,94 +1,57 @@
-"use client";
 import React from "react";
+import Svg, { Circle, Path } from "react-native-svg";
 
-/**
- * V4 — Mặt cảm xúc vẽ bằng SVG (thay bộ emoji mood cũ).
- * id giữ dạng chuỗi ngắn ổn định để lưu trong state; id emoji cũ được map sang đây ở normalize (types.ts).
- */
-export type MoodId = "joy" | "love" | "heartEyes" | "sleepy" | "pleading" | "huff" | "sick" | "celebrate" | "calm" | "excited" | "sad" | "energetic";
-
-const SKIN = "#ffe3ae";
-const LINE = "#92400e";
-const CHEEK = "#ffb3c6";
-
-function HeartPath({ x, y, s, fill }: { x: number; y: number; s: number; fill: string }) {
-  return <path d="M0 3.2C-3.4.9-4.6-.8-4.6-2.4c0-1.5 1.1-2.6 2.5-2.6.9 0 1.7.5 2.1 1.2.4-.7 1.2-1.2 2.1-1.2 1.4 0 2.5 1.1 2.5 2.6C4.6-.8 3.4.9 0 3.2z" transform={`translate(${x} ${y}) scale(${s})`} fill={fill} />;
-}
-
-function Eyes({ mood }: { mood: MoodId }) {
-  const dot = (cx: number) => <circle cx={cx} cy={44} r={3.1} fill={LINE} />;
-  switch (mood) {
-    case "heartEyes":
-      return <><HeartPath x={38} y={44} s={1.7} fill="#f43f5e" /><HeartPath x={62} y={44} s={1.7} fill="#f43f5e" /></>;
-    case "joy": case "excited": case "celebrate":
-      return <><path d="M32 46q6-7 12 0" stroke={LINE} strokeWidth={3.4} fill="none" strokeLinecap="round" /><path d="M56 46q6-7 12 0" stroke={LINE} strokeWidth={3.4} fill="none" strokeLinecap="round" /></>;
-    case "calm": case "sleepy":
-      return <><path d="M32 44q6 5 12 0" stroke={LINE} strokeWidth={3.4} fill="none" strokeLinecap="round" /><path d="M56 44q6 5 12 0" stroke={LINE} strokeWidth={3.4} fill="none" strokeLinecap="round" /></>;
-    case "pleading":
-      return <><circle cx={38} cy={45} r={4} fill={LINE} /><circle cx={62} cy={45} r={4} fill={LINE} /><circle cx={39.5} cy={43.4} r={1.5} fill="#fff" /><circle cx={63.5} cy={43.4} r={1.5} fill="#fff" /></>;
-    case "sick":
-      return <><path d="M32 42l9 5M41 42l-9 5M56 42l9 5M65 42l-9 5" stroke={LINE} strokeWidth={3} strokeLinecap="round" /></>;
-    case "huff":
-      return <><path d="M31 40l10 4M57 44l10-4" stroke={LINE} strokeWidth={3.2} strokeLinecap="round" />{dot(38)}{dot(62)}</>;
-    case "sad":
-      return <><path d="M31 39l10 3M69 39l-10 3" stroke={LINE} strokeWidth={3} strokeLinecap="round" />{dot(38)}{dot(62)}</>;
-    default:
-      return <>{dot(38)}{dot(62)}</>;
-  }
-}
-
-function Mouth({ mood }: { mood: MoodId }) {
-  switch (mood) {
-    case "joy": case "love": case "heartEyes": case "excited": case "celebrate":
-      return <path d="M39 58q11 10 22 0q-2.5 8-11 8t-11-8z" fill={LINE} />;
-    case "calm":
-      return <path d="M41 59q9 6 18 0" stroke={LINE} strokeWidth={3.4} fill="none" strokeLinecap="round" />;
-    case "sleepy":
-      return <ellipse cx={50} cy={62} rx={4.6} ry={5.4} fill={LINE} />;
-    case "pleading":
-      return <path d="M43 64q7-4.5 14 0" stroke={LINE} strokeWidth={3.4} fill="none" strokeLinecap="round" />;
-    case "sad":
-      return <path d="M41 66q9-7 18 0" stroke={LINE} strokeWidth={3.4} fill="none" strokeLinecap="round" />;
-    case "huff":
-      return <path d="M42 62h16" stroke={LINE} strokeWidth={3.6} strokeLinecap="round" />;
-    case "sick":
-      return <path d="M41 62q4.5-3 9 0t9 0" stroke={LINE} strokeWidth={3.2} fill="none" strokeLinecap="round" />;
-    default:
-      return <path d="M41 59q9 6 18 0" stroke={LINE} strokeWidth={3.4} fill="none" strokeLinecap="round" />;
-  }
-}
-
-function Extras({ mood }: { mood: MoodId }) {
+/** Khuôn mặt cảm xúc vẽ bằng SVG theo mood id (port từ FaceIcon của bản web). */
+const HEART = "M50 62 C38 52 30 45 30 35 C30 27 36 22 43 22 C47 22 49 25 50 27 C51 25 53 22 57 22 C64 22 70 27 70 35 C70 45 62 52 50 62Z";
+function Eyes({ mood }: { mood: string }) {
+  const ink = "#334155";
   switch (mood) {
     case "love":
-      return <><HeartPath x={20} y={30} s={1.15} fill="#fb7185" /><HeartPath x={81} y={26} s={0.95} fill="#f43f5e" /><HeartPath x={84} y={52} s={0.8} fill="#fda4af" /></>;
+    case "heartEyes":
+      return (<><Path d="M28 44 C24 38 26 31 31 31 C34 31 35 33 36 34 C37 33 38 31 41 31 C46 31 48 38 44 44 L36 52 Z" fill="#f43f5e" /><Path d="M56 44 C52 38 54 31 59 31 C62 31 63 33 64 34 C65 33 66 31 69 31 C74 31 76 38 72 44 L64 52 Z" fill="#f43f5e" /></>);
     case "sleepy":
-      return <text x={70} y={30} fontSize={17} fontWeight={800} fill="#7aa5fb" fontFamily="inherit">Z</text>;
-    case "pleading": case "sad":
-      return <path d="M28 56c2.4 3.4 3.6 5.4 3.6 7a3.6 3.6 0 1 1-7.2 0c0-1.6 1.2-3.6 3.6-7z" fill="#7dd3fc" />;
+      return (<><Path d="M26 42 Q36 48 46 42" stroke={ink} strokeWidth="3.4" fill="none" strokeLinecap="round" /><Path d="M54 42 Q64 48 74 42" stroke={ink} strokeWidth="3.4" fill="none" strokeLinecap="round" /><Path d="M76 16 h10 l-10 8 h10" stroke="#94a3b8" strokeWidth="3" fill="none" strokeLinecap="round" strokeLinejoin="round" /></>);
+    case "pleading":
+      return (<><Circle cx="36" cy="40" r="6" fill={ink} /><Circle cx="64" cy="40" r="6" fill={ink} /><Circle cx="38" cy="37" r="2.2" fill="#fff" /><Circle cx="66" cy="37" r="2.2" fill="#fff" /><Path d="M28 26 Q36 20 44 25 M56 25 Q64 20 72 26" stroke={ink} strokeWidth="3" fill="none" strokeLinecap="round" /></>);
     case "huff":
-      return <><path d="M22 62q-4 1-4.6 4.4M79 62q4 1 4.6 4.4" stroke="#cbd5e1" strokeWidth={3.4} fill="none" strokeLinecap="round" /></>;
+      return (<><Path d="M26 34 L44 40 M74 34 L56 40" stroke={ink} strokeWidth="3.4" strokeLinecap="round" /><Circle cx="36" cy="46" r="3" fill={ink} /><Circle cx="64" cy="46" r="3" fill={ink} /></>);
     case "sick":
-      return <><rect x={66} y={56} width={17} height={5.6} rx={2.8} transform="rotate(24 66 56)" fill="#e2e8f0" stroke={LINE} strokeWidth={1.6} /><circle cx={81} cy={66} r={3.4} fill="#f43f5e" /></>;
-    case "celebrate": case "excited":
-      return <><path d="M50 4l7 15H43z" fill="#fb7aa0" /><circle cx={50} cy={4} r={3} fill="#fbbf24" /><path d="M18 22l3 3M82 20l-3 3M24 10v4M78 34h-4" stroke="#f59e0b" strokeWidth={2.6} strokeLinecap="round" /></>;
+      return (<><Path d="M27 38 L43 44 M43 38 L27 44 M57 38 L73 44 M73 38 L57 44" stroke={ink} strokeWidth="3" strokeLinecap="round" /><Path d="M34 78 h32" stroke="#22c55e" strokeWidth="5" strokeLinecap="round" /></>);
+    case "sad":
+      return (<><Circle cx="36" cy="42" r="3.4" fill={ink} /><Circle cx="64" cy="42" r="3.4" fill={ink} /><Path d="M30 28 Q36 24 42 28 M58 28 Q64 24 70 28" stroke={ink} strokeWidth="3" fill="none" strokeLinecap="round" /><Path d="M70 56 q5 8 0 11 q-5 -3 0 -11" fill="#38bdf8" /></>);
+    case "celebrate":
+    case "excited":
+      return (<><Path d="M26 44 Q36 34 46 44 M54 44 Q64 34 74 44" stroke={ink} strokeWidth="3.4" fill="none" strokeLinecap="round" /><Path d="M20 14 l3 7 7 1 -5 5 1 7 -6 -3 -6 3 1 -7 -5 -5 7 -1 Z" fill="#facc15" /></>);
+    case "calm":
+      return (<><Path d="M26 42 Q36 46 46 42 M54 42 Q64 46 74 42" stroke={ink} strokeWidth="3.2" fill="none" strokeLinecap="round" /></>);
     case "energetic":
-      return <path d="M50 2c1.8 3.8-.6 5.6-1.9 7.6-.9 1.4-1 3 .1 4.4-3-1-4.9-3.4-4.4-6.2.3-1.9 1.7-3.2 2.9-4.6.3 1 .9 1.8 1.8 2.3C48.3 3.9 49 1.9 50 2z" fill="#fb923c" stroke="#ea580c" strokeWidth={1.4} transform="translate(0 -1) scale(1.15) translate(-6.5 0)" />;
-    default:
-      return null;
+      return (<><Circle cx="36" cy="40" r="3.6" fill={ink} /><Circle cx="64" cy="40" r="3.6" fill={ink} /><Path d="M80 8 l-6 10 h5 l-4 9 12 -13 h-6 l5 -6 Z" fill="#f59e0b" /></>);
+    default: // joy
+      return (<><Circle cx="36" cy="40" r="3.6" fill={ink} /><Circle cx="64" cy="40" r="3.6" fill={ink} /></>);
   }
 }
-
-export default function FaceIcon({ mood, size = 44, className = "" }: { mood: string; size?: number; className?: string }) {
-  const m = (["joy", "love", "heartEyes", "sleepy", "pleading", "huff", "sick", "celebrate", "calm", "excited", "sad", "energetic"].includes(mood) ? mood : "joy") as MoodId;
+function Mouth({ mood }: { mood: string }) {
+  const ink = "#334155";
+  switch (mood) {
+    case "sleepy": return <Circle cx="50" cy="66" r="5" fill="none" stroke={ink} strokeWidth="3" />;
+    case "huff": return <Path d="M40 72 Q50 66 60 72" stroke={ink} strokeWidth="3.2" fill="none" strokeLinecap="round" />;
+    case "sad": return <Path d="M38 74 Q50 64 62 74" stroke={ink} strokeWidth="3.2" fill="none" strokeLinecap="round" />;
+    case "sick": return null;
+    case "celebrate":
+    case "excited": return <Path d="M36 60 Q50 78 64 60 Q50 66 36 60Z" fill="#7f1d1d" />;
+    case "love":
+    case "heartEyes": return <Path d={HEART} transform="translate(28 30) scale(0.44)" fill="#f43f5e" />;
+    default: return <Path d="M36 60 Q50 74 64 60" stroke={ink} strokeWidth="3.4" fill="none" strokeLinecap="round" />;
+  }
+}
+export default function FaceIcon({ mood, size = 44 }: { mood: string; size?: number }) {
   return (
-    <svg width={size} height={size} viewBox="0 0 100 100" className={`inline-block shrink-0 ${className}`} role="img" aria-label={`mood ${m}`}>
-      <Extras mood={m} />
-      <circle cx={50} cy={54} r={38} fill={SKIN} stroke="#f59e0b" strokeWidth={2.4} />
-      <circle cx={30} cy={60} r={6} fill={CHEEK} opacity={0.75} />
-      <circle cx={70} cy={60} r={6} fill={CHEEK} opacity={0.75} />
-      <Eyes mood={m} />
-      <Mouth mood={m} />
-    </svg>
+    <Svg width={size} height={size} viewBox="0 0 100 100">
+      <Circle cx="50" cy="50" r="46" fill="#fff7ed" stroke="#fdba74" strokeWidth="2.5" />
+      <Eyes mood={mood} />
+      <Mouth mood={mood} />
+      <Circle cx="22" cy="60" r="6" fill="#fda4af" opacity="0.75" />
+      <Circle cx="78" cy="60" r="6" fill="#fda4af" opacity="0.75" />
+    </Svg>
   );
 }
