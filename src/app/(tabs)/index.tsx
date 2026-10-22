@@ -9,9 +9,10 @@ import { daysTogether, today, treeHealth } from "../../lib/types";
 import Avatar from "../../components/Avatar";
 import FaceIcon from "../../components/FaceIcon";
 import PlantArt from "../../components/PlantArt";
+import { HeroCouple } from "../../components/illustrations";
 import { PersonChip, partnerOf, selfOf } from "../../components/PersonChip";
 import { COLOR, FONT, RADIUS, ROLE, SHADOW, SPACE, TYPE } from "../../components/theme";
-import { FeatureTile, ProgressBar, SectionTitle, s } from "../../components/ui";
+import { FeatureTile, ProgressBar, SectionTitle, SkeletonCard, s } from "../../components/ui";
 
 /**
  * Trang chủ theo wireframe nghiên cứu — TỐI ĐA 3 KHỐI TRÊN FOLD:
@@ -41,9 +42,11 @@ export default function HomeScreen() {
 
   if (!hydrated) {
     return (
-      <View style={{ flex: 1, alignItems: "center", justifyContent: "center", gap: 10, backgroundColor: COLOR.bg }}>
-        <Ionicons name="leaf" size={40} color={COLOR.primary} />
-        <Text style={s.sub}>Đang tải khu vườn...</Text>
+      <View style={{ flex: 1, backgroundColor: COLOR.bg, padding: SPACE.screenX, paddingTop: 48, gap: SPACE.cardGap }}>
+        <SkeletonCard height={210} />
+        <SkeletonCard height={170} />
+        <SkeletonCard height={110} />
+        <Text style={[s.sub, { textAlign: "center" }]}>Đang tải khu vườn...</Text>
       </View>
     );
   }
@@ -82,8 +85,10 @@ export default function HomeScreen() {
 
   return (
     <ScrollView style={s.screen} contentContainerStyle={[s.scroll, { paddingTop: 48 }]}>
-      {/* (1) HERO — Chúng mình */}
-      <View style={{ backgroundColor: ROLE.shared, borderRadius: RADIUS.card, padding: SPACE.lg, gap: 14, ...SHADOW }}>
+      {/* (1) HERO — Chúng mình: tranh vẽ cặp đôi bên cây tình yêu ở dải trên, thông tin ở dải navy dưới */}
+      <View style={{ backgroundColor: ROLE.shared, borderRadius: RADIUS.card, overflow: "hidden", ...SHADOW }}>
+        <HeroCouple width="100%" height={118} />
+        <View style={{ padding: SPACE.lg, gap: 14 }}>
         <View style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
           <View style={{ flexDirection: "row", alignItems: "center" }}>
             <Avatar id={me.avatar} size={48} />
@@ -110,6 +115,7 @@ export default function HomeScreen() {
             <Ionicons name="diamond" size={13} color="#FFD9E2" />
             <Text style={{ fontFamily: FONT.semibold, fontSize: 12, color: "#fff" }}>{state.coins} Xu Tim</Text>
           </View>
+        </View>
         </View>
       </View>
 

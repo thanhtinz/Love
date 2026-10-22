@@ -1,4 +1,4 @@
-import React from "react";
+import React, { memo } from "react";
 import Svg, { Circle, Ellipse, G, Path, Polygon, Rect } from "react-native-svg";
 
 /**
@@ -126,9 +126,19 @@ function Accessory({ kind }: { kind: string }) {
   return null;
 }
 
-export default function PlantArt({ speciesId, stageIndex, totalStages, wilted, potColor = "#fb923c", accessory = "", fruitReady, size = 180 }: PlantArtProps) {
+function SparkleAcc({ x, y, s, fill }: { x: number; y: number; s: number; fill: string }) {
+  return <Path d="M0 -8 L2.2 -2.2 L8 0 L2.2 2.2 L0 8 L-2.2 2.2 L-8 0 L-2.2 -2.2Z" transform={`translate(${x} ${y}) scale(${s})`} fill={fill} />;
+}
+
+/**
+ * Bọc React.memo: PlantArt là component thuần theo props (loài/giai đoạn/trạng thái)
+ * nhưng trước đây bị vẽ lại mỗi giây bởi đồng hồ tick của màn Vườn — memo giúp
+ * chỉ vẽ lại khi đúng props của cây thay đổi.
+ */
+const PlantArt = memo(function PlantArt({ speciesId, stageIndex, totalStages, wilted, potColor = "#fb923c", accessory = "", fruitReady, size = 180 }: PlantArtProps) {
   const f = totalStages > 1 ? stageIndex / (totalStages - 1) : 0;
   const gray = wilted ? "#a8a29e" : undefined;
+  const isMatureStage = stageIndex >= totalStages - 1;
   return (
     <Svg width={size} height={size} viewBox="0 0 200 200">
       <G opacity={wilted ? 0.75 : 1} transform={wilted ? "rotate(-5 100 150)" : undefined}>
@@ -138,11 +148,29 @@ export default function PlantArt({ speciesId, stageIndex, totalStages, wilted, p
         {speciesId === "love-tree" && <TreeFamily f={f} stageIndex={stageIndex} totalStages={totalStages} canopy={gray || "#4ade80"} dark="#16a34a" accent="#f472b6" kind="love-tree" wilted={!!wilted} />}
         {speciesId === "sakura" && <TreeFamily f={f} stageIndex={stageIndex} totalStages={totalStages} canopy={gray || "#f9a8d4"} dark="#ec4899" accent="#fbcfe8" kind="sakura" wilted={!!wilted} />}
         {speciesId === "legendary-tree" && <TreeFamily f={f} stageIndex={stageIndex} totalStages={totalStages} canopy={gray || "#a78bfa"} dark="#7c3aed" accent="#ddd6fe" kind="legendary-tree" wilted={!!wilted} />}
+        {/* Điểm nhấn sinh động ở giai đoạn trưởng thành: tia lấp lánh + lá rơi quanh tán (chỉ trang trí) */}
+        {isMatureStage && !wilted && (
+          <G>
+            <SparkleAcc x={52} y={52} s={0.85} fill="#F2B33D" />
+            <SparkleAcc x={152} y={38} s={0.7} fill="#FF8FA3" />
+            <SparkleAcc x={140} y={86} s={0.55} fill="#F2B33D" />
+            <Ellipse cx="60" cy="98" rx="5.5" ry="3" fill="#57B87B" transform="rotate(-28 60 98)" />
+            <Ellipse cx="146" cy="112" rx="5" ry="2.8" fill="#57B87B" transform="rotate(24 146 112)" />
+          </G>
+        )}
       </G>
       <Ellipse cx="100" cy="152" rx="46" ry="7" fill="#92400e" opacity="0.85" />
+      {/* khóm cỏ nhỏ ở miệng chậu cho mọi giai đoạn */}
+      {!wilted && (
+        <G stroke="#3D9B6E" strokeWidth="2.4" strokeLinecap="round" fill="none">
+          <Path d="M66 150 q-2 -7 -6 -10 M68 150 q0 -8 2 -11 M132 150 q2 -7 6 -10 M130 150 q0 -8 -2 -11" />
+        </G>
+      )}
       <Path d="M62 156 L138 156 L128 196 L72 196 Z" fill={potColor} />
       <Rect x="56" y="148" width="88" height="13" rx="6" fill={potColor} stroke="#00000022" />
       <Accessory kind={accessory} />
     </Svg>
   );
-}
+});
+
+export default PlantArt;

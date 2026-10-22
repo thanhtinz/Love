@@ -5,8 +5,9 @@ import { useLove, makeLetter, myName } from "../../lib/store";
 import { ACHIEVEMENTS, QUESTS } from "../../lib/data";
 import { daysTogether, nextMilestone, today, MILESTONES } from "../../lib/types";
 import Avatar from "../../components/Avatar";
+import { LetterArt, MascotMam } from "../../components/illustrations";
 import { PersonChip, partnerOf, selfOf } from "../../components/PersonChip";
-import { C, ScreenHeader, s } from "../../components/ui";
+import { C, ScreenHeader, Segmented, s } from "../../components/ui";
 
 export default function QuestsScreen() {
   const { state, dispatch } = useLove();
@@ -15,6 +16,7 @@ export default function QuestsScreen() {
   const meName = myName(state);
   const [falling, setFalling] = useState(false);
   const [fallAnim] = useState(() => new Animated.Value(0));
+  const [tab, setTab] = useState<"quests" | "badges">("quests");
   const days = daysTogether(state.startDate);
   const nm = nextMilestone(days);
 
@@ -45,34 +47,41 @@ export default function QuestsScreen() {
     <View style={s.screen}>
       <ScreenHeader title="Nhiệm vụ & huy hiệu" subtitle="Nhiệm vụ ngày tính riêng từng người — huy hiệu và streak là chung" />
       <ScrollView contentContainerStyle={s.scroll}>
-        {/* Đếm ngày yêu + mốc */}
-        <View style={[s.card, { alignItems: "center", backgroundColor: "#FFE9EE" }]}>
-          <Text style={s.sub}>Hai bạn đã bên nhau</Text>
-          <Text style={{ fontSize: 30, fontFamily: "BeVietnamPro_900Black", color: C.pinkDark, lineHeight: 36 }}>{days} ngày</Text>
-          <Text style={s.sub}>từ {new Date(state.startDate + "T00:00:00").toLocaleDateString("vi-VN")} · Streak chăm cây {state.streak.count} ngày (chung của vườn)</Text>
-          <View style={{ width: "100%", marginTop: 10, gap: 4 }}>
-            <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
-              <Text style={{ fontSize: 12.5, fontFamily: "BeVietnamPro_700Bold", color: C.text }}>Mốc tiếp theo: {nm.target} ngày</Text>
-              <Text style={{ fontSize: 12.5, fontFamily: "BeVietnamPro_800ExtraBold", color: C.pinkDark }}>còn {nm.remaining} ngày</Text>
-            </View>
-            <View style={{ height: 9, borderRadius: 99, backgroundColor: "#fff", overflow: "hidden" }}>
-              <View style={{ height: "100%", width: `${Math.min(100, (days / nm.target) * 100)}%`, backgroundColor: C.pink, borderRadius: 99 }} />
-            </View>
+        {/* Dải đếm ngày GỌN (1 khối nhỏ) + segmented Nhiệm vụ/Huy hiệu để màn hình ngắn lại */}
+        <View style={[s.card, { backgroundColor: "#FFE9EE", gap: 7 }]}>
+          <View style={{ flexDirection: "row", alignItems: "baseline", gap: 7 }}>
+            <Text style={{ fontSize: 30, fontFamily: "BeVietnamPro_900Black", color: C.pinkDark, lineHeight: 36 }}>{days}</Text>
+            <Text style={{ fontFamily: "BeVietnamPro_700Bold", color: C.text, fontSize: 13.5 }}>ngày bên nhau · streak {state.streak.count} ngày</Text>
           </View>
-          <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6, marginTop: 10, justifyContent: "center" }}>
+          <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
+            <Text style={{ fontSize: 12, fontFamily: "BeVietnamPro_700Bold", color: C.text }}>Mốc {nm.target} ngày</Text>
+            <Text style={{ fontSize: 12, fontFamily: "BeVietnamPro_800ExtraBold", color: C.pinkDark }}>còn {nm.remaining} ngày</Text>
+          </View>
+          <View style={{ height: 8, borderRadius: 99, backgroundColor: "#fff", overflow: "hidden" }}>
+            <View style={{ height: "100%", width: `${Math.min(100, (days / nm.target) * 100)}%`, backgroundColor: C.pink, borderRadius: 99 }} />
+          </View>
+          <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 5 }}>
             {MILESTONES.map((m) => (
-              <View key={m} style={[s.chip, { backgroundColor: days >= m ? "#dcfce7" : "#fff" }]}>
-                <Ionicons name={days >= m ? "checkmark-circle" : "ellipse-outline"} size={12} color={days >= m ? "#16a34a" : C.textFaint} />
-                <Text style={[s.chipText, { color: days >= m ? "#15803d" : C.textFaint }]}>{m} ngày</Text>
+              <View key={m} style={[s.chip, { backgroundColor: days >= m ? "#dcfce7" : "#fff", minHeight: 24, paddingVertical: 2 }]}>
+                <Ionicons name={days >= m ? "checkmark-circle" : "ellipse-outline"} size={11} color={days >= m ? "#16a34a" : C.textFaint} />
+                <Text style={[s.chipText, { color: days >= m ? "#15803d" : C.textFaint, fontSize: 11 }]}>{m}</Text>
               </View>
             ))}
           </View>
         </View>
 
+        <Segmented options={[{ id: "quests" as const, label: "Nhiệm vụ hôm nay" }, { id: "badges" as const, label: `Huy hiệu (${state.achievements.length}/${ACHIEVEMENTS.length})` }]} value={tab} onChange={setTab} />
+
         {/* Nhiệm vụ hôm nay — theo từng người */}
+        {tab === "quests" && (
         <View style={s.card}>
-          <Text style={s.cardTitle}>Nhiệm vụ hôm nay</Text>
-          <Text style={s.sub}>Hai nhiệm vụ đầu tính theo việc chăm cây của CHÍNH bạn; nhiệm vụ Song chăm mới tính chung. Mỗi người tự nhận thưởng của mình — bạn nhận không làm mất lượt nhận của {partner.name}.</Text>
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 9 }}>
+            <MascotMam mood="celebrate" size={44} />
+            <View style={{ flex: 1 }}>
+              <Text style={s.cardTitle}>Nhiệm vụ của từng người</Text>
+              <Text style={s.sub}>Mỗi người tự làm và tự nhận thưởng của mình.</Text>
+            </View>
+          </View>
           <View style={{ gap: 12, marginTop: 11 }}>
             {QUESTS.map((q) => {
               const myProg = Math.min(progressFor(q, me.slot), q.target);
@@ -103,8 +112,10 @@ export default function QuestsScreen() {
             })}
           </View>
         </View>
+        )}
 
         {/* Huy hiệu — thành tích CHUNG của vườn */}
+        {tab === "badges" && (
         <View style={s.card}>
           <View style={{ flexDirection: "row", alignItems: "center", gap: 9 }}>
             <Avatar id={me.avatar} size={26} />
@@ -112,7 +123,7 @@ export default function QuestsScreen() {
             <Avatar id={partner.avatar} size={26} />
             <Text style={{ fontFamily: "BeVietnamPro_900Black", color: C.text, flex: 1 }}>Huy hiệu chung ({state.achievements.length}/{ACHIEVEMENTS.length})</Text>
           </View>
-          <Text style={s.sub}>Huy hiệu là thành tích của CẢ VƯỜN (hai người cùng góp) — khác với nhiệm vụ ngày ở trên vốn tính riêng từng người.</Text>
+          <Text style={s.sub}>Thành tích của cả vườn — hai người cùng góp.</Text>
           <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6, marginTop: 9 }}>
             {ACHIEVEMENTS.map((a) => {
               const has = state.achievements.includes(a.id);
@@ -120,12 +131,13 @@ export default function QuestsScreen() {
             })}
           </View>
         </View>
+        )}
       </ScrollView>
 
       {falling && (
         <Animated.View style={{ position: "absolute", left: 0, right: 0, alignItems: "center", transform: [{ translateY: fallAnim.interpolate({ inputRange: [0, 1], outputRange: [-120, 120] }) }] }}>
           <View style={{ backgroundColor: "#fff", borderRadius: 18, borderWidth: 2, borderColor: C.pink, paddingHorizontal: 22, paddingVertical: 14, alignItems: "center", gap: 3 }}>
-            <Ionicons name="mail" size={32} color={C.pink} />
+            <LetterArt size={64} />
             <Text style={{ fontFamily: "BeVietnamPro_900Black", color: C.pinkDark }}>Thưởng nhiệm vụ: một lá thư Hiếm!</Text>
             <Text style={s.small}>Vào tab Thư để mở đọc</Text>
           </View>

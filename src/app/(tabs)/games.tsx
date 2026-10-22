@@ -37,9 +37,9 @@ export default function GamesHubScreen() {
       </View>
 
       <View style={{ gap: 9 }}>
-        <FeatureCard icon="heart" title="Bắt tim bay" desc="30 giây chạm bắt tim rơi — phá kỷ lục tuần của chính bạn" color={C.pink} bg={C.pinkSoft} route="/games/catch-hearts" />
+        <FeatureCard icon="heart" title="Bắt tim bay" desc="30 giây bắt tim rơi — phá kỷ lục tuần của bạn" color={C.pink} bg={C.pinkSoft} route="/games/catch-hearts" />
         <FeatureCard icon="refresh-circle" title="Vòng quay yêu thương" desc={`Bạn còn ${spinsLeft}/${MAX_DAILY_SPINS} lượt quay hôm nay — trúng Xu, XP, thư tình`} color={C.violet} bg="#ede9fe" route="/games/spin-wheel" badge={spinsLeft > 0 ? `${spinsLeft} lượt` : "Hết lượt"} />
-        <FeatureCard icon="help-circle" title="Hiểu ý nhau" desc={quizDone ? "Bạn đã trả lời hôm nay — chờ người ấy để mở kết quả" : "4 câu trắc nghiệm mỗi ngày, đáp án niêm phong riêng từng người"} color={C.sky} bg="#D9F4F0" route="/games/quiz" badge={quizDone ? "Đã nộp" : undefined} />
+        <FeatureCard icon="help-circle" title="Hiểu ý nhau" desc={quizDone ? "Đã trả lời — chờ người ấy để mở kết quả" : "4 câu mỗi ngày, đáp án niêm phong riêng"} color={C.sky} bg="#D9F4F0" route="/games/quiz" badge={quizDone ? "Đã nộp" : undefined} />
       </View>
     </ScrollView>
   );

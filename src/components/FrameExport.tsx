@@ -6,6 +6,7 @@ import * as Sharing from "expo-sharing";
 import { Ionicons } from "@expo/vector-icons";
 import { useLove } from "../lib/store";
 import { FRAME_XP_REWARD, today, type FrameKind } from "../lib/types";
+import { FrameGarland } from "./illustrations";
 import { C, s } from "./ui";
 
 /**
@@ -53,6 +54,8 @@ export function FrameExport({ kind, children }: { kind: FrameKind; children: Rea
     <View style={{ gap: 12 }}>
       <ViewShot ref={shotRef} options={{ format: "png", quality: 1 }}>
         <View style={{ backgroundColor: "#FFF6F1", borderRadius: 20, borderWidth: 1, borderColor: C.pinkBorder, padding: 20, alignItems: "center", gap: 8, minHeight: 330, justifyContent: "center" }}>
+          <View style={{ position: "absolute", left: 6, top: 6 }} pointerEvents="none"><FrameGarland size={64} /></View>
+          <View style={{ position: "absolute", right: 6, bottom: 6, transform: [{ rotate: "180deg" }] }} pointerEvents="none"><FrameGarland size={64} /></View>
           {children}
           <View style={{ flexDirection: "row", alignItems: "center", gap: 5, marginTop: 4 }}>
             <Ionicons name="heart" size={12} color={C.pink} />

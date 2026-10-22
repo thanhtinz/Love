@@ -1,4 +1,4 @@
-import React from "react";
+import React, { memo } from "react";
 import { Text, View } from "react-native";
 import type { AppState, PersonId } from "../lib/types";
 import Avatar from "./Avatar";
@@ -36,8 +36,8 @@ export function personOf(state: AppState, slot: PersonId): PersonInfo {
 export const selfOf = (state: AppState): PersonInfo => personOf(state, state.currentUser);
 export const partnerOf = (state: AppState): PersonInfo => personOf(state, state.currentUser === "A" ? "B" : "A");
 
-/** Chip nhỏ: avatar + tên (+ nhãn "Bạn" nếu là chính mình). */
-export function PersonChip({ state, slot, size = 22, showYouTag = true }: { state: AppState; slot: PersonId; size?: number; showYouTag?: boolean }) {
+/** Chip nhỏ: avatar + tên (+ nhãn "Bạn" nếu là chính mình). Memo: xuất hiện trong nhiều list/hàng. */
+export const PersonChip = memo(function PersonChip({ state, slot, size = 22, showYouTag = true }: { state: AppState; slot: PersonId; size?: number; showYouTag?: boolean }) {
   const p = personOf(state, slot);
   return (
     <View style={{ flexDirection: "row", alignItems: "center", gap: 5, backgroundColor: p.bg, borderRadius: 999, paddingLeft: 2, paddingRight: 8, paddingVertical: 2, alignSelf: "flex-start" }}>
@@ -50,7 +50,7 @@ export function PersonChip({ state, slot, size = 22, showYouTag = true }: { stat
       )}
     </View>
   );
-}
+});
 
 /** Nhãn chữ ngắn gọn: "Bạn (Tên)" cho mình, tên riêng cho đối phương. */
 export function personLabel(state: AppState, slot: PersonId): string {

@@ -1,4 +1,4 @@
-import React from "react";
+import React, { memo } from "react";
 import Svg, { Circle, Ellipse, Path } from "react-native-svg";
 import { avatarById } from "../lib/types";
 
@@ -21,7 +21,7 @@ const EARS: Record<string, (c: string) => React.ReactNode> = {
   koala: (c) => (<><Circle cx="20" cy="34" r="13" fill={c} /><Circle cx="80" cy="34" r="13" fill={c} /><Circle cx="20" cy="34" r="7" fill="#e2e8f0" /><Circle cx="80" cy="34" r="7" fill="#e2e8f0" /></>),
 };
 
-export default function Avatar({ id, size = 44 }: { id?: string; size?: number }) {
+const Avatar = memo(function Avatar({ id, size = 44 }: { id?: string; size?: number }) {
   const a = avatarById(id);
   const earFn = EARS[a.id] || EARS["svg-a"];
   return (
@@ -34,4 +34,6 @@ export default function Avatar({ id, size = 44 }: { id?: string; size?: number }
       <Circle cx="71" cy="63" r="5" fill="#fda4af" opacity="0.8" />
     </Svg>
   );
-}
+});
+
+export default Avatar;

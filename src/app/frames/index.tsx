@@ -16,7 +16,7 @@ export default function FramesHubScreen() {
         </View>
         <View style={[s.card, { backgroundColor: "#fff7ed" }]}>
           <View style={s.row}><Ionicons name="information-circle" size={18} color={C.amber} /><Text style={{ fontFamily: "BeVietnamPro_800ExtraBold", color: C.text }}>Về widget sống trên màn hình chính</Text></View>
-          <Text style={[s.sub, { marginTop: 5 }]}>Khung được xuất thành ảnh PNG để ghim bằng tiện ích ảnh của máy. Widget sống tự cập nhật cần mã native riêng — sẽ làm ở giai đoạn sau.</Text>
+          <Text style={[s.sub, { marginTop: 5 }]}>Khung được xuất thành ảnh PNG để ghim bằng tiện ích ảnh của máy.</Text>
         </View>
       </ScrollView>
     </View>

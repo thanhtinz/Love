@@ -6,6 +6,7 @@ import { useAuth } from "../lib/auth";
 import { useLove } from "../lib/store";
 import { today } from "../lib/types";
 import Avatar from "../components/Avatar";
+import { HeroCouple } from "../components/illustrations";
 import { C, s } from "../components/ui";
 
 export default function PairScreen() {
@@ -63,6 +64,9 @@ export default function PairScreen() {
 
       {!couple ? (
         <>
+          <View style={{ borderRadius: 20, overflow: "hidden" }}>
+            <HeroCouple width="100%" height={104} />
+          </View>
           <View style={s.card}>
             <View style={s.row}><Ionicons name="leaf" size={19} color={C.green} /><Text style={s.title}>Tạo khu vườn mới</Text></View>
             <Text style={s.sub}>Bạn sẽ nhận một mã mời 6 ký tự. Gửi mã đó cho người ấy để họ vào cùng vườn — tối đa 2 người một vườn.</Text>

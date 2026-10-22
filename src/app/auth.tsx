@@ -5,6 +5,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { useAuth } from "../lib/auth";
 import { AVATARS } from "../lib/types";
 import Avatar from "../components/Avatar";
+import { HeroCouple } from "../components/illustrations";
 import { C, s } from "../components/ui";
 
 export default function AuthScreen() {
@@ -38,7 +39,9 @@ export default function AuthScreen() {
     <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === "ios" ? "padding" : undefined}>
       <ScrollView contentContainerStyle={styles.wrap} keyboardShouldPersistTaps="handled">
         <View style={styles.hero}>
-          <Ionicons name="heart-circle" size={64} color={C.pink} />
+          <View style={{ borderRadius: 20, overflow: "hidden", width: "100%" }}>
+            <HeroCouple width="100%" height={148} />
+          </View>
           <Text style={styles.h1}>Khu Vườn Tình Yêu</Text>
           <Text style={styles.heroSub}>Nơi hai trái tim cùng trồng cây, gửi thư và đếm từng ngày bên nhau.</Text>
         </View>
@@ -75,7 +78,7 @@ export default function AuthScreen() {
             <Ionicons name={mode === "in" ? "log-in" : "person-add"} size={18} color="#fff" />
             <Text style={s.btnText}>{busy ? "Đang xử lý..." : mode === "in" ? "Vào vườn" : "Tạo tài khoản"}</Text>
           </TouchableOpacity>
-          <Text style={styles.note}>Mỗi người dùng một tài khoản riêng. Sau khi đăng nhập, hai bạn ghép cặp bằng mã mời 6 ký tự để dùng chung một khu vườn.</Text>
+          <Text style={styles.note}>Mỗi người một tài khoản riêng — ghép cặp bằng mã mời 6 ký tự để dùng chung một vườn.</Text>
         </View>
       </ScrollView>
     </KeyboardAvoidingView>

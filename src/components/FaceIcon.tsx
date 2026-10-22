@@ -1,4 +1,4 @@
-import React from "react";
+import React, { memo } from "react";
 import Svg, { Circle, Path } from "react-native-svg";
 
 /** Khuôn mặt cảm xúc vẽ bằng SVG theo mood id (port từ FaceIcon của bản web). */
@@ -44,7 +44,7 @@ function Mouth({ mood }: { mood: string }) {
     default: return <Path d="M36 60 Q50 74 64 60" stroke={ink} strokeWidth="3.4" fill="none" strokeLinecap="round" />;
   }
 }
-export default function FaceIcon({ mood, size = 44 }: { mood: string; size?: number }) {
+const FaceIcon = memo(function FaceIcon({ mood, size = 44 }: { mood: string; size?: number }) {
   return (
     <Svg width={size} height={size} viewBox="0 0 100 100">
       <Circle cx="50" cy="50" r="46" fill="#fff7ed" stroke="#fdba74" strokeWidth="2.5" />
@@ -54,4 +54,6 @@ export default function FaceIcon({ mood, size = 44 }: { mood: string; size?: num
       <Circle cx="78" cy="60" r="6" fill="#fda4af" opacity="0.75" />
     </Svg>
   );
-}
+});
+
+export default FaceIcon;

@@ -6,6 +6,7 @@ import { useLove, makeLetter, myName } from "../../lib/store";
 import { MAX_DAILY_SPINS, SPIN_MISSIONS, SPIN_SEGMENTS } from "../../lib/data";
 import { today, uid } from "../../lib/types";
 import { PersonChip, partnerOf } from "../../components/PersonChip";
+import { WheelRim } from "../../components/illustrations";
 import { C, ScreenHeader, s } from "../../components/ui";
 
 function wedgePath(cx: number, cy: number, r: number, a0: number, a1: number): string {
@@ -96,8 +97,11 @@ export default function SpinWheelScreen() {
         <View style={[s.card, { alignItems: "center" }]}>
           <View style={{ alignItems: "center", marginTop: 2 }}>
             <View style={styles.pointer}><Ionicons name="caret-down" size={30} color={C.pinkDark} /></View>
-            <Animated.View style={{ transform: [{ rotate: rot.interpolate({ inputRange: [0, 360], outputRange: ["0deg", "360deg"] }) }] }}>{wheel}</Animated.View>
-            <View style={styles.wheelCenter}><Ionicons name="heart" size={22} color="#fff" /></View>
+            <View style={{ width: 252, height: 252 }}>
+              <View style={{ position: "absolute", left: 0, top: 0 }} pointerEvents="none"><WheelRim size={252} /></View>
+              <Animated.View style={{ position: "absolute", left: 6, top: 6, transform: [{ rotate: rot.interpolate({ inputRange: [0, 360], outputRange: ["0deg", "360deg"] }) }] }}>{wheel}</Animated.View>
+              <View style={[styles.wheelCenter, { top: 105, left: 105, alignSelf: "auto" }]}><Ionicons name="heart" size={22} color="#fff" /></View>
+            </View>
           </View>
           {result ? <Text style={{ textAlign: "center", color: C.pinkDark, fontFamily: "BeVietnamPro_700Bold", marginTop: 10, lineHeight: 19 }}>{result}</Text> : null}
           <TouchableOpacity style={[s.btn, { marginTop: 12, alignSelf: "stretch" }, (spinning || left <= 0) && { opacity: 0.5 }]} onPress={spin} disabled={spinning || left <= 0}>

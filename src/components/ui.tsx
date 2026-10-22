@@ -1,5 +1,5 @@
-import React, { useEffect, useState } from "react";
-import { StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import React, { memo, useEffect, useState } from "react";
+import { Animated, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { router } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { COLOR, FONT, RADIUS, ROLE, SPACE, TYPE } from "./theme";
@@ -105,7 +105,7 @@ export function ScreenHeader({ title, subtitle }: { title: string; subtitle?: st
 }
 
 /** Hàng điều hướng tính năng — dùng ở các màn hình hub (chỉ điều hướng, không chứa chức năng). */
-export function FeatureCard({ icon, title, desc, color = COLOR.primary, bg = ROLE.selfSoft, route, badge }: { icon: string; title: string; desc: string; color?: string; bg?: string; route: string; badge?: string }) {
+export const FeatureCard = memo(function FeatureCard({ icon, title, desc, color = COLOR.primary, bg = ROLE.selfSoft, route, badge }: { icon: string; title: string; desc: string; color?: string; bg?: string; route: string; badge?: string }) {
   return (
     <TouchableOpacity onPress={() => router.push(route as never)} style={{ flexDirection: "row", alignItems: "center", gap: 12, backgroundColor: "#fff", borderRadius: RADIUS.card, borderWidth: 1, borderColor: COLOR.border, padding: 14, minHeight: 68 }}>
       <View style={{ width: 46, height: 46, borderRadius: RADIUS.inner, backgroundColor: bg, alignItems: "center", justifyContent: "center" }}>
@@ -123,10 +123,10 @@ export function FeatureCard({ icon, title, desc, color = COLOR.primary, bg = ROL
       <Ionicons name="chevron-forward" size={18} color={COLOR.textFaint} />
     </TouchableOpacity>
   );
-}
+});
 
 /** Ô lối tắt nhỏ cho lưới khám phá ở Trang chủ — luôn có icon + NHÃN chữ (không icon-only). */
-export function FeatureTile({ icon, title, color = COLOR.primary, bg = ROLE.selfSoft, route, badge }: { icon: string; title: string; color?: string; bg?: string; route: string; badge?: string }) {
+export const FeatureTile = memo(function FeatureTile({ icon, title, color = COLOR.primary, bg = ROLE.selfSoft, route, badge }: { icon: string; title: string; color?: string; bg?: string; route: string; badge?: string }) {
   return (
     <TouchableOpacity onPress={() => router.push(route as never)} style={{ flex: 1, backgroundColor: "#fff", borderRadius: RADIUS.card, borderWidth: 1, borderColor: COLOR.border, paddingVertical: 14, paddingHorizontal: 10, alignItems: "center", gap: 8, minHeight: 84 }}>
       <View style={{ width: 44, height: 44, borderRadius: 22, backgroundColor: bg, alignItems: "center", justifyContent: "center" }}>
@@ -138,6 +138,49 @@ export function FeatureTile({ icon, title, color = COLOR.primary, bg = ROLE.self
           <Text style={{ color: "#fff", fontSize: 10, fontFamily: FONT.bold }}>{badge}</Text>
         </View>
       ) : null}
+    </TouchableOpacity>
+  );
+});
+
+/**
+ * Segmented control trong 1 màn hình (progressive disclosure): chỉ 1 nhóm nội dung
+ * hiện tại một thời điểm để màn hình ngắn lại — dùng cho Thư, Nhiệm vụ...
+ */
+export function Segmented<T extends string>({ options, value, onChange }: { options: { id: T; label: string }[]; value: T; onChange: (v: T) => void }) {
+  return (
+    <View style={{ flexDirection: "row", backgroundColor: ROLE.selfSoft, borderRadius: RADIUS.pill, padding: 4, gap: 4 }}>
+      {options.map((o) => {
+        const on = o.id === value;
+        return (
+          <TouchableOpacity key={o.id} onPress={() => onChange(o.id)} style={{ flex: 1, minHeight: 40, borderRadius: RADIUS.pill, alignItems: "center", justifyContent: "center", backgroundColor: on ? "#fff" : "transparent", paddingHorizontal: 8 }}>
+            <Text style={{ fontFamily: FONT.bold, fontSize: 13.5, color: on ? ROLE.selfDark : COLOR.textSoft }} numberOfLines={1}>{o.label}</Text>
+          </TouchableOpacity>
+        );
+      })}
+    </View>
+  );
+}
+
+/** Khối skeleton nhấp nháy nhẹ trong lúc chờ dữ liệu — thay màn hình trắng trơn. */
+export function SkeletonCard({ height = 92, radius = RADIUS.card }: { height?: number; radius?: number }) {
+  const [pulse] = useState(() => new Animated.Value(0.55));
+  useEffect(() => {
+    const loop = Animated.loop(Animated.sequence([
+      Animated.timing(pulse, { toValue: 1, duration: 650, useNativeDriver: true }),
+      Animated.timing(pulse, { toValue: 0.55, duration: 650, useNativeDriver: true }),
+    ]));
+    loop.start();
+    return () => loop.stop();
+  }, [pulse]);
+  return <Animated.View style={{ height, borderRadius: radius, backgroundColor: "#F6EDEF", opacity: pulse }} />;
+}
+
+/** Nút "Tải thêm" dùng cho các danh sách dài (hiện từng đợt ~10 mục). */
+export function LoadMoreRow({ onPress, label = "Tải thêm" }: { onPress: () => void; label?: string }) {
+  return (
+    <TouchableOpacity onPress={onPress} style={{ alignSelf: "center", flexDirection: "row", alignItems: "center", gap: 5, backgroundColor: ROLE.selfSoft, borderRadius: RADIUS.pill, paddingHorizontal: 16, minHeight: 40, paddingVertical: 8 }}>
+      <Ionicons name="chevron-down" size={15} color={ROLE.selfDark} />
+      <Text style={{ fontFamily: FONT.bold, fontSize: 13, color: ROLE.selfDark }}>{label}</Text>
     </TouchableOpacity>
   );
 }

@@ -1,24 +1,30 @@
 import React, { useState } from "react";
-import { ScrollView, Text, TextInput, TouchableOpacity, View } from "react-native";
+import { Modal, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useLove } from "../../lib/store";
 import { CONTENT_ADD_MIN_INTERVAL_MS, CONTENT_LIMITS, uid } from "../../lib/types";
+import { EmptyBucketArt } from "../../components/illustrations";
 import { PersonChip, selfOf } from "../../components/PersonChip";
-import { C, ScreenHeader, s, useNow } from "../../components/ui";
+import { C, LoadMoreRow, ScreenHeader, s, useNow } from "../../components/ui";
+
+const PAGE = 10;
 
 export default function BucketListScreen() {
   const { state, dispatch } = useLove();
   const me = selfOf(state);
   const now = useNow(500);
+  const [formOpen, setFormOpen] = useState(false);
   const [bucketText, setBucketText] = useState("");
+  const [limit, setLimit] = useState(PAGE);
   const lastAdd = state.contentLog[me.slot];
   const addWaitMs = lastAdd ? Math.max(0, CONTENT_ADD_MIN_INTERVAL_MS - (now - new Date(lastAdd).getTime())) : 0;
   const doneCount = state.bucket.filter((b) => b.done).length;
+  const visible = state.bucket.slice(0, limit);
 
   function addBucket() {
     if (!bucketText.trim() || addWaitMs > 0) return;
     dispatch({ type: "ADD_BUCKET", item: { id: uid(), text: bucketText.trim().slice(0, CONTENT_LIMITS.bucket), done: false, createdAt: new Date().toISOString(), authorSlot: me.slot } });
-    setBucketText("");
+    setBucketText(""); setFormOpen(false);
   }
 
   return (
@@ -26,12 +32,15 @@ export default function BucketListScreen() {
       <ScreenHeader title="Bucket List" subtitle="Những việc hai bạn muốn làm cùng nhau" />
       <ScrollView contentContainerStyle={s.scroll}>
         <View style={s.card}>
-          <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
-            <Text style={s.cardTitle}>Danh sách chung ({state.bucket.length} mục)</Text>
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+            <Text style={[s.cardTitle, { flex: 1 }]}>Danh sách chung ({state.bucket.length} mục)</Text>
             <View style={s.chip}><Ionicons name="checkmark-circle" size={13} color={C.pinkDark} /><Text style={s.chipText}>Đã xong {doneCount}</Text></View>
+            <TouchableOpacity style={[s.btn, { paddingHorizontal: 12, minHeight: 40 }]} onPress={() => setFormOpen(true)} accessibilityLabel="Thêm mục bucket list">
+              <Ionicons name="add" size={18} color="#fff" /><Text style={s.btnText}>Thêm</Text>
+            </TouchableOpacity>
           </View>
           <View style={{ gap: 9, marginTop: 10 }}>
-            {state.bucket.map((b) => (
+            {visible.map((b) => (
               <View key={b.id} style={{ flexDirection: "row", alignItems: "center", gap: 9, backgroundColor: "#fff7f8", borderRadius: 13, padding: 9, borderWidth: 1.5, borderColor: C.pinkBorder }}>
                 <TouchableOpacity onPress={() => dispatch({ type: "TOGGLE_BUCKET", id: b.id })}>
                   <Ionicons name={b.done ? "checkbox" : "square-outline"} size={22} color={b.done ? C.green : C.textFaint} />
@@ -43,17 +52,38 @@ export default function BucketListScreen() {
                 <TouchableOpacity onPress={() => dispatch({ type: "DEL_BUCKET", id: b.id })}><Ionicons name="trash-outline" size={17} color={C.textFaint} /></TouchableOpacity>
               </View>
             ))}
-            {state.bucket.length === 0 && <Text style={s.sub}>Chưa có mục nào. Thêm điều đầu tiên hai bạn muốn làm cùng nhau nhé!</Text>}
+            {state.bucket.length === 0 && (
+              <View style={{ alignItems: "center", gap: 4, paddingVertical: 8 }}>
+                <EmptyBucketArt size={118} />
+                <Text style={s.sub}>Chiếc giỏ đang trống — thêm điều đầu tiên hai bạn muốn làm cùng nhau nhé.</Text>
+              </View>
+            )}
           </View>
-          <View style={{ flexDirection: "row", gap: 8, marginTop: 11 }}>
-            <TextInput style={[s.input, { flex: 1 }]} placeholder="VD: Cùng ngắm hoàng hôn ở biển" placeholderTextColor={C.textFaint} value={bucketText} onChangeText={setBucketText} maxLength={CONTENT_LIMITS.bucket} />
-            <TouchableOpacity style={[s.btn, { paddingHorizontal: 14 }, (!bucketText.trim() || addWaitMs > 0) && { opacity: 0.5 }]} disabled={!bucketText.trim() || addWaitMs > 0} onPress={addBucket}>
-              <Ionicons name={addWaitMs > 0 ? "time" : "add"} size={18} color="#fff" />
-            </TouchableOpacity>
-          </View>
-          {addWaitMs > 0 && <Text style={[s.small, { marginTop: 5 }]}>Chờ {Math.ceil(addWaitMs / 1000)} giây nữa để thêm mục tiếp (chống thêm trùng).</Text>}
+          {state.bucket.length > limit && <LoadMoreRow onPress={() => setLimit((v) => v + PAGE)} label={`Tải thêm (${state.bucket.length - limit} mục còn lại)`} />}
         </View>
       </ScrollView>
+
+      {/* Sheet thêm mục — ô nhập không còn chiếm chỗ cố định trên trang */}
+      <Modal visible={formOpen} transparent animationType="slide" onRequestClose={() => setFormOpen(false)}>
+        <View style={styles.modalWrap}>
+          <View style={styles.modalCard}>
+            <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
+              <Text style={s.cardTitle}>Thêm điều muốn làm</Text>
+              <TouchableOpacity onPress={() => setFormOpen(false)}><Ionicons name="close-circle" size={26} color={C.textFaint} /></TouchableOpacity>
+            </View>
+            <TextInput style={s.input} placeholder="VD: Cùng ngắm hoàng hôn ở biển" placeholderTextColor={C.textFaint} value={bucketText} onChangeText={setBucketText} maxLength={CONTENT_LIMITS.bucket} />
+            {addWaitMs > 0 && <Text style={s.small}>Chờ {Math.ceil(addWaitMs / 1000)} giây nữa để thêm mục tiếp (chống thêm trùng).</Text>}
+            <TouchableOpacity style={[s.btn, (!bucketText.trim() || addWaitMs > 0) && { opacity: 0.5 }]} disabled={!bucketText.trim() || addWaitMs > 0} onPress={addBucket}>
+              <Ionicons name={addWaitMs > 0 ? "time" : "add"} size={17} color="#fff" /><Text style={s.btnText}>{addWaitMs > 0 ? `Chờ ${Math.ceil(addWaitMs / 1000)}s...` : "Thêm vào danh sách"}</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
+
+const styles = StyleSheet.create({
+  modalWrap: { flex: 1, backgroundColor: "rgba(15,23,42,0.45)", justifyContent: "flex-end" },
+  modalCard: { backgroundColor: "#fff", borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 18, gap: 9 },
+});
