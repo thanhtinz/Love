@@ -84,14 +84,18 @@ export default function AccountScreen() {
           <Text style={{ fontWeight: "900", color: C.text }}>Khu vườn của hai bạn</Text>
           <View style={{ gap: 7, marginTop: 8 }}>
             <View style={s.row}><Ionicons name="key" size={16} color={C.amber} /><Text style={{ color: C.text }}>Mã mời: <Text style={{ fontWeight: "900", letterSpacing: 2 }}>{couple.code}</Text></Text></View>
-            <View style={s.row}><Ionicons name="person" size={16} color={C.sky} /><Text style={{ color: C.text }}>Vai của bạn: người giữ vườn {couple.mySlot}</Text></View>
-            {couple.members.map((m) => (
-              <View key={m.userId} style={s.row}>
-                <Avatar id={m.avatar} size={26} />
-                <Text style={{ color: C.text, fontWeight: "700" }}>{m.displayName}</Text>
-                <Text style={s.small}>· slot {m.slot}{m.userId === user.id ? " (bạn)" : ""}</Text>
-              </View>
-            ))}
+            <View style={s.row}><Ionicons name="person" size={16} color={C.pink} /><Text style={{ color: C.text }}>Bạn là: <Text style={{ fontWeight: "900", color: C.pink }}>{user.displayName} (Bạn)</Text> · vị trí {couple.mySlot} trong vườn</Text></View>
+            {couple.members.map((m) => {
+              const isMe = m.userId === user.id;
+              return (
+                <View key={m.userId} style={[s.row, { backgroundColor: isMe ? C.pinkSoft : "#e0f2fe", borderRadius: 999, paddingLeft: 2, paddingRight: 10, paddingVertical: 2, alignSelf: "flex-start" }]}>
+                  <Avatar id={m.avatar} size={26} />
+                  <Text style={{ color: isMe ? C.pinkDark : "#0369a1", fontWeight: "800" }}>{m.displayName}</Text>
+                  {isMe ? (<View style={{ backgroundColor: C.pink, borderRadius: 999, paddingHorizontal: 6, paddingVertical: 1 }}><Text style={{ fontSize: 9.5, fontWeight: "900", color: "#fff" }}>Bạn</Text></View>) : (<Text style={{ fontSize: 11, color: "#0369a1", fontWeight: "700" }}>Người ấy</Text>)}
+                  <Text style={s.small}>· vị trí {m.slot}</Text>
+                </View>
+              );
+            })}
           </View>
           <Text style={styles.label}>Tên khu vườn</Text>
           <TextInput style={s.input} value={gardenName} onChangeText={setGardenName} maxLength={40} placeholder="Tên khu vườn" placeholderTextColor={C.textFaint} />

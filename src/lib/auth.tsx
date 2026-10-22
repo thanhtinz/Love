@@ -32,12 +32,19 @@ export function useAuth(): AuthCtxValue {
   return v;
 }
 
-async function sbEnsureProfile(sb: any, user: any): Promise<Profile> {
+async function sbEnsureProfile(sb: any, user: any): Promise<Profile | null> {
   const { data } = await sb.from("profiles").select("id, display_name, avatar").eq("id", user.id).maybeSingle();
   if (data) return { id: user.id, email: user.email || "", displayName: data.display_name, avatar: data.avatar || "svg-a" };
   const displayName = user.user_metadata?.display_name || (user.email || "Bé").split("@")[0];
   const avatar = user.user_metadata?.avatar || "svg-a";
-  await sb.from("profiles").insert({ id: user.id, display_name: displayName, avatar });
+  const { error } = await sb.from("profiles").insert({ id: user.id, display_name: displayName, avatar });
+  if (error) {
+    // Insert thất bại (RLS chưa có phiên hợp lệ, hoặc race hai máy cùng tạo): thử đọc lại trước khi kết luận.
+    // Bản cũ bỏ qua lỗi insert và vẫn dựng Profile "ảo" khiến app tưởng đã đăng nhập nhưng không bao giờ có couple.
+    const { data: again } = await sb.from("profiles").select("id, display_name, avatar").eq("id", user.id).maybeSingle();
+    if (again) return { id: user.id, email: user.email || "", displayName: again.display_name, avatar: again.avatar || "svg-a" };
+    return null;
+  }
   return { id: user.id, email: user.email || "", displayName, avatar };
 }
 async function sbLoadCouple(sb: any, userId: string): Promise<CoupleInfo | null> {
@@ -71,14 +78,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     (async () => {
       const { data } = await sb.auth.getSession();
       if (!cancelled) {
-        if (data.session?.user) { const p = await sbEnsureProfile(sb, data.session.user); if (!cancelled) await applyUser(p); }
+        if (data.session?.user) { const p = await sbEnsureProfile(sb, data.session.user); if (!cancelled && p) await applyUser(p); }
         setReady(true);
       }
     })();
     const { data: sub } = sb.auth.onAuthStateChange(async (_event, session) => {
       if (cancelled) return;
       if (session?.user) {
-        if (appliedUserId.current !== session.user.id) { const p = await sbEnsureProfile(sb, session.user); if (!cancelled) await applyUser(p); }
+        if (appliedUserId.current !== session.user.id) { const p = await sbEnsureProfile(sb, session.user); if (!cancelled && p) await applyUser(p); }
       } else if (appliedUserId.current) { await applyUser(null); }
       setReady(true);
     });
@@ -99,7 +106,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (/already|registered|exists/i.test(error.message)) return { error: "Email này đã có tài khoản rồi — bạn đăng nhập nhé" };
       return { error: `Đăng ký chưa thành công: ${error.message}` };
     }
-    if (data.user) { const p = await sbEnsureProfile(sb, data.user); await applyUser(p); }
+    if (data.user) {
+      const p = await sbEnsureProfile(sb, data.user);
+      if (!p) return { error: "Tài khoản đã tạo nhưng hồ sơ chưa sẵn sàng — bạn thử đăng nhập lại nhé" };
+      await applyUser(p);
+    }
     return {};
   }, [applyUser]);
 
@@ -109,7 +120,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const sb = getSupabase();
     const { data, error } = await sb.auth.signInWithPassword({ email, password });
     if (error) return { error: "Sai email hoặc mật khẩu rồi — thử lại nhẹ nhàng nhé" };
-    if (data.user) { const p = await sbEnsureProfile(sb, data.user); await applyUser(p); }
+    if (data.user) {
+      const p = await sbEnsureProfile(sb, data.user);
+      if (!p) return { error: "Đăng nhập được nhưng chưa tải được hồ sơ — kiểm tra mạng rồi thử lại nhé" };
+      await applyUser(p);
+    }
     return {};
   }, [applyUser]);
 

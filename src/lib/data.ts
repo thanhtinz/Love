@@ -114,9 +114,9 @@ export function pickMessage(rarity: "common" | "rare" | "legendary", ownedIds: n
 }
 
 export const QUESTS: { id: string; label: string; icon: string; target: number; key: "water" | "love" | "both"; rewardXp: number; rewardCoins: number }[] = [
-  { id: "water3", label: "Tưới nước 3 lần hôm nay", icon: "water-outline", target: 3, key: "water", rewardXp: 15, rewardCoins: 20 },
-  { id: "love2", label: "Bón tim 2 lần hôm nay", icon: "heart-outline", target: 2, key: "love", rewardXp: 15, rewardCoins: 20 },
-  { id: "both", label: "Cả 2 người đều chăm cây hôm nay", icon: "people-outline", target: 2, key: "both", rewardXp: 20, rewardCoins: 20 },
+  { id: "water3", label: "Bạn tưới nước 3 lần hôm nay", icon: "water", target: 3, key: "water", rewardXp: 15, rewardCoins: 20 },
+  { id: "love2", label: "Bạn bón tim 2 lần hôm nay", icon: "heart", target: 2, key: "love", rewardXp: 15, rewardCoins: 20 },
+  { id: "both", label: "Cả 2 người đều chăm cây hôm nay (song chăm)", icon: "people", target: 2, key: "both", rewardXp: 20, rewardCoins: 20 },
 ];
 export const ACHIEVEMENTS: { id: string; icon: string; label: string }[] = [
   { id: "first", icon: "leaf-outline", label: "Lần chăm đầu tiên" },

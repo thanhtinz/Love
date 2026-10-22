@@ -45,7 +45,7 @@ export default function PairScreen() {
     if (!/^\d{4}-\d{2}-\d{2}$/.test(startDate) || isNaN(d.getTime())) { setDateErr("Ngày bắt đầu yêu chưa đúng định dạng (năm-tháng-ngày)."); return; }
     if (d.getTime() > Date.now()) { setDateErr("Ngày bắt đầu yêu không thể ở tương lai."); return; }
     dispatch({ type: "SETUP_GARDEN", gardenName: gardenName.trim(), startDate });
-    if (go) router.replace("/(tabs)/garden");
+    if (go) router.replace("/(tabs)");
   }
 
   return (
@@ -114,7 +114,7 @@ export default function PairScreen() {
             </TouchableOpacity>
           </View>
 
-          <TouchableOpacity style={s.btn} onPress={() => (!state.everOnboarded ? saveSetup(true) : router.replace("/(tabs)/garden"))}>
+          <TouchableOpacity style={s.btn} onPress={() => (!state.everOnboarded ? saveSetup(true) : router.replace("/(tabs)"))}>
             <Ionicons name="leaf" size={18} color="#fff" /><Text style={s.btnText}>Vào khu vườn</Text>
           </TouchableOpacity>
         </>

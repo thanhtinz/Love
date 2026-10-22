@@ -12,7 +12,7 @@ export default function GateScreen() {
     if (!ready) return;
     if (!user) router.replace("/auth");
     else if (!couple) router.replace("/pair");
-    else router.replace("/(tabs)/garden");
+    else router.replace("/(tabs)");
   }, [user, couple, ready]);
 
   return (

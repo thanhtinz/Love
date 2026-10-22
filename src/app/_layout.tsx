@@ -12,6 +12,22 @@ function Navigator() {
       <Stack.Screen name="auth" />
       <Stack.Screen name="pair" />
       <Stack.Screen name="(tabs)" />
+      <Stack.Screen name="games/catch-hearts" />
+      <Stack.Screen name="games/spin-wheel" />
+      <Stack.Screen name="games/quiz" />
+      <Stack.Screen name="utilities/mood" />
+      <Stack.Screen name="utilities/daily-question" />
+      <Stack.Screen name="utilities/love-notes" />
+      <Stack.Screen name="utilities/bucket-list" />
+      <Stack.Screen name="utilities/date-ideas" />
+      <Stack.Screen name="utilities/memories" />
+      <Stack.Screen name="utilities/love-actions" />
+      <Stack.Screen name="utilities/shop" />
+      <Stack.Screen name="utilities/quests" />
+      <Stack.Screen name="frames/index" />
+      <Stack.Screen name="frames/days" />
+      <Stack.Screen name="frames/tree" />
+      <Stack.Screen name="frames/mood" />
     </Stack>
   );
 }

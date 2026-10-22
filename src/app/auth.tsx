@@ -19,7 +19,7 @@ export default function AuthScreen() {
   const [ok, setOk] = useState("");
 
   useEffect(() => {
-    if (user) router.replace(couple ? "/(tabs)/garden" : "/pair");
+    if (user) router.replace(couple ? "/(tabs)" : "/pair");
   }, [user, couple]);
 
   async function submit() {

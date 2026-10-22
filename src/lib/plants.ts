@@ -305,9 +305,37 @@ export function createPlant(speciesId: string, nowMs: number = Date.now()): Plan
     id: uid(), speciesId, plantedAt: nowIso,
     growthRecordedMs: 0, growthAt: nowIso, totalBoostMs: 0,
     water: 60, sun: 60, love: 60, statsAt: nowIso,
-    careCount: 0, lastCareAt: "", lastCareBy: "", announcedStage: 0,
+    careCount: 0, lastCareAt: "", lastCareBy: "", lastCareAtBy: { A: "", B: "" }, announcedStage: 0,
     matureAt: "", fruitReadyAt: "", harvestCount: 0,
   };
+}
+
+/** Cooldown chăm cây: mỗi người phải chờ 60 giây giữa 2 lần chăm CÙNG một cây */
+export const CARE_COOLDOWN_MS = 60000;
+/** Chỉ số tương ứng đã từ ngưỡng này trở lên thì chăm thêm không còn tác dụng */
+export const CARE_FULL_THRESHOLD = 95;
+export interface CareStatus { ok: boolean; reason: string; cooldownLeftMs: number }
+/**
+ * Kiểm tra một lần chăm có HỢP LỆ + CÓ TÁC DỤNG không (dùng chung cho UI và reducer):
+ * - Chặn spam: chưa hết cooldown của chính người đó trên cây này -> không ok.
+ * - Chăm "vào chỗ đã đầy" (chỉ số tương ứng >= 95%) -> không ok: không boost/thư/Xu/XP.
+ */
+export function careStatus(plant: PlantState, kind: "water" | "sun" | "love" | "bug", slot: "A" | "B", nowMs: number = Date.now()): CareStatus {
+  const last = plant.lastCareAtBy ? plant.lastCareAtBy[slot] : "";
+  if (last) {
+    const left = CARE_COOLDOWN_MS - (nowMs - new Date(last).getTime());
+    if (left > 0) return { ok: false, reason: `Bạn vừa chăm cây này rồi — chờ ${Math.ceil(left / 1000)} giây nữa nhé`, cooldownLeftMs: left };
+  }
+  const p = materializePlant(plant, nowMs);
+  const stat = kind === "water" ? p.water : kind === "sun" ? p.sun : kind === "love" ? p.love : Math.min(p.water, p.sun, p.love);
+  if (stat >= CARE_FULL_THRESHOLD) {
+    const reason = kind === "water" ? "Cây đã đủ nước rồi, tưới thêm không có tác dụng"
+      : kind === "sun" ? "Cây đã đủ nắng rồi, tắm nắng thêm không có tác dụng"
+      : kind === "love" ? "Cây đã tràn đầy yêu thương rồi"
+      : "Cây đang rất khỏe, chưa cần bắt sâu";
+    return { ok: false, reason, cooldownLeftMs: 0 };
+  }
+  return { ok: true, reason: "", cooldownLeftMs: 0 };
 }
 
 /* ---------- Chuẩn hoá + MIGRATION V4 -> V5 ---------- */
@@ -326,6 +354,7 @@ function normalizePlant(raw: Partial<PlantState>, index: number): PlantState {
     love: typeof raw.love === "number" ? raw.love : 60,
     statsAt: raw.statsAt || raw.growthAt || raw.plantedAt || base.statsAt,
     careCount: typeof raw.careCount === "number" ? raw.careCount : 0,
+    lastCareAtBy: { A: (raw.lastCareAtBy && raw.lastCareAtBy.A) || "", B: (raw.lastCareAtBy && raw.lastCareAtBy.B) || "" },
     announcedStage: typeof raw.announcedStage === "number" ? raw.announcedStage : 0,
     matureAt: raw.matureAt || "",
     fruitReadyAt: raw.fruitReadyAt || "",
@@ -353,6 +382,7 @@ export function plantFromLegacyTree(tree: TreeState): PlantState {
     love: typeof tree.love === "number" ? tree.love : 40,
     statsAt: tree.statsAt || nowIso,
     careCount: tree.careCount || 0, lastCareAt: tree.lastCareAt || "", lastCareBy: tree.lastCareBy || "",
+    lastCareAtBy: { A: tree.lastCareBy === "A" ? (tree.lastCareAt || "") : "", B: tree.lastCareBy === "B" ? (tree.lastCareAt || "") : "" },
     announcedStage: st.index,
     matureAt: !st.next ? (tree.lastCareAt || nowIso) : "",
     fruitReadyAt: "", harvestCount: 0,

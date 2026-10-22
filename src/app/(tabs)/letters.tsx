@@ -4,6 +4,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { useLove, myName } from "../../lib/store";
 import { LOVE_MESSAGES } from "../../lib/data";
 import { RARITY_STYLE, type LoveLetter } from "../../lib/types";
+import { PersonChip } from "../../components/PersonChip";
 import { C, SectionTitle, s } from "../../components/ui";
 
 export default function LettersScreen() {
@@ -79,7 +80,10 @@ export default function LettersScreen() {
                 <Ionicons name="mail-open" size={22} color={rs.text} />
                 <View style={{ flex: 1 }}>
                   <Text style={{ fontSize: 13, color: C.text }} numberOfLines={2}>{msg?.text}</Text>
-                  <Text style={s.small}>{rs.label} · {l.source} · mở bởi {l.openedBy || "..."}</Text>
+                  <Text style={s.small}>{rs.label} · {l.source}</Text>
+                  <View style={{ marginTop: 4 }}>
+                    {l.openedBy === state.personA ? <PersonChip state={state} slot="A" size={16} /> : l.openedBy === state.personB ? <PersonChip state={state} slot="B" size={16} /> : <Text style={s.small}>Người mở: {l.openedBy || "..."}</Text>}
+                  </View>
                 </View>
               </TouchableOpacity>
             );

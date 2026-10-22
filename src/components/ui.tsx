@@ -1,5 +1,6 @@
-import React from "react";
+import React, { useEffect, useState } from "react";
 import { StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import { router } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 
 export const C = {
@@ -58,6 +59,52 @@ export function StatBar({ label, icon, value, color }: { label: string; icon: st
         <View style={{ height: "100%", width: `${Math.max(0, Math.min(100, value))}%`, backgroundColor: value < 20 ? "#ef4444" : color, borderRadius: 99 }} />
       </View>
     </View>
+  );
+}
+
+/** Đồng hồ tick cho các màn hình cần đếm ngược/cooldown theo thời gian thật. */
+export function useNow(intervalMs = 1000): number {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const iv = setInterval(() => setNow(Date.now()), intervalMs);
+    return () => clearInterval(iv);
+  }, [intervalMs]);
+  return now;
+}
+
+/** Header chuẩn cho màn hình con (stack): nút quay lại + tiêu đề tiếng Việt. */
+export function ScreenHeader({ title, subtitle }: { title: string; subtitle?: string }) {
+  return (
+    <View style={{ flexDirection: "row", alignItems: "center", gap: 10, paddingTop: 40, paddingHorizontal: 16, paddingBottom: 4 }}>
+      <TouchableOpacity onPress={() => router.back()} style={{ width: 38, height: 38, borderRadius: 19, backgroundColor: "#fff", borderWidth: 1.5, borderColor: C.pinkBorder, alignItems: "center", justifyContent: "center" }} accessibilityLabel="Quay lại">
+        <Ionicons name="chevron-back" size={20} color={C.pinkDark} />
+      </TouchableOpacity>
+      <View style={{ flex: 1 }}>
+        <Text style={{ fontSize: 19, fontWeight: "900", color: C.text }}>{title}</Text>
+        {subtitle ? <Text style={{ fontSize: 12, color: C.textSoft }}>{subtitle}</Text> : null}
+      </View>
+    </View>
+  );
+}
+
+/** Thẻ điều hướng tính năng — dùng ở các màn hình hub (chỉ điều hướng, không chứa chức năng). */
+export function FeatureCard({ icon, title, desc, color = C.pink, bg = C.pinkSoft, route, badge }: { icon: string; title: string; desc: string; color?: string; bg?: string; route: string; badge?: string }) {
+  return (
+    <TouchableOpacity onPress={() => router.push(route as never)} style={{ flexDirection: "row", alignItems: "center", gap: 11, backgroundColor: "#fff", borderRadius: 18, borderWidth: 1.5, borderColor: C.pinkBorder, padding: 13 }}>
+      <View style={{ width: 44, height: 44, borderRadius: 14, backgroundColor: bg, alignItems: "center", justifyContent: "center" }}>
+        <Ionicons name={icon as never} size={22} color={color} />
+      </View>
+      <View style={{ flex: 1 }}>
+        <Text style={{ fontWeight: "800", color: C.text, fontSize: 14.5 }}>{title}</Text>
+        <Text style={{ fontSize: 12, color: C.textSoft, lineHeight: 16 }}>{desc}</Text>
+      </View>
+      {badge ? (
+        <View style={{ backgroundColor: C.pink, borderRadius: 999, paddingHorizontal: 8, paddingVertical: 3 }}>
+          <Text style={{ color: "#fff", fontSize: 10.5, fontWeight: "900" }}>{badge}</Text>
+        </View>
+      ) : null}
+      <Ionicons name="chevron-forward" size={18} color={C.textFaint} />
+    </TouchableOpacity>
   );
 }
 

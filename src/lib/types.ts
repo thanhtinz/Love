@@ -33,6 +33,8 @@ export interface PlantState {
   totalBoostMs: number;
   water: number; sun: number; love: number; statsAt: string;
   careCount: number; lastCareAt: string; lastCareBy: string;
+  /** Lần chăm gần nhất của TỪNG NGƯỜI trên cây này (ISO) — phục vụ cooldown chăm cây 60 giây/người/cây */
+  lastCareAtBy: { A: string; B: string };
   announcedStage: number;
   matureAt: string;
   fruitReadyAt: string;
@@ -42,12 +44,59 @@ export interface CollectedTree {
   id: string; speciesId: string; plantedAt: string; maturedAt: string; collectedAt: string; careCount: number;
 }
 export interface Activity { id: string; actor: string; text: string; icon: string; time: string; }
-export interface Note { id: string; author: string; text: string; color: string; createdAt: string; }
-export interface BucketItem { id: string; text: string; done: boolean; createdAt: string; }
+export interface Note { id: string; author: string; authorSlot?: PersonId; text: string; color: string; createdAt: string; }
+export interface BucketItem { id: string; text: string; done: boolean; createdAt: string; authorSlot?: PersonId; }
 export interface LoveLetter { id: string; messageId: number; rarity: Rarity; source: string; opened: boolean; droppedAt: string; openedAt: string; openedBy: string; }
-export interface DailyState { date: string; water: number; love: number; sun: number; bug: number; caredA: boolean; caredB: boolean; claimed: string[]; }
-export interface MemoryItem { id: string; title: string; date: string; desc: string; imageUrl: string; author: string; createdAt: string; }
-export interface LastLoveAction { kind: string; icon: string; label: string; by: PersonId; actor: string; at: string; }
+export interface DailyPerson { water: number; love: number; sun: number; bug: number }
+/**
+ * Nhiệm vụ ngày — tiến độ RIÊNG theo từng người (trước đây đếm chung cả vườn nên
+ * một người làm xong thì người kia cũng hiện đã làm). Chỉ cờ caredA/caredB là chung
+ * (phục vụ nhiệm vụ "cả hai cùng chăm"). Nhận thưởng cũng riêng: claimedA/claimedB.
+ */
+export interface DailyState {
+  date: string;
+  A: DailyPerson; B: DailyPerson;
+  caredA: boolean; caredB: boolean;
+  claimedA: string[]; claimedB: string[];
+  /** Trường legacy của bản cũ (đếm chung) — chỉ dùng khi migration, không ghi nữa */
+  water?: number; love?: number; sun?: number; bug?: number; claimed?: string[];
+}
+export const emptyDailyPerson = (): DailyPerson => ({ water: 0, love: 0, sun: 0, bug: 0 });
+export function freshDailyState(date: string = today()): DailyState {
+  return { date, A: emptyDailyPerson(), B: emptyDailyPerson(), caredA: false, caredB: false, claimedA: [], claimedB: [] };
+}
+/** Chuẩn hoá daily: hỗ trợ cả shape mới (theo người) lẫn shape cũ (đếm chung) với migration mềm. */
+export function normalizeDaily(raw: Partial<DailyState> | undefined): DailyState {
+  const base = freshDailyState((raw && raw.date) || today());
+  if (!raw) return base;
+  if (raw.A || raw.B) {
+    return {
+      ...base,
+      A: { ...emptyDailyPerson(), ...(raw.A || {}) },
+      B: { ...emptyDailyPerson(), ...(raw.B || {}) },
+      caredA: Boolean(raw.caredA), caredB: Boolean(raw.caredB),
+      claimedA: Array.isArray(raw.claimedA) ? raw.claimedA : [],
+      claimedB: Array.isArray(raw.claimedB) ? raw.claimedB : [],
+    };
+  }
+  // Migration shape cũ: tiến độ chung gán cho người đã chăm (caredA/caredB) nếu xác định được;
+  // claimed cũ đưa vào cả hai danh sách để không ai nhận trùng phần thưởng đã phát.
+  const legacy: DailyPerson = { water: raw.water || 0, love: raw.love || 0, sun: raw.sun || 0, bug: raw.bug || 0 };
+  const who: PersonId | null = raw.caredA ? "A" : raw.caredB ? "B" : null;
+  const claimed = Array.isArray(raw.claimed) ? raw.claimed : [];
+  return {
+    ...base,
+    A: who === "A" ? legacy : emptyDailyPerson(),
+    B: who === "B" ? legacy : emptyDailyPerson(),
+    caredA: Boolean(raw.caredA), caredB: Boolean(raw.caredB),
+    claimedA: [...claimed], claimedB: [...claimed],
+  };
+}
+export interface MemoryItem { id: string; title: string; date: string; desc: string; imageUrl: string; author: string; authorSlot?: PersonId; createdAt: string; }
+export interface LastLoveAction { kind: string; icon: string; label: string; by: PersonId; actor: string; at: string; memoAvatar?: string; }
+export type FrameKind = "days" | "tree" | "mood";
+/** XP vườn thưởng lần đầu xuất/ lưu mỗi khung trong ngày (chống farm: tối đa 3 khung/ngày) */
+export const FRAME_XP_REWARD = 5;
 
 /** State riêng của bản mobile cho 3 mini-game — lưu chung trong room_state JSON. */
 export interface GamesState {
@@ -57,7 +106,15 @@ export interface GamesState {
   spin: { date: string; A: number; B: number };
   /** Hiểu ý nhau: đáp án trắc nghiệm của từng người trong ngày (mảng index lựa chọn theo câu) */
   quiz: { date: string; A: number[]; B: number[] };
+  /** Bắt tim bay: số lượt chơi hôm nay của từng người */
+  heartPlays: { date: string; A: number; B: number };
 }
+/** Chống spam hành động yêu thương: nghỉ 30 giây giữa 2 lần gửi, tối đa 20 lần/ngày/người */
+export const LOVE_ACTION_COOLDOWN_MS = 30000;
+export const LOVE_ACTION_DAILY_MAX = 20;
+/** Khoảng cách tối thiểu giữa 2 lần thêm ghi chú/bucket/kỷ niệm liên tiếp của cùng một người */
+export const CONTENT_ADD_MIN_INTERVAL_MS = 5000;
+export const CONTENT_LIMITS = { note: 200, bucket: 120, memoryTitle: 60, memoryDesc: 300 };
 
 export interface AppState {
   roomCode: string; personA: string; personB: string; startDate: string; currentUser: PersonId;
@@ -84,6 +141,16 @@ export interface AppState {
   selectedPlantId: string;
   treeCollection: CollectedTree[];
   games: GamesState;
+  /** Lời nhắn yêu thương ghim lâu dài theo từng người (slot A/B) */
+  loveNotes: { A: string; B: string };
+  /** Khung màn hình đã nhận thưởng XP trong ngày (chống cộng dồn vô hạn) */
+  frameRewards: { date: string; claimed: FrameKind[] };
+  /** Giới hạn hành động yêu thương theo từng người gửi: số lần hôm nay + mốc gửi gần nhất */
+  loveLimits: { date: string; counts: { A: number; B: number }; lastAt: { A: string; B: string } };
+  /** Mốc thêm nội dung (ghi chú/bucket/kỷ niệm) gần nhất của từng người — chống spam */
+  contentLog: { A: string; B: string };
+  /** Mốc thời gian (ISO) của lần ghi trạng thái gần nhất — dùng chống ghi đè realtime cũ */
+  updatedAt?: string;
 }
 
 export const STAGES = [
@@ -102,7 +169,18 @@ export function getStage(xp: number) {
 }
 export function uid() { return Math.random().toString(36).slice(2, 9) + Date.now().toString(36); }
 export function genRoomCode() { return Math.random().toString(36).slice(2, 8).toUpperCase(); }
-export function today() { return new Date().toISOString().slice(0, 10); }
+/**
+ * Khóa ngày theo GIỜ ĐỊA PHƯƠNG của máy (người dùng ở Asia/Saigon).
+ * Mọi logic "hôm nay" (nhiệm vụ ngày, mood, quiz, lượt quay, streak) PHẢI dùng khóa này —
+ * trước đây today() cắt theo UTC nên ngày mới bắt đầu lúc 7h sáng giờ VN, gây lệch ngày.
+ */
+export function dayKeyLocal(d: Date = new Date()): string {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+export function today() { return dayKeyLocal(); }
 export function weekKey(d = new Date()): string {
   const date = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
   const dayNum = (date.getUTCDay() + 6) % 7;
@@ -153,6 +231,7 @@ export const defaultGames: GamesState = {
   heartBest: { week: weekKey(), A: 0, B: 0 },
   spin: { date: today(), A: 0, B: 0 },
   quiz: { date: today(), A: [], B: [] },
+  heartPlays: { date: today(), A: 0, B: 0 },
 };
 
 export const defaultState: AppState = {
@@ -167,7 +246,7 @@ export const defaultState: AppState = {
   answers: { date: today(), A: "", B: "" },
   activities: [{ id: "a0", actor: "Hệ thống", text: "đã tạo khu vườn tình yêu", icon: "leaf", time: new Date().toISOString() }],
   letters: [],
-  daily: { date: today(), water: 0, love: 0, sun: 0, bug: 0, caredA: false, caredB: false, claimed: [] },
+  daily: freshDailyState(),
   streak: { count: 0, lastDate: "" },
   achievements: [],
   coins: START_COINS,
@@ -184,6 +263,11 @@ export const defaultState: AppState = {
   selectedPlantId: "",
   treeCollection: [],
   games: defaultGames,
+  loveNotes: { A: "", B: "" },
+  frameRewards: { date: today(), claimed: [] },
+  loveLimits: { date: today(), counts: { A: 0, B: 0 }, lastAt: { A: "", B: "" } },
+  contentLog: { A: "", B: "" },
+  updatedAt: "",
 };
 
 /** Bỏ ký tự emoji khỏi chuỗi (dữ liệu state dùng chung với bản web cũ có thể còn sót). */
@@ -204,7 +288,7 @@ export function normalizeState(raw: Partial<AppState>): AppState {
     ...defaultState, ...raw,
     moods: { ...defaultState.moods, ...(raw.moods || {}), A: normalizeMood((raw.moods && raw.moods.A) || defaultState.moods.A), B: normalizeMood((raw.moods && raw.moods.B) || defaultState.moods.B) },
     tree: { ...defaultState.tree, ...(raw.tree || {}), statsAt: (raw.tree && (raw.tree.statsAt || raw.tree.lastCareAt)) || defaultState.tree.statsAt },
-    daily: { ...defaultState.daily, ...(raw.daily || {}) },
+    daily: normalizeDaily(raw.daily),
     streak: { ...defaultState.streak, ...(raw.streak || {}) },
     letters: raw.letters || [],
     achievements: raw.achievements || [],
@@ -223,7 +307,20 @@ export function normalizeState(raw: Partial<AppState>): AppState {
       heartBest: { ...defaultGames.heartBest, ...(g.heartBest || {}) },
       spin: { ...defaultGames.spin, ...(g.spin || {}) },
       quiz: { ...defaultGames.quiz, ...(g.quiz || {}) },
+      heartPlays: { ...defaultGames.heartPlays, ...(g.heartPlays || {}) },
     },
+    loveNotes: { A: (raw.loveNotes && raw.loveNotes.A) || "", B: (raw.loveNotes && raw.loveNotes.B) || "" },
+    frameRewards: {
+      date: (raw.frameRewards && raw.frameRewards.date) || today(),
+      claimed: raw.frameRewards && Array.isArray(raw.frameRewards.claimed) ? raw.frameRewards.claimed : [],
+    },
+    loveLimits: {
+      date: (raw.loveLimits && raw.loveLimits.date) || today(),
+      counts: { A: (raw.loveLimits && raw.loveLimits.counts && raw.loveLimits.counts.A) || 0, B: (raw.loveLimits && raw.loveLimits.counts && raw.loveLimits.counts.B) || 0 },
+      lastAt: { A: (raw.loveLimits && raw.loveLimits.lastAt && raw.loveLimits.lastAt.A) || "", B: (raw.loveLimits && raw.loveLimits.lastAt && raw.loveLimits.lastAt.B) || "" },
+    },
+    contentLog: { A: (raw.contentLog && raw.contentLog.A) || "", B: (raw.contentLog && raw.contentLog.B) || "" },
+    updatedAt: typeof raw.updatedAt === "string" ? raw.updatedAt : "",
   };
 }
 

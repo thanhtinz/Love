@@ -2,15 +2,14 @@ import React, { useEffect, useMemo, useState } from "react";
 import { Animated, Modal, ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { router } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
-import { useLove, makeLetter, decideCareDrop, myName, type CareKind } from "../../lib/store";
+import { useLove, decideCareDrop, makeLetter, myName, type CareKind } from "../../lib/store";
 import { useAuth } from "../../lib/auth";
-import { ACHIEVEMENTS, DATE_IDEAS, LOVE_ACTIONS, MOODS, QUESTS, shopItem, timeSky } from "../../lib/data";
-import { MAX_PLOTS, SPECIES, decayedPlantStats, formatDuration, fruitPending, growthFactor, speciesById, stageInfo, totalGrowthMs, totalMaturedCount } from "../../lib/plants";
-import { daysTogether, treeHealth, type LoveLetter } from "../../lib/types";
+import { shopItem, timeSky } from "../../lib/data";
+import { MAX_PLOTS, SPECIES, careStatus, decayedPlantStats, formatDuration, fruitPending, growthFactor, speciesById, stageInfo, totalGrowthMs, totalMaturedCount } from "../../lib/plants";
+import { treeHealth, type LoveLetter } from "../../lib/types";
 import PlantArt from "../../components/PlantArt";
-import Avatar from "../../components/Avatar";
-import FaceIcon from "../../components/FaceIcon";
-import { C, IconBtn, SectionTitle, StatBar, s } from "../../components/ui";
+import { PersonChip } from "../../components/PersonChip";
+import { C, IconBtn, SectionTitle, StatBar, s, useNow } from "../../components/ui";
 
 const CARE_BTNS: { kind: CareKind; icon: string; label: string; color: string; bg: string }[] = [
   { kind: "water", icon: "water", label: "Tưới nước", color: "#0284c7", bg: "#e0f2fe" },
@@ -22,11 +21,11 @@ const CARE_BTNS: { kind: CareKind; icon: string; label: string; color: string; b
 export default function GardenScreen() {
   const { state, dispatch, connected, hydrated } = useLove();
   const { couple } = useAuth();
-  const [now, setNow] = useState(() => Date.now());
+  const now = useNow(1000);
   const [seedOpen, setSeedOpen] = useState(false);
-  const [ideaIdx, setIdeaIdx] = useState(() => Math.floor(Date.now() / 86400000) % DATE_IDEAS.length);
   const [falling, setFalling] = useState<LoveLetter | null>(null);
   const [fallAnim] = useState(() => new Animated.Value(0));
+  const [careMsg, setCareMsg] = useState("");
 
   const me = state.currentUser;
   const meName = myName(state);
@@ -36,9 +35,6 @@ export default function GardenScreen() {
   const sceneColor = state.equipped.scene === "scene-auto" || !sceneItem.visual ? sky.sky : sceneItem.visual;
   const potColor = shopItem(state.equipped.pot).visual || "#fb923c";
   const accessory = shopItem(state.equipped.accessory).visual || "";
-  const days = daysTogether(state.startDate);
-
-  useEffect(() => { const iv = setInterval(() => setNow(Date.now()), 1000); return () => clearInterval(iv); }, []);
 
   /* Lên giai đoạn theo thời gian thật -> STAGE_UP (+ thư mừng theo tỉ lệ loài) */
   useEffect(() => {
@@ -47,8 +43,9 @@ export default function GardenScreen() {
       if (info.index > p.announcedStage) {
         const sp = speciesById(p.speciesId);
         let drop: LoveLetter | null = null;
+        // Một lần rút thăm duy nhất cho cả 2 ngưỡng (bản cũ rút 2 số ngẫu nhiên khác nhau cho điều kiện và kết quả -> sai tỉ lệ)
         const r = Math.random();
-        if (Math.random() < 0.7) {
+        if (r < 0.7) {
           const rarity = info.mature && Math.random() < 0.5 ? "legendary" : r < sp.stageLetterLegendary ? "legendary" : r < sp.stageLetterLegendary + sp.stageLetterRare || sp.stageLetterRare >= 1 ? "rare" : "common";
           drop = makeLetter(rarity, info.mature ? "Cây trưởng thành" : "Lên giai đoạn mới", state.letters.map((l) => l.messageId));
         }
@@ -75,19 +72,13 @@ export default function GardenScreen() {
 
   function care(kind: CareKind) {
     if (!selected) return;
+    // Kiểm tra hiệu lực TRƯỚC khi quyết định thư rơi: lần chăm vô hiệu (cooldown/chỉ số đầy)
+    // thì không dispatch, không thư, không Xu/XP — chỉ hiện lý do cho người dùng.
+    const cs = careStatus(selected, kind, me, now);
+    if (!cs.ok) { setCareMsg(cs.reason); return; }
+    setCareMsg("");
     const { drop, combo } = decideCareDrop(state, selected.id, kind);
     dispatch({ type: "TREE_ACTION", kind, actor: meName, user: me, plantId: selected.id, drop, combo });
-    if (drop) setFalling(drop);
-  }
-
-  function questProgress(q: (typeof QUESTS)[0]): number {
-    if (q.key === "water") return state.daily.water;
-    if (q.key === "love") return state.daily.love;
-    return (state.daily.caredA ? 1 : 0) + (state.daily.caredB ? 1 : 0);
-  }
-  function claimQuest(q: (typeof QUESTS)[0]) {
-    const drop = q.id === "both" ? makeLetter("rare", "Thưởng nhiệm vụ Song chăm", state.letters.map((l) => l.messageId)) : null;
-    dispatch({ type: "CLAIM_QUEST", questId: q.id, actor: meName, rewardXp: q.rewardXp, drop });
     if (drop) setFalling(drop);
   }
 
@@ -95,39 +86,22 @@ export default function GardenScreen() {
     return <View style={styles.center}><Ionicons name="leaf" size={40} color={C.pink} /><Text style={s.sub}>Đang tải khu vườn...</Text></View>;
   }
 
-  const idea = DATE_IDEAS[ideaIdx % DATE_IDEAS.length];
-  const myMood = me === "A" ? state.moods.A : state.moods.B;
-  const partnerMood = me === "A" ? state.moods.B : state.moods.A;
-
   return (
     <View style={{ flex: 1 }}>
       <ScrollView style={{ flex: 1, backgroundColor: sceneColor }} contentContainerStyle={{ padding: 14, paddingBottom: 30, gap: 14 }}>
-        {/* Header */}
+        {/* Header gọn của vườn */}
         <View style={[s.card, { marginTop: 26 }]}>
-          <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start" }}>
+          <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
             <View style={{ flex: 1 }}>
-              <Text style={{ fontSize: 19, fontWeight: "900", color: C.text }}>{state.gardenName}</Text>
-              <Text style={s.small}>{sky.label} · Mã vườn {state.roomCode} · {connected ? "Đang kết nối realtime" : "Chế độ ngoại tuyến"}</Text>
+              <Text style={{ fontSize: 18, fontWeight: "900", color: C.text }}>Vườn cây</Text>
+              <Text style={s.small}>{sky.label} · {connected ? "Đang kết nối realtime" : "Chế độ ngoại tuyến"} · {state.plants.length}/{MAX_PLOTS} ô đất</Text>
             </View>
-            <View style={{ alignItems: "flex-end", gap: 5 }}>
-              <View style={s.chip}><Ionicons name="diamond" size={13} color={C.pinkDark} /><Text style={s.chipText}>{state.coins} Xu Tim</Text></View>
-              <View style={[s.chip, { backgroundColor: "#ffedd5" }]}><Ionicons name="flame" size={13} color="#ea580c" /><Text style={[s.chipText, { color: "#9a3412" }]}>Streak {state.streak.count} ngày</Text></View>
-            </View>
+            <View style={s.chip}><Ionicons name="diamond" size={13} color={C.pinkDark} /><Text style={s.chipText}>{state.coins} Xu Tim</Text></View>
           </View>
-          <View style={{ flexDirection: "row", alignItems: "center", gap: 10, marginTop: 10 }}>
-            <Avatar id={state.avatarA} size={38} />
-            <View style={{ flex: 1 }}>
-              <Text style={{ fontWeight: "800", color: C.text, fontSize: 13.5 }}>{state.personA} + {state.personB}</Text>
-              <Text style={s.small}>Ngày thứ {days} bên nhau · XP vườn {state.tree.xp}</Text>
-            </View>
-            <Avatar id={state.avatarB} size={38} />
+          <View style={{ flexDirection: "row", gap: 8, marginTop: 10 }}>
+            <PersonChip state={state} slot="A" />
+            <PersonChip state={state} slot="B" />
           </View>
-          {state.lastLoveAction && (
-            <View style={{ marginTop: 10, backgroundColor: C.pinkSoft, borderRadius: 12, paddingHorizontal: 10, paddingVertical: 7, flexDirection: "row", gap: 7, alignItems: "center" }}>
-              <Ionicons name={state.lastLoveAction.icon as never} size={16} color={C.pink} />
-              <Text style={{ fontSize: 12.5, color: C.pinkDark, flex: 1 }}>{state.lastLoveAction.actor} vừa {state.lastLoveAction.label}</Text>
-            </View>
-          )}
         </View>
 
         {/* Cây đang chọn */}
@@ -162,8 +136,13 @@ export default function GardenScreen() {
             </View>
 
             <View style={{ flexDirection: "row", gap: 8, marginTop: 12 }}>
-              {CARE_BTNS.map((b) => (<IconBtn key={b.kind} icon={b.icon} label={b.label} color={b.color} bg={b.bg} onPress={() => care(b.kind)} />))}
+              {CARE_BTNS.map((b) => {
+                const cs = careStatus(selected, b.kind, me, now);
+                return <IconBtn key={b.kind} icon={b.icon} label={b.label} color={b.color} bg={b.bg} disabled={!cs.ok} onPress={() => care(b.kind)} />;
+              })}
             </View>
+            {careMsg ? <Text style={{ textAlign: "center", color: "#b45309", fontWeight: "700", fontSize: 12.5, marginTop: 7 }}>{careMsg}</Text> : null}
+            <Text style={[s.small, { textAlign: "center", marginTop: 6 }]}>Mỗi người chờ 60 giây giữa 2 lần chăm cùng một cây; chỉ số đã đầy (từ 95%) thì chăm thêm không tính. Người chăm gần nhất: {selected.lastCareBy ? (selected.lastCareBy === "A" ? state.personA : state.personB) : "chưa ai"}</Text>
 
             {fruitPending(selected, now) && (
               <TouchableOpacity style={[s.btn, { backgroundColor: "#dc2626", marginTop: 10 }]} onPress={() => dispatch({ type: "HARVEST_FRUIT", plantId: selected.id, actor: meName })}>
@@ -175,7 +154,7 @@ export default function GardenScreen() {
                 <Ionicons name="trophy" size={17} color="#fff" /><Text style={s.btnText}>Thu vào kỷ niệm (+{speciesById(selected.speciesId).matureRewardCoins} Xu)</Text>
               </TouchableOpacity>
             )}
-            <Text style={[s.small, { textAlign: "center", marginTop: 8 }]}>Đã chăm cây này {selected.careCount} lần · Chăm cây có cơ hội rơi thư tình vào Hộp thư</Text>
+            <Text style={[s.small, { textAlign: "center", marginTop: 8 }]}>Đã chăm cây này {selected.careCount} lần · Chăm cây có tác dụng thật mới có cơ hội rơi thư tình vào Hộp thư</Text>
           </View>
         ) : (
           <View style={[s.card, { alignItems: "center", gap: 8 }]}>
@@ -213,66 +192,11 @@ export default function GardenScreen() {
           </View>
         </View>
 
-        {/* Hành động yêu thương + mood + gợi ý hẹn */}
+        {/* Hoạt động chăm vườn gần đây (chỉ hoạt động liên quan tới cây) */}
         <View style={s.card}>
-          <SectionTitle icon="heart">Gửi yêu thương nhanh</SectionTitle>
-          <View style={{ flexDirection: "row", gap: 8, marginTop: 10 }}>
-            {LOVE_ACTIONS.map((a) => (
-              <IconBtn key={a.kind} icon={a.icon.replace("-outline", "")} label={a.name} color={C.pinkDark} bg={C.pinkSoft} onPress={() => dispatch({ type: "LOVE_ACTION", kind: a.kind, icon: a.icon, label: a.label, actor: meName, user: me })} />
-            ))}
-          </View>
-          <View style={{ flexDirection: "row", gap: 10, marginTop: 12 }}>
-            <View style={styles.moodBox}><FaceIcon mood={myMood} size={40} /><Text style={styles.moodName}>Bạn: {MOODS.find((m) => m.id === myMood)?.label || "..."}</Text></View>
-            <View style={styles.moodBox}><FaceIcon mood={partnerMood} size={40} /><Text style={styles.moodName}>Người ấy: {MOODS.find((m) => m.id === partnerMood)?.label || "..."}</Text></View>
-          </View>
-          <TouchableOpacity style={[s.btnGhost, { marginTop: 10 }]} onPress={() => router.push("/(tabs)/utilities")}>
-            <Ionicons name="create" size={15} color={C.pinkDark} /><Text style={s.btnGhostText}>Cập nhật tâm trạng ở mục Tiện ích</Text>
-          </TouchableOpacity>
-          <View style={{ marginTop: 12, backgroundColor: "#fff7ed", borderRadius: 14, padding: 10, flexDirection: "row", gap: 9, alignItems: "center" }}>
-            <Ionicons name={idea.icon as never} size={22} color="#ea580c" />
-            <Text style={{ flex: 1, fontSize: 13, color: C.text }}><Text style={{ fontWeight: "800" }}>Gợi ý hẹn hò: </Text>{idea.text}</Text>
-            <TouchableOpacity onPress={() => setIdeaIdx((v) => v + 1)}><Ionicons name="refresh-circle" size={26} color={C.amber} /></TouchableOpacity>
-          </View>
-        </View>
-
-        {/* Nhiệm vụ ngày */}
-        <View style={s.card}>
-          <SectionTitle icon="trophy" color={C.amber}>Nhiệm vụ hôm nay</SectionTitle>
-          <View style={{ gap: 9, marginTop: 10 }}>
-            {QUESTS.map((q) => {
-              const prog = Math.min(questProgress(q), q.target);
-              const claimed = state.daily.claimed.includes(q.id);
-              const done = prog >= q.target;
-              return (
-                <View key={q.id} style={{ flexDirection: "row", alignItems: "center", gap: 9 }}>
-                  <Ionicons name={q.icon as never} size={19} color={done ? C.green : C.textFaint} />
-                  <View style={{ flex: 1 }}>
-                    <Text style={{ fontSize: 13, fontWeight: "700", color: C.text }}>{q.label}</Text>
-                    <Text style={s.small}>Tiến độ {prog}/{q.target} · Thưởng +{q.rewardXp} XP, +{q.rewardCoins} Xu{q.id === "both" ? ", +1 thư Hiếm" : ""}</Text>
-                  </View>
-                  {claimed ? (<View style={s.chip}><Text style={s.chipText}>Đã nhận</Text></View>) : done ? (
-                    <TouchableOpacity style={[s.btnGhost, { paddingVertical: 7 }]} onPress={() => claimQuest(q)}><Text style={s.btnGhostText}>Nhận</Text></TouchableOpacity>
-                  ) : (<Text style={s.small}>...</Text>)}
-                </View>
-              );
-            })}
-          </View>
-          <View style={{ marginTop: 12 }}>
-            <Text style={{ fontSize: 12.5, fontWeight: "800", color: C.text, marginBottom: 6 }}>Huy hiệu ({state.achievements.length}/{ACHIEVEMENTS.length})</Text>
-            <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6 }}>
-              {ACHIEVEMENTS.map((a) => {
-                const has = state.achievements.includes(a.id);
-                return (<View key={a.id} style={[s.chip, { backgroundColor: has ? "#fef3c7" : "#f1f5f9", opacity: has ? 1 : 0.55 }]}><Ionicons name={a.icon as never} size={13} color={has ? "#b45309" : C.textFaint} /><Text style={[s.chipText, { color: has ? "#92400e" : C.textFaint }]}>{a.label}</Text></View>);
-              })}
-            </View>
-          </View>
-        </View>
-
-        {/* Hoạt động gần đây */}
-        <View style={s.card}>
-          <SectionTitle icon="time" color={C.sky}>Hoạt động gần đây</SectionTitle>
+          <SectionTitle icon="time" color={C.sky}>Hoạt động chăm vườn</SectionTitle>
           <View style={{ gap: 8, marginTop: 10 }}>
-            {state.activities.slice(0, 6).map((a) => (
+            {state.activities.filter((a) => ["leaf", "water", "sunny", "heart", "bug", "gift", "trophy", "mail", "sparkles"].includes(a.icon)).slice(0, 6).map((a) => (
               <View key={a.id} style={{ flexDirection: "row", gap: 8, alignItems: "center" }}>
                 <Ionicons name={(a.icon + "-outline") as never} size={16} color={C.pink} />
                 <Text style={{ flex: 1, fontSize: 12.5, color: C.text }}><Text style={{ fontWeight: "800" }}>{a.actor}</Text> {a.text}</Text>
@@ -335,8 +259,6 @@ const styles = StyleSheet.create({
   plot: { flex: 1, alignItems: "center", backgroundColor: "#fff7ed", borderRadius: 14, borderWidth: 2, borderColor: "transparent", paddingVertical: 6 },
   plotSel: { borderColor: C.pink, backgroundColor: C.pinkSoft },
   plotEmpty: { flex: 1, alignItems: "center", justifyContent: "center", gap: 4, borderRadius: 14, borderWidth: 2, borderStyle: "dashed", borderColor: "#cbd5e1", paddingVertical: 18 },
-  moodBox: { flex: 1, alignItems: "center", gap: 3, backgroundColor: "#fff7ed", borderRadius: 14, paddingVertical: 8 },
-  moodName: { fontSize: 11.5, fontWeight: "700", color: C.text },
   fallingCard: { backgroundColor: "#fff", borderRadius: 18, borderWidth: 2, borderColor: C.pink, paddingHorizontal: 22, paddingVertical: 14, alignItems: "center", gap: 3, elevation: 8, shadowColor: "#000", shadowOpacity: 0.18, shadowRadius: 10, shadowOffset: { width: 0, height: 4 } },
   modalWrap: { flex: 1, backgroundColor: "rgba(15,23,42,0.45)", justifyContent: "flex-end" },
   modalCard: { backgroundColor: "#fff", borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 18, gap: 10, maxHeight: "86%" },
