@@ -52,11 +52,11 @@ export function FrameExport({ kind, children }: { kind: FrameKind; children: Rea
   return (
     <View style={{ gap: 12 }}>
       <ViewShot ref={shotRef} options={{ format: "png", quality: 1 }}>
-        <View style={{ backgroundColor: "#fff1f2", borderRadius: 24, borderWidth: 2, borderColor: C.pinkBorder, padding: 20, alignItems: "center", gap: 8, minHeight: 330, justifyContent: "center" }}>
+        <View style={{ backgroundColor: "#FFF6F1", borderRadius: 20, borderWidth: 1, borderColor: C.pinkBorder, padding: 20, alignItems: "center", gap: 8, minHeight: 330, justifyContent: "center" }}>
           {children}
           <View style={{ flexDirection: "row", alignItems: "center", gap: 5, marginTop: 4 }}>
             <Ionicons name="heart" size={12} color={C.pink} />
-            <Text style={{ fontSize: 10.5, color: C.textFaint, fontWeight: "700" }}>Khu Vườn Tình Yêu</Text>
+            <Text style={{ fontSize: 10.5, color: C.textFaint, fontFamily: "BeVietnamPro_700Bold" }}>Khu Vườn Tình Yêu</Text>
           </View>
         </View>
       </ViewShot>

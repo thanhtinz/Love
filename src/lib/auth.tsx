@@ -76,18 +76,30 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     let cancelled = false;
     const sb = getSupabase();
     (async () => {
-      const { data } = await sb.auth.getSession();
-      if (!cancelled) {
-        if (data.session?.user) { const p = await sbEnsureProfile(sb, data.session.user); if (!cancelled && p) await applyUser(p); }
-        setReady(true);
+      try {
+        const { data } = await sb.auth.getSession();
+        if (!cancelled && data.session?.user) {
+          let p = await sbEnsureProfile(sb, data.session.user);
+          // Hồ sơ chưa sẵn sàng (insert lỗi tạm thời): thử lại 1 lần trước khi bỏ cuộc,
+          // tránh việc phiên đăng nhập còn tốt mà app đẩy người dùng về màn hình đăng nhập.
+          if (!p && !cancelled) p = await sbEnsureProfile(sb, data.session.user);
+          if (!cancelled && p) await applyUser(p);
+        }
+      } catch {
+        // Mạng lỗi khi khôi phục phiên: KHÔNG được treo ở màn hình chờ mãi (bản cũ
+        // setReady nằm sau await nên getSession ném lỗi là ready không bao giờ bật).
+      } finally {
+        if (!cancelled) setReady(true);
       }
     })();
     const { data: sub } = sb.auth.onAuthStateChange(async (_event, session) => {
       if (cancelled) return;
-      if (session?.user) {
-        if (appliedUserId.current !== session.user.id) { const p = await sbEnsureProfile(sb, session.user); if (!cancelled && p) await applyUser(p); }
-      } else if (appliedUserId.current) { await applyUser(null); }
-      setReady(true);
+      try {
+        if (session?.user) {
+          if (appliedUserId.current !== session.user.id) { const p = await sbEnsureProfile(sb, session.user); if (!cancelled && p) await applyUser(p); }
+        } else if (appliedUserId.current) { await applyUser(null); }
+      } catch { /* giữ trạng thái hiện tại, ready vẫn được bật bên dưới */ }
+      if (!cancelled) setReady(true);
     });
     return () => { cancelled = true; sub.subscription.unsubscribe(); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -133,34 +145,56 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     await applyUser(null);
   }, [applyUser]);
 
+  const createBusy = useRef(false);
+  const joinBusy = useRef(false);
+
   const createCouple = useCallback(async (): Promise<AuthResult> => {
     if (!user) return { error: "Bạn cần đăng nhập trước nhé." };
-    const sb = getSupabase();
-    for (let attempt = 0; attempt < 5; attempt++) {
-      const code = genRoomCode();
-      const { error } = await sb.rpc("create_couple", { p_code: code });
-      if (!error) { await applyUser(user); return {}; }
-      if (/ALREADY_IN_COUPLE/.test(error.message)) return { error: "Tài khoản của bạn đã ở trong một khu vườn rồi" };
-      if (!/unique|duplicate|23505/i.test(error.message)) return { error: `Tạo khu vườn chưa thành công: ${error.message}` };
+    // Đã có vườn rồi thì coi như xong — tránh gọi RPC lần hai (RPC sẽ ném ALREADY_IN_COUPLE
+    // và UI hiện lỗi dù thực tế đã thành công).
+    if (couple) { await applyUser(user); return {}; }
+    // Bấm đúp / hai lời gọi chồng nhau: chỉ một lời gọi được chạy tới RPC.
+    if (createBusy.current) return { error: "Đang tạo vườn rồi, bạn chờ một chút nhé" };
+    createBusy.current = true;
+    try {
+      const sb = getSupabase();
+      for (let attempt = 0; attempt < 5; attempt++) {
+        const code = genRoomCode();
+        const { error } = await sb.rpc("create_couple", { p_code: code });
+        if (!error) { await applyUser(user); return {}; }
+        if (/ALREADY_IN_COUPLE/.test(error.message)) return { error: "Tài khoản của bạn đã ở trong một khu vườn rồi" };
+        if (!/unique|duplicate|23505/i.test(error.message)) return { error: `Tạo khu vườn chưa thành công: ${error.message}` };
+      }
+      return { error: "Tạo mã mời bị trùng nhiều lần, bạn thử lại nhé" };
+    } finally {
+      createBusy.current = false;
     }
-    return { error: "Tạo mã mời bị trùng nhiều lần, bạn thử lại nhé" };
-  }, [user, applyUser]);
+  }, [user, couple, applyUser]);
 
   const joinCouple = useCallback(async (codeRaw: string): Promise<AuthResult> => {
     if (!user) return { error: "Bạn cần đăng nhập trước nhé." };
+    // Đang ở trong một vườn: phía client kết luận ngay, khỏi gọi RPC.
+    // (Vào lại CHÍNH vườn của mình thì RPC vốn idempotent, nhưng UI ghép cặp chỉ hiện khi chưa có vườn.)
+    if (couple) return { error: "Tài khoản của bạn đã ở trong một khu vườn rồi" };
+    if (joinBusy.current) return { error: "Đang vào vườn rồi, bạn chờ một chút nhé" };
     const code = codeRaw.trim().toUpperCase();
     if (code.length < 4) return { error: "Mã mời ngắn quá nè, kiểm tra lại nhé" };
-    const sb = getSupabase();
-    const { error } = await sb.rpc("join_couple", { p_code: code });
-    if (error) {
-      if (/CODE_NOT_FOUND/.test(error.message)) return { error: "Mã mời không đúng — bạn xin lại mã từ người thương nhé" };
-      if (/COUPLE_FULL/.test(error.message)) return { error: "Khu vườn này đã đủ 2 người rồi, không vào thêm được nữa" };
-      if (/ALREADY_IN_COUPLE/.test(error.message)) return { error: "Tài khoản của bạn đã ở trong một khu vườn khác rồi" };
-      return { error: `Vào khu vườn chưa thành công: ${error.message}` };
+    joinBusy.current = true;
+    try {
+      const sb = getSupabase();
+      const { error } = await sb.rpc("join_couple", { p_code: code });
+      if (error) {
+        if (/CODE_NOT_FOUND/.test(error.message)) return { error: "Mã mời không đúng — bạn xin lại mã từ người thương nhé" };
+        if (/COUPLE_FULL/.test(error.message)) return { error: "Khu vườn này đã đủ 2 người rồi, không vào thêm được nữa" };
+        if (/ALREADY_IN_COUPLE/.test(error.message)) return { error: "Tài khoản của bạn đã ở trong một khu vườn khác rồi" };
+        return { error: `Vào khu vườn chưa thành công: ${error.message}` };
+      }
+      await applyUser(user);
+      return {};
+    } finally {
+      joinBusy.current = false;
     }
-    await applyUser(user);
-    return {};
-  }, [user, applyUser]);
+  }, [user, couple, applyUser]);
 
   const leaveCouple = useCallback(async () => {
     if (!user || !couple) return;

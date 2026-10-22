@@ -31,7 +31,7 @@ export default function ShopScreen() {
 
         {SHOP_CATS.map((cat) => (
           <View key={cat.id} style={s.card}>
-            <Text style={{ fontWeight: "900", color: C.text }}>{cat.label}</Text>
+            <Text style={s.cardTitle}>{cat.label}</Text>
             <View style={{ gap: 8, marginTop: 10 }}>
               {SHOP_ITEMS.filter((i) => i.category === cat.id).map((item) => {
                 const owned = state.inventory.includes(item.id);
@@ -42,7 +42,7 @@ export default function ShopScreen() {
                       <Ionicons name={item.icon as never} size={19} color={item.category === "pot" && item.visual ? "#fff" : C.pinkDark} />
                     </View>
                     <View style={{ flex: 1 }}>
-                      <Text style={{ fontWeight: "700", color: C.text, fontSize: 13 }}>{item.name}</Text>
+                      <Text style={{ fontFamily: "BeVietnamPro_700Bold", color: C.text, fontSize: 13 }}>{item.name}</Text>
                       <Text style={s.small}>{item.desc}</Text>
                     </View>
                     {equipped ? (<View style={s.chip}><Text style={s.chipText}>Đang dùng</Text></View>) : owned ? (

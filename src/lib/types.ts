@@ -2,6 +2,28 @@
 // Khác biệt: màu shop dùng mã hex (React Native không có Tailwind), thêm state cho mini-game (games).
 export type PersonId = "A" | "B";
 
+/** Mốc thời gian của lần sửa gần nhất một "mục" trạng thái, kèm slot của máy đã sửa.
+ *  Dùng để merge state 2 máy (xem lib/merge.ts): mục theo từng người ưu tiên bản do
+ *  CHÍNH chủ nhân của slot đó sửa (stamp.by === slot), tránh bản sao cũ/hành động
+ *  reset ngày của máy người kia đè lên dữ liệu mới của chủ nhân. */
+export interface SecStamp { t: string; by: PersonId }
+
+/** Kiểm tra plain object (dữ liệu JSON từ Supabase/cache có thể hỏng hoặc sai kiểu). */
+export function isPlainObject(v: unknown): v is Record<string, unknown> {
+  return typeof v === "object" && v !== null && !Array.isArray(v);
+}
+/** Số hữu hạn hoặc fallback — chặn NaN/Infinity lọt vào state (NaN là "number" nên typeof không đủ). */
+export function finiteNum(v: unknown, fallback: number): number {
+  return typeof v === "number" && Number.isFinite(v) ? v : fallback;
+}
+/** Mảng các plain object; mọi kiểu khác -> []. Chống state hỏng làm crash .map/.filter ở màn hình. */
+export function objArray<T>(v: unknown): T[] {
+  return Array.isArray(v) ? (v.filter((x) => isPlainObject(x)) as T[]) : [];
+}
+export function strArray(v: unknown): string[] {
+  return Array.isArray(v) ? v.filter((x): x is string => typeof x === "string") : [];
+}
+
 export interface AvatarOption { id: string; label: string; bg: string; color: string }
 export const AVATARS: AvatarOption[] = [
   { id: "svg-a", label: "Bé Hoa", bg: "#ffe4ec", color: "#f472b6" },
@@ -70,20 +92,31 @@ export function normalizeDaily(raw: Partial<DailyState> | undefined): DailyState
   const base = freshDailyState((raw && raw.date) || today());
   if (!raw) return base;
   if (raw.A || raw.B) {
+    const sanePerson = (p: Partial<DailyPerson> | undefined): DailyPerson => ({
+      water: Math.max(0, Math.floor(finiteNum(p?.water, 0))),
+      love: Math.max(0, Math.floor(finiteNum(p?.love, 0))),
+      sun: Math.max(0, Math.floor(finiteNum(p?.sun, 0))),
+      bug: Math.max(0, Math.floor(finiteNum(p?.bug, 0))),
+    });
     return {
       ...base,
-      A: { ...emptyDailyPerson(), ...(raw.A || {}) },
-      B: { ...emptyDailyPerson(), ...(raw.B || {}) },
+      A: sanePerson(isPlainObject(raw.A) ? raw.A : undefined),
+      B: sanePerson(isPlainObject(raw.B) ? raw.B : undefined),
       caredA: Boolean(raw.caredA), caredB: Boolean(raw.caredB),
-      claimedA: Array.isArray(raw.claimedA) ? raw.claimedA : [],
-      claimedB: Array.isArray(raw.claimedB) ? raw.claimedB : [],
+      claimedA: strArray(raw.claimedA),
+      claimedB: strArray(raw.claimedB),
     };
   }
   // Migration shape cũ: tiến độ chung gán cho người đã chăm (caredA/caredB) nếu xác định được;
   // claimed cũ đưa vào cả hai danh sách để không ai nhận trùng phần thưởng đã phát.
-  const legacy: DailyPerson = { water: raw.water || 0, love: raw.love || 0, sun: raw.sun || 0, bug: raw.bug || 0 };
+  const legacy: DailyPerson = {
+    water: Math.max(0, Math.floor(finiteNum(raw.water, 0))),
+    love: Math.max(0, Math.floor(finiteNum(raw.love, 0))),
+    sun: Math.max(0, Math.floor(finiteNum(raw.sun, 0))),
+    bug: Math.max(0, Math.floor(finiteNum(raw.bug, 0))),
+  };
   const who: PersonId | null = raw.caredA ? "A" : raw.caredB ? "B" : null;
-  const claimed = Array.isArray(raw.claimed) ? raw.claimed : [];
+  const claimed = strArray(raw.claimed);
   return {
     ...base,
     A: who === "A" ? legacy : emptyDailyPerson(),
@@ -151,6 +184,8 @@ export interface AppState {
   contentLog: { A: string; B: string };
   /** Mốc thời gian (ISO) của lần ghi trạng thái gần nhất — dùng chống ghi đè realtime cũ */
   updatedAt?: string;
+  /** Mốc sửa gần nhất theo từng mục trạng thái (khoá "daily:A", "moods:B", "letters"...) — phục vụ merge 2 máy, xem lib/merge.ts */
+  secTs?: Record<string, SecStamp>;
 }
 
 export const STAGES = [
@@ -181,6 +216,16 @@ export function dayKeyLocal(d: Date = new Date()): string {
   return `${y}-${m}-${day}`;
 }
 export function today() { return dayKeyLocal(); }
+/**
+ * Số thứ tự ngày theo GIỜ ĐỊA PHƯƠNG (epoch-day của ngày địa phương).
+ * questionOfDay/quizOfDay PHẢI dùng số này: bản cũ dùng Math.floor(getTime()/86400000)
+ * là ngày UTC — ở Việt Nam câu hỏi đổi lúc 7h sáng trong khi đáp án/nhiệm vụ reset lúc
+ * 0h địa phương, khiến từ 0h–7h sáng app hiện câu hỏi của "hôm qua" và 7h lại lật câu
+ * hỏi giữa ngày (đáp án đã niêm phong cho câu khác).
+ */
+export function localDayNumber(d: Date = new Date()): number {
+  return Math.floor(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()) / 86400000);
+}
 export function weekKey(d = new Date()): string {
   const date = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
   const dayNum = (date.getUTCDay() + 6) % 7;
@@ -281,46 +326,84 @@ export const MOOD_LEGACY_MAP: Record<string, string> = {
 };
 export function normalizeMood(m: string): string { return MOOD_LEGACY_MAP[m] || m; }
 
-export function normalizeState(raw: Partial<AppState>): AppState {
-  const hasHistory = Boolean((raw.tree && raw.tree.careCount > 0) || (raw.letters && raw.letters.length > 0) || (raw.notes && raw.notes.length > 1));
-  const g = (raw.games || {}) as Partial<GamesState>;
+/** Làm sạch secTs: chỉ giữ entry có t là chuỗi và by là "A"/"B". */
+function sanitizeSecTs(v: unknown): Record<string, SecStamp> {
+  if (!isPlainObject(v)) return {};
+  const out: Record<string, SecStamp> = {};
+  for (const [k, val] of Object.entries(v)) {
+    if (isPlainObject(val) && typeof val.t === "string" && (val.by === "A" || val.by === "B")) out[k] = { t: val.t, by: val.by };
+  }
+  return out;
+}
+/** Xu Tim: số nguyên hữu hạn >= 0; NaN/chuỗi/số âm vô lý -> về START_COINS (NaN) hoặc 0 (âm). */
+function saneCoins(v: unknown): number {
+  if (typeof v !== "number" || !Number.isFinite(v)) return START_COINS;
+  return Math.max(0, Math.floor(v));
+}
+
+export function normalizeState(rawInput: Partial<AppState>): AppState {
+  // Dữ liệu từ Supabase/cache có thể hỏng ở mọi mức (không phải object, mảng sai kiểu, NaN...)
+  const raw: Partial<AppState> = isPlainObject(rawInput) ? rawInput : {};
+  const letters = objArray<LoveLetter>(raw.letters);
+  const notes = objArray<Note>(raw.notes);
+  const bucket = objArray<BucketItem>(raw.bucket);
+  const memories = objArray<MemoryItem>(raw.memories);
+  const rawActivities = objArray<Activity>(raw.activities);
+  const treeRaw: Partial<TreeState> = isPlainObject(raw.tree) ? (raw.tree as Partial<TreeState>) : {};
+  const hasHistory = Boolean(finiteNum(treeRaw.careCount, 0) > 0 || letters.length > 0 || notes.length > 1);
+  const g = (isPlainObject(raw.games) ? raw.games : {}) as Partial<GamesState>;
   return {
     ...defaultState, ...raw,
-    moods: { ...defaultState.moods, ...(raw.moods || {}), A: normalizeMood((raw.moods && raw.moods.A) || defaultState.moods.A), B: normalizeMood((raw.moods && raw.moods.B) || defaultState.moods.B) },
-    tree: { ...defaultState.tree, ...(raw.tree || {}), statsAt: (raw.tree && (raw.tree.statsAt || raw.tree.lastCareAt)) || defaultState.tree.statsAt },
-    daily: normalizeDaily(raw.daily),
-    streak: { ...defaultState.streak, ...(raw.streak || {}) },
-    letters: raw.letters || [],
-    achievements: raw.achievements || [],
-    coins: typeof raw.coins === "number" ? raw.coins : START_COINS,
-    inventory: raw.inventory && raw.inventory.length ? raw.inventory : [...defaultState.inventory],
-    equipped: { ...defaultState.equipped, ...(raw.equipped || {}) },
-    memories: raw.memories || [],
-    lastLoveAction: raw.lastLoveAction ? { ...raw.lastLoveAction, icon: raw.lastLoveAction.icon || (raw.lastLoveAction as unknown as { emoji?: string }).emoji || "heart" } : null,
+    moods: { ...defaultState.moods, ...(isPlainObject(raw.moods) ? raw.moods : {}), A: normalizeMood((raw.moods && raw.moods.A) || defaultState.moods.A), B: normalizeMood((raw.moods && raw.moods.B) || defaultState.moods.B) },
+    tree: {
+      ...defaultState.tree, ...treeRaw,
+      xp: Math.max(0, finiteNum(treeRaw.xp, 0)),
+      water: clampStat(finiteNum(treeRaw.water, defaultState.tree.water)),
+      sun: clampStat(finiteNum(treeRaw.sun, defaultState.tree.sun)),
+      love: clampStat(finiteNum(treeRaw.love, defaultState.tree.love)),
+      careCount: Math.max(0, Math.floor(finiteNum(treeRaw.careCount, 0))),
+      statsAt: treeRaw.statsAt || treeRaw.lastCareAt || defaultState.tree.statsAt,
+    },
+    daily: normalizeDaily(isPlainObject(raw.daily) ? raw.daily : undefined),
+    streak: { count: Math.max(0, Math.floor(finiteNum(isPlainObject(raw.streak) ? raw.streak.count : undefined, 0))), lastDate: (isPlainObject(raw.streak) && typeof raw.streak.lastDate === "string") ? raw.streak.lastDate : "" },
+    letters,
+    achievements: strArray(raw.achievements),
+    coins: saneCoins(raw.coins),
+    inventory: strArray(raw.inventory).length ? strArray(raw.inventory) : [...defaultState.inventory],
+    equipped: {
+      pot: typeof raw.equipped?.pot === "string" ? raw.equipped.pot : defaultState.equipped.pot,
+      scene: typeof raw.equipped?.scene === "string" ? raw.equipped.scene : defaultState.equipped.scene,
+      accessory: typeof raw.equipped?.accessory === "string" ? raw.equipped.accessory : defaultState.equipped.accessory,
+    },
+    memories,
+    notes,
+    bucket,
+    lastLoveAction: isPlainObject(raw.lastLoveAction) ? { ...raw.lastLoveAction, icon: raw.lastLoveAction.icon || (raw.lastLoveAction as unknown as { emoji?: string }).emoji || "heart" } as LastLoveAction : null,
     onboarded: typeof raw.onboarded === "boolean" ? raw.onboarded : hasHistory,
     everOnboarded: typeof raw.everOnboarded === "boolean" ? raw.everOnboarded : hasHistory,
-    gardenName: raw.gardenName || defaultState.gardenName,
-    avatarA: raw.avatarA || defaultState.avatarA,
-    avatarB: raw.avatarB || defaultState.avatarB,
-    activities: (raw.activities || []).map((a) => ({ ...a, icon: a.icon || (a as unknown as { emoji?: string }).emoji || "leaf", text: stripEmoji(a.text || "") })),
+    gardenName: typeof raw.gardenName === "string" && raw.gardenName ? raw.gardenName : defaultState.gardenName,
+    avatarA: typeof raw.avatarA === "string" && raw.avatarA ? raw.avatarA : defaultState.avatarA,
+    avatarB: typeof raw.avatarB === "string" && raw.avatarB ? raw.avatarB : defaultState.avatarB,
+    activities: rawActivities.map((a) => ({ ...a, icon: a.icon || (a as unknown as { emoji?: string }).emoji || "leaf", text: stripEmoji(typeof a.text === "string" ? a.text : "") })),
     games: {
-      heartBest: { ...defaultGames.heartBest, ...(g.heartBest || {}) },
-      spin: { ...defaultGames.spin, ...(g.spin || {}) },
-      quiz: { ...defaultGames.quiz, ...(g.quiz || {}) },
-      heartPlays: { ...defaultGames.heartPlays, ...(g.heartPlays || {}) },
+      heartBest: { ...defaultGames.heartBest, ...(isPlainObject(g.heartBest) ? g.heartBest : {}), A: Math.max(0, finiteNum(isPlainObject(g.heartBest) ? g.heartBest.A : undefined, 0)), B: Math.max(0, finiteNum(isPlainObject(g.heartBest) ? g.heartBest.B : undefined, 0)) },
+      spin: { ...defaultGames.spin, ...(isPlainObject(g.spin) ? g.spin : {}), A: Math.max(0, Math.floor(finiteNum(isPlainObject(g.spin) ? g.spin.A : undefined, 0))), B: Math.max(0, Math.floor(finiteNum(isPlainObject(g.spin) ? g.spin.B : undefined, 0))) },
+      quiz: { ...defaultGames.quiz, ...(isPlainObject(g.quiz) ? g.quiz : {}), A: Array.isArray(isPlainObject(g.quiz) ? g.quiz.A : undefined) ? (g.quiz!.A as number[]).filter((n) => n === 0 || n === 1) : [], B: Array.isArray(isPlainObject(g.quiz) ? g.quiz.B : undefined) ? (g.quiz!.B as number[]).filter((n) => n === 0 || n === 1) : [] },
+      heartPlays: { ...defaultGames.heartPlays, ...(isPlainObject(g.heartPlays) ? g.heartPlays : {}), A: Math.max(0, Math.floor(finiteNum(isPlainObject(g.heartPlays) ? g.heartPlays.A : undefined, 0))), B: Math.max(0, Math.floor(finiteNum(isPlainObject(g.heartPlays) ? g.heartPlays.B : undefined, 0))) },
     },
-    loveNotes: { A: (raw.loveNotes && raw.loveNotes.A) || "", B: (raw.loveNotes && raw.loveNotes.B) || "" },
+    loveNotes: { A: typeof raw.loveNotes?.A === "string" ? raw.loveNotes.A : "", B: typeof raw.loveNotes?.B === "string" ? raw.loveNotes.B : "" },
     frameRewards: {
-      date: (raw.frameRewards && raw.frameRewards.date) || today(),
-      claimed: raw.frameRewards && Array.isArray(raw.frameRewards.claimed) ? raw.frameRewards.claimed : [],
+      date: typeof raw.frameRewards?.date === "string" && raw.frameRewards.date ? raw.frameRewards.date : today(),
+      claimed: strArray(raw.frameRewards?.claimed) as FrameKind[],
     },
     loveLimits: {
-      date: (raw.loveLimits && raw.loveLimits.date) || today(),
-      counts: { A: (raw.loveLimits && raw.loveLimits.counts && raw.loveLimits.counts.A) || 0, B: (raw.loveLimits && raw.loveLimits.counts && raw.loveLimits.counts.B) || 0 },
-      lastAt: { A: (raw.loveLimits && raw.loveLimits.lastAt && raw.loveLimits.lastAt.A) || "", B: (raw.loveLimits && raw.loveLimits.lastAt && raw.loveLimits.lastAt.B) || "" },
+      date: typeof raw.loveLimits?.date === "string" && raw.loveLimits.date ? raw.loveLimits.date : today(),
+      counts: { A: Math.max(0, Math.floor(finiteNum(raw.loveLimits?.counts?.A, 0))), B: Math.max(0, Math.floor(finiteNum(raw.loveLimits?.counts?.B, 0))) },
+      lastAt: { A: typeof raw.loveLimits?.lastAt?.A === "string" ? raw.loveLimits.lastAt.A : "", B: typeof raw.loveLimits?.lastAt?.B === "string" ? raw.loveLimits.lastAt.B : "" },
     },
-    contentLog: { A: (raw.contentLog && raw.contentLog.A) || "", B: (raw.contentLog && raw.contentLog.B) || "" },
+    contentLog: { A: typeof raw.contentLog?.A === "string" ? raw.contentLog.A : "", B: typeof raw.contentLog?.B === "string" ? raw.contentLog.B : "" },
     updatedAt: typeof raw.updatedAt === "string" ? raw.updatedAt : "",
+    secTs: sanitizeSecTs(raw.secTs),
   };
 }
 

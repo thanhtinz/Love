@@ -73,13 +73,13 @@ export default function CatchHeartsScreen() {
               {phase === "done" ? (
                 <>
                   <Ionicons name="trophy" size={38} color={C.amber} />
-                  <Text style={{ fontWeight: "900", fontSize: 17, color: C.text, textAlign: "center" }}>Hết giờ! {personLabel(state, me)} bắt được {score} tim</Text>
+                  <Text style={{ fontFamily: "BeVietnamPro_900Black", fontSize: 17, color: C.text, textAlign: "center" }}>Hết giờ! {personLabel(state, me)} bắt được {score} tim</Text>
                   <Text style={s.small}>Kỷ lục tuần này của bạn: {Math.max(best[me], score)} tim</Text>
                 </>
               ) : (
                 <>
                   <Ionicons name="heart-circle" size={40} color={C.pink} />
-                  <Text style={{ fontWeight: "800", color: C.text }}>Sẵn sàng bắt tim chưa?</Text>
+                  <Text style={{ fontFamily: "BeVietnamPro_800ExtraBold", color: C.text }}>Sẵn sàng bắt tim chưa?</Text>
                 </>
               )}
               <TouchableOpacity style={[s.btn, { marginTop: 8 }]} onPress={start}>
@@ -96,14 +96,14 @@ export default function CatchHeartsScreen() {
         </View>
 
         <View style={s.card}>
-          <Text style={{ fontWeight: "900", color: C.text }}>Bảng điểm tuần này</Text>
+          <Text style={s.cardTitle}>Bảng điểm tuần này</Text>
           <View style={{ gap: 8, marginTop: 9 }}>
             {(["A", "B"] as const).map((slot) => (
               <View key={slot} style={{ flexDirection: "row", alignItems: "center", gap: 9 }}>
                 <PersonChip state={state} slot={slot} />
                 <View style={{ flex: 1 }} />
                 <Text style={s.small}>hôm nay đã chơi {plays[slot]} lượt</Text>
-                <Text style={{ fontSize: 17, fontWeight: "900", color: C.pinkDark }}>{best[slot]} tim</Text>
+                <Text style={{ fontSize: 17, fontFamily: "BeVietnamPro_900Black", color: C.pinkDark }}>{best[slot]} tim</Text>
               </View>
             ))}
           </View>
@@ -115,7 +115,7 @@ export default function CatchHeartsScreen() {
 }
 
 const styles = StyleSheet.create({
-  area: { height: AREA_H, backgroundColor: "#fff1f2", borderRadius: 16, overflow: "hidden", borderWidth: 1.5, borderColor: C.pinkBorder },
+  area: { height: AREA_H, backgroundColor: "#FFF5EF", borderRadius: 16, overflow: "hidden", borderWidth: 1.5, borderColor: C.pinkBorder },
   areaCenter: { flex: 1, alignItems: "center", justifyContent: "center", gap: 7, padding: 16 },
   hud: { position: "absolute", top: 8, left: 8, right: 8, flexDirection: "row", justifyContent: "space-between" },
 });

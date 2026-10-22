@@ -22,15 +22,15 @@ export default function GamesHubScreen() {
   return (
     <ScrollView style={s.screen} contentContainerStyle={[s.scroll, { paddingTop: 44 }]}>
       <SectionTitle icon="game-controller">Khu vui chơi</SectionTitle>
-      <Text style={s.sub}>Mỗi trò chơi có màn hình riêng. Điểm số và lượt chơi lưu RIÊNG theo từng người — người này chơi không ảnh hưởng lượt của người kia.</Text>
+      <Text style={s.sub}>Điểm và lượt chơi tính riêng cho từng người.</Text>
 
       <View style={s.card}>
-        <Text style={{ fontWeight: "900", color: C.text }}>Kỷ lục Bắt tim bay tuần này</Text>
+        <Text style={s.cardTitle}>Kỷ lục Bắt tim bay tuần này</Text>
         <View style={{ flexDirection: "row", gap: 8, marginTop: 9 }}>
           {(["A", "B"] as const).map((slot) => (
             <View key={slot} style={{ flex: 1, gap: 5, backgroundColor: "#fff7ed", borderRadius: 14, padding: 10 }}>
               <PersonChip state={state} slot={slot} />
-              <Text style={{ fontSize: 20, fontWeight: "900", color: C.pinkDark }}>{best[slot]} tim</Text>
+              <Text style={{ fontSize: 20, fontFamily: "BeVietnamPro_900Black", color: C.pinkDark }}>{best[slot]} tim</Text>
             </View>
           ))}
         </View>
@@ -39,7 +39,7 @@ export default function GamesHubScreen() {
       <View style={{ gap: 9 }}>
         <FeatureCard icon="heart" title="Bắt tim bay" desc="30 giây chạm bắt tim rơi — phá kỷ lục tuần của chính bạn" color={C.pink} bg={C.pinkSoft} route="/games/catch-hearts" />
         <FeatureCard icon="refresh-circle" title="Vòng quay yêu thương" desc={`Bạn còn ${spinsLeft}/${MAX_DAILY_SPINS} lượt quay hôm nay — trúng Xu, XP, thư tình`} color={C.violet} bg="#ede9fe" route="/games/spin-wheel" badge={spinsLeft > 0 ? `${spinsLeft} lượt` : "Hết lượt"} />
-        <FeatureCard icon="help-circle" title="Hiểu ý nhau" desc={quizDone ? "Bạn đã trả lời hôm nay — chờ người ấy để mở kết quả" : "4 câu trắc nghiệm mỗi ngày, đáp án niêm phong riêng từng người"} color={C.sky} bg="#e0f2fe" route="/games/quiz" badge={quizDone ? "Đã nộp" : undefined} />
+        <FeatureCard icon="help-circle" title="Hiểu ý nhau" desc={quizDone ? "Bạn đã trả lời hôm nay — chờ người ấy để mở kết quả" : "4 câu trắc nghiệm mỗi ngày, đáp án niêm phong riêng từng người"} color={C.sky} bg="#D9F4F0" route="/games/quiz" badge={quizDone ? "Đã nộp" : undefined} />
       </View>
     </ScrollView>
   );

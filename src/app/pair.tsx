@@ -94,7 +94,7 @@ export default function PairScreen() {
               {members.map((m) => (
                 <View key={m.userId} style={s.row}>
                   <Avatar id={m.avatar} size={30} />
-                  <Text style={{ fontWeight: "700", color: C.text }}>{m.displayName}</Text>
+                  <Text style={{ fontFamily: "BeVietnamPro_700Bold", color: C.text }}>{m.displayName}</Text>
                   <Text style={s.small}>{m.slot === "A" ? "Người giữ vườn A" : "Người giữ vườn B"}{m.userId === user.id ? " (bạn)" : ""}</Text>
                 </View>
               ))}
@@ -126,10 +126,10 @@ export default function PairScreen() {
 const styles = StyleSheet.create({
   wrap: { flexGrow: 1, padding: 18, paddingTop: 48, gap: 14, backgroundColor: C.bg },
   head: { flexDirection: "row", alignItems: "center", gap: 12 },
-  hi: { fontSize: 19, fontWeight: "900", color: C.text },
+  hi: { fontSize: 19, fontFamily: "BeVietnamPro_900Black", color: C.text },
   logout: { backgroundColor: C.pinkSoft, borderRadius: 999, padding: 9 },
-  err: { color: "#dc2626", fontSize: 13, fontWeight: "600" },
-  codeInput: { textAlign: "center", fontSize: 20, fontWeight: "800", letterSpacing: 4 },
-  bigCode: { fontSize: 30, fontWeight: "900", letterSpacing: 6, color: C.pinkDark, backgroundColor: C.pinkSoft, paddingHorizontal: 18, paddingVertical: 8, borderRadius: 14, overflow: "hidden" },
-  label: { fontSize: 12.5, fontWeight: "700", color: C.textSoft },
+  err: { color: "#dc2626", fontSize: 13, fontFamily: "BeVietnamPro_600SemiBold" },
+  codeInput: { textAlign: "center", fontSize: 20, fontFamily: "BeVietnamPro_800ExtraBold", letterSpacing: 4 },
+  bigCode: { fontSize: 30, fontFamily: "BeVietnamPro_900Black", letterSpacing: 6, color: C.pinkDark, backgroundColor: C.pinkSoft, paddingHorizontal: 18, paddingVertical: 8, borderRadius: 14, overflow: "hidden" },
+  label: { fontSize: 12.5, fontFamily: "BeVietnamPro_700Bold", color: C.textSoft },
 });

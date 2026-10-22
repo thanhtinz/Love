@@ -1,5 +1,5 @@
 // Port noi dung tu ban web (lib/data.ts) — da loc emoji; icon dung ten Ionicons cua @expo/vector-icons.
-import type { ShopCategory } from "./types";
+import { localDayNumber, type ShopCategory } from "./types";
 
 export const QUESTIONS = [
   "Điều nhỏ bé nào của đối phương khiến bạn mỉm cười hôm nay?",
@@ -63,7 +63,9 @@ export const MOODS: { id: string; label: string }[] = [
 export const moodLabel = (id: string): string => MOODS.find((m) => m.id === id)?.label || id;
 export const NOTE_COLORS = ["#fbcfe8", "#fde68a", "#bae6fd", "#a7f3d0", "#ddd6fe", "#fecdd3"];
 export function questionOfDay(date = new Date()) {
-  const dayNum = Math.floor(date.getTime() / 86400000);
+  // Số ngày theo GIỜ ĐỊA PHƯƠNG — khớp với thời điểm reset đáp án (0h địa phương).
+  // Bản cũ tính theo ngày UTC nên câu hỏi đổi lúc 7h sáng giờ VN, lệch pha với đáp án.
+  const dayNum = localDayNumber(date);
   return QUESTIONS[dayNum % QUESTIONS.length];
 }
 
@@ -183,7 +185,7 @@ export const QUIZ_QUESTIONS: QuizQuestion[] = [
   { q: "Khi giận nhau, nên...", options: ["Nói chuyện ngay cho rõ", "Im lặng một lúc cho nguôi"] },
 ];
 export function quizOfDay(date = new Date()): QuizQuestion[] {
-  const dayNum = Math.floor(date.getTime() / 86400000);
+  const dayNum = localDayNumber(date);
   const out: QuizQuestion[] = [];
   for (let i = 0; i < 4; i++) out.push(QUIZ_QUESTIONS[(dayNum * 4 + i) % QUIZ_QUESTIONS.length]);
   return out;

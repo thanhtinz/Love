@@ -23,15 +23,15 @@ export default function DailyQuestionScreen() {
     <View style={s.screen}>
       <ScreenHeader title="Câu hỏi mỗi ngày" subtitle="Mỗi người trả lời riêng — cả hai trả lời xong mới mở đáp án của nhau" />
       <ScrollView contentContainerStyle={s.scroll}>
-        <View style={[s.card, { backgroundColor: "#f0f9ff", borderColor: "#bae6fd" }]}>
-          <Text style={{ fontSize: 16, fontWeight: "900", color: C.text, lineHeight: 23 }}>{q}</Text>
+        <View style={[s.card, { backgroundColor: "#E5EBF2", borderColor: "#C9D6E4" }]}>
+          <Text style={{ fontSize: 16, fontFamily: "BeVietnamPro_700Bold", color: C.text, lineHeight: 23 }}>{q}</Text>
         </View>
 
         {/* Ô trả lời của BẠN */}
-        <View style={[s.card, { borderColor: C.pink, borderWidth: 2 }]}>
+        <View style={[s.card, { borderColor: "#FFC4CF", borderWidth: 1.5 }]}>
           <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
             <PersonChip state={state} slot={me.slot} />
-            <Text style={{ fontWeight: "900", color: C.text, flex: 1 }}>Câu trả lời của bạn</Text>
+            <Text style={{ fontFamily: "BeVietnamPro_900Black", color: C.text, flex: 1 }}>Câu trả lời của bạn</Text>
           </View>
           {!myAnswer ? (
             <View style={{ gap: 9, marginTop: 10 }}>
@@ -41,7 +41,7 @@ export default function DailyQuestionScreen() {
               </TouchableOpacity>
             </View>
           ) : (
-            <View style={{ marginTop: 9, backgroundColor: "#fdf2f8", borderRadius: 12, padding: 11 }}>
+            <View style={{ marginTop: 9, backgroundColor: "#FFE9EE", borderRadius: 12, padding: 11 }}>
               <Text style={{ color: C.text, fontSize: 14, lineHeight: 20 }}>{myAnswer}</Text>
               <Text style={[s.small, { marginTop: 5 }]}>Đã niêm phong — đáp án của bạn không sửa được nữa trong hôm nay.</Text>
             </View>
@@ -49,13 +49,13 @@ export default function DailyQuestionScreen() {
         </View>
 
         {/* Ô của ĐỐI PHƯƠNG */}
-        <View style={[s.card, { borderColor: "#bae6fd", borderWidth: 2, backgroundColor: "#f8fcff" }]}>
+        <View style={[s.card, { borderColor: "#BDEAE4", borderWidth: 2, backgroundColor: "#F4FBF9" }]}>
           <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
             <PersonChip state={state} slot={partner.slot} showYouTag={false} />
-            <Text style={{ fontWeight: "900", color: C.text, flex: 1 }}>Câu trả lời của {partner.name}</Text>
+            <Text style={{ fontFamily: "BeVietnamPro_900Black", color: C.text, flex: 1 }}>Câu trả lời của {partner.name}</Text>
           </View>
           {bothAnswered ? (
-            <View style={{ marginTop: 9, backgroundColor: "#f0f9ff", borderRadius: 12, padding: 11 }}>
+            <View style={{ marginTop: 9, backgroundColor: "#EFFAF7", borderRadius: 12, padding: 11 }}>
               <Text style={{ color: C.text, fontSize: 14, lineHeight: 20 }}>{theirAnswer}</Text>
             </View>
           ) : theirAnswer ? (

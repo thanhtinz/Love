@@ -15,8 +15,8 @@ export default function FramesHubScreen() {
           <FeatureCard icon="happy" title="Khung Mood hai người" desc="Tâm trạng hôm nay của bạn và của người ấy, ghi rõ tên từng người" color={C.amber} bg="#fef3c7" route="/frames/mood" />
         </View>
         <View style={[s.card, { backgroundColor: "#fff7ed" }]}>
-          <View style={s.row}><Ionicons name="information-circle" size={18} color={C.amber} /><Text style={{ fontWeight: "800", color: C.text }}>Về widget sống trên màn hình chính</Text></View>
-          <Text style={[s.sub, { marginTop: 5 }]}>Hiện tại app xuất khung thành ảnh PNG để bạn ghim bằng tiện ích ảnh có sẵn của máy. Widget sống tự cập nhật (Android App Widget / iOS WidgetKit) cần viết thêm mã native riêng cho từng nền tảng — đây là bước phát triển riêng ở giai đoạn sau, chưa có trong bản này.</Text>
+          <View style={s.row}><Ionicons name="information-circle" size={18} color={C.amber} /><Text style={{ fontFamily: "BeVietnamPro_800ExtraBold", color: C.text }}>Về widget sống trên màn hình chính</Text></View>
+          <Text style={[s.sub, { marginTop: 5 }]}>Khung được xuất thành ảnh PNG để ghim bằng tiện ích ảnh của máy. Widget sống tự cập nhật cần mã native riêng — sẽ làm ở giai đoạn sau.</Text>
         </View>
       </ScrollView>
     </View>

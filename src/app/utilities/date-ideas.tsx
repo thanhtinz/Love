@@ -30,7 +30,7 @@ export default function DateIdeasScreen() {
       <ScrollView contentContainerStyle={s.scroll}>
         <View style={[s.card, { alignItems: "center", backgroundColor: "#fff7ed", borderColor: "#fed7aa", gap: 9, paddingVertical: 22 }]}>
           <Ionicons name={idea.icon as never} size={46} color="#ea580c" />
-          <Text style={{ fontSize: 17, fontWeight: "900", color: C.text, textAlign: "center", lineHeight: 24 }}>{idea.text}</Text>
+          <Text style={{ fontSize: 17, fontFamily: "BeVietnamPro_900Black", color: C.text, textAlign: "center", lineHeight: 24 }}>{idea.text}</Text>
           <Text style={s.small}>Ý tưởng {((ideaIdx % DATE_IDEAS.length) + 1)}/{DATE_IDEAS.length} — đổi ý tưởng khác nếu chưa ưng</Text>
         </View>
         <TouchableOpacity style={s.btn} onPress={() => setIdeaIdx((v) => v + 1)}>
@@ -39,7 +39,7 @@ export default function DateIdeasScreen() {
         <TouchableOpacity style={[s.btnGhost, addWaitMs > 0 && { opacity: 0.5 }]} disabled={addWaitMs > 0} onPress={saveIdea}>
           <Ionicons name="bookmark" size={15} color={C.pinkDark} /><Text style={s.btnGhostText}>{addWaitMs > 0 ? `Chờ ${Math.ceil(addWaitMs / 1000)}s để lưu tiếp` : "Lưu ý tưởng này vào Bucket List"}</Text>
         </TouchableOpacity>
-        {savedMsg ? <Text style={{ textAlign: "center", color: C.pinkDark, fontWeight: "700" }}>{savedMsg}</Text> : null}
+        {savedMsg ? <Text style={{ textAlign: "center", color: C.pinkDark, fontFamily: "BeVietnamPro_700Bold" }}>{savedMsg}</Text> : null}
       </ScrollView>
     </View>
   );

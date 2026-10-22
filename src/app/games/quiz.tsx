@@ -12,7 +12,10 @@ export default function QuizScreen() {
   const meName = myName(state);
   const me = state.currentUser;
   const partner = partnerOf(state);
-  const [questions] = useState(() => quizOfDay());
+  // Bộ câu hỏi tính LẠI mỗi lần render theo ngày hiện tại: bản cũ chụp cứng bằng useState lúc
+  // mở màn hình — app để qua nửa đêm là màn hình hiện câu hỏi hôm qua, trong khi store niêm
+  // phong đáp án theo bộ câu hỏi của hôm nay. quizOfDay rất nhẹ nên không cần memo.
+  const questions = quizOfDay();
   const qz = state.games.quiz.date === today() ? state.games.quiz : { A: [] as number[], B: [] as number[] };
   const mine = qz[me];
   const theirs = qz[partner.slot];
@@ -31,19 +34,19 @@ export default function QuizScreen() {
         <View style={s.card}>
           <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
             <PersonChip state={state} slot={me} />
-            <Text style={{ fontWeight: "900", color: C.text, flex: 1 }}>Câu trả lời của bạn</Text>
+            <Text style={{ fontFamily: "BeVietnamPro_900Black", color: C.text, flex: 1 }}>Câu trả lời của bạn</Text>
             {myDone && <View style={s.chip}><Ionicons name="lock-closed" size={12} color={C.pinkDark} /><Text style={s.chipText}>Đã niêm phong</Text></View>}
           </View>
           <View style={{ gap: 13, marginTop: 11 }}>
             {questions.map((q, qi) => (
               <View key={qi} style={{ gap: 6 }}>
-                <Text style={{ fontWeight: "800", color: C.text, fontSize: 13.5 }}>{qi + 1}. {q.q}</Text>
+                <Text style={{ fontFamily: "BeVietnamPro_800ExtraBold", color: C.text, fontSize: 13.5 }}>{qi + 1}. {q.q}</Text>
                 {q.options.map((opt, oi) => {
                   const myPick = myDone ? mine[qi] : picks[qi];
                   const picked = myPick === oi;
                   return (
                     <TouchableOpacity key={oi} disabled={myDone} style={{ flexDirection: "row", alignItems: "center", gap: 7, borderWidth: 1.5, borderColor: picked ? C.pink : "#e2e8f0", borderRadius: 12, paddingHorizontal: 11, paddingVertical: 9, backgroundColor: picked ? C.pinkSoft : "#fff", opacity: myDone && !picked ? 0.6 : 1 }} onPress={() => { const n = [...picks]; n[qi] = oi; setPicks(n); }}>
-                      <Text style={{ flex: 1, fontSize: 13, color: picked ? C.pinkDark : C.text, fontWeight: picked ? "800" : "500" }}>{opt}</Text>
+                      <Text style={{ flex: 1, fontSize: 13.5, color: picked ? C.pinkDark : C.text, fontFamily: picked ? "BeVietnamPro_800ExtraBold" : "BeVietnamPro_500Medium" }}>{opt}</Text>
                       {picked && <Ionicons name="checkmark-circle" size={17} color={C.pink} />}
                     </TouchableOpacity>
                   );
@@ -64,13 +67,13 @@ export default function QuizScreen() {
         <View style={s.card}>
           <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
             <PersonChip state={state} slot={partner.slot} />
-            <Text style={{ fontWeight: "900", color: C.text, flex: 1 }}>Câu trả lời của {partner.name}</Text>
+            <Text style={{ fontFamily: "BeVietnamPro_900Black", color: C.text, flex: 1 }}>Câu trả lời của {partner.name}</Text>
           </View>
           {theirDone ? (
             bothDone ? (
               <View style={{ gap: 8, marginTop: 10 }}>
                 {questions.map((q, qi) => (
-                  <View key={qi} style={{ flexDirection: "row", gap: 8, alignItems: "center", backgroundColor: "#f0f9ff", borderRadius: 12, padding: 10 }}>
+                  <View key={qi} style={{ flexDirection: "row", gap: 8, alignItems: "center", backgroundColor: "#EFFAF7", borderRadius: 12, padding: 10 }}>
                     <Ionicons name={mine[qi] === theirs[qi] ? "checkmark-circle" : "close-circle"} size={18} color={mine[qi] === theirs[qi] ? C.green : C.textFaint} />
                     <Text style={{ flex: 1, fontSize: 13, color: C.text }}>{q.options[theirs[qi]]}</Text>
                     <Text style={s.small}>{mine[qi] === theirs[qi] ? "Trùng ý với bạn" : "Khác lựa chọn của bạn"}</Text>
@@ -87,7 +90,7 @@ export default function QuizScreen() {
 
         {bothDone && (
           <View style={[s.card, { alignItems: "center", backgroundColor: C.pinkSoft, borderColor: C.pink }]}>
-            <Text style={{ fontSize: 22, fontWeight: "900", color: C.pinkDark }}>Hợp ý {Math.round((matchCount / questions.length) * 100)}%</Text>
+            <Text style={{ fontSize: 22, fontFamily: "BeVietnamPro_900Black", color: C.pinkDark }}>Hợp ý {Math.round((matchCount / questions.length) * 100)}%</Text>
             <Text style={s.sub}>Trùng {matchCount}/{questions.length} câu — {matchCount === questions.length ? "tâm đầu ý hợp tuyệt đối!" : matchCount >= 2 ? "khá hiểu nhau rồi đó!" : "càng khác nhau càng bù trừ cho nhau nhé!"}</Text>
           </View>
         )}

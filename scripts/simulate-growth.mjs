@@ -7,7 +7,7 @@
  */
 import { createRequire } from "node:module";
 const require = createRequire(import.meta.url);
-const { createPlant, materializePlant, stageInfo, stageStarts, speciesById } = require("./.build/plants.js");
+const { createPlant, fruitPending, materializePlant, stageInfo, stageStarts, speciesById, totalGrowthMs } = require("./.build/plants.js");
 
 const H = 3600000;
 const t0 = Date.UTC(2026, 0, 1, 0, 0, 0);
@@ -46,6 +46,56 @@ const y2 = materializePlant(y, t0 + 2 * H);
 const g3 = y2.growthRecordedMs;
 console.log(`Yếu (31) trong 2h đầu: tăng trưởng = ${(g3 / H).toFixed(2)}h (kỳ vọng ~1h vì hao dần rồi x0.5/x0)`);
 check("Cây yếu lớn chậm hơn cây khỏe", g3 < 1.6 * H, `growth=${(g3 / H).toFixed(2)}h`);
+
+/* --- Kịch bản 4: vắng mặt 30 NGÀY không chăm (biên dài hạn) --- */
+{
+  let p30 = createPlant("sunflower", t0);
+  p30 = { ...p30, water: 100, sun: 100, love: 100 };
+  const m = materializePlant(p30, t0 + 30 * 24 * H);
+  const inf = stageInfo(m, t0 + 30 * 24 * H);
+  console.log(`Vắng 30 ngày: tăng trưởng = ${(inf.growthMs / H).toFixed(1)}h | giai đoạn ${inf.index} | chỉ số ${m.water}/${m.sun}/${m.love}`);
+  check("Vắng 30 ngày: số liệu hữu hạn, chỉ số chạm 0, tăng trưởng đóng băng khi héo", Number.isFinite(inf.growthMs) && m.water === 0 && m.sun === 0 && m.love === 0 && inf.growthMs > 15 * H && inf.growthMs < 40 * H, `growth=${(inf.growthMs / H).toFixed(1)}h`);
+  check("Vắng 30 ngày: KHÔNG trưởng thành oan (héo thì đứng yên)", !inf.mature && inf.index < 4);
+}
+
+/* --- Kịch bản 5: chăm khỏe liên tục -> nhảy NHIỀU giai đoạn + trưởng thành --- */
+{
+  let lp = createPlant("love-tree", t0);
+  for (let h = 1; h <= 200; h++) {
+    lp = materializePlant(lp, t0 + h * H);
+    lp = { ...lp, water: 100, sun: 100, love: 100 };
+  }
+  const inf = stageInfo(lp, t0 + 200 * H);
+  console.log(`Cây Tình Yêu chăm khỏe 200h: tăng trưởng = ${(inf.growthMs / H).toFixed(1)}h (tổng cần ${totalGrowthMs(speciesById("love-tree")) / H}h) | giai đoạn ${inf.index} | mature=${inf.mature}`);
+  check("Chăm khỏe 200h: trưởng thành, ở giai đoạn cuối, có matureAt", inf.mature && inf.index === 6 && Boolean(lp.matureAt));
+}
+
+/* --- Kịch bản 6: Dâu Tây — quả chín sau trưởng thành 12h, héo vẫn chờ thu --- */
+{
+  let sb = createPlant("strawberry", t0);
+  for (let h = 1; h <= 120; h++) {
+    sb = materializePlant(sb, t0 + h * H);
+    sb = { ...sb, water: 100, sun: 100, love: 100 };
+  }
+  const matureAtMs = new Date(sb.matureAt).getTime();
+  check("Dâu: trưởng thành sau ~96h chăm khỏe", Boolean(sb.matureAt) && Math.abs(matureAtMs - (t0 + 96 * H)) < 2 * H, `matureAt sau ${((matureAtMs - t0) / H).toFixed(1)}h`);
+  check("Dâu: quả CHƯA chín ở +11h sau trưởng thành", fruitPending(sb, matureAtMs + 11 * H) === false);
+  check("Dâu: quả chín ở +12h sau trưởng thành", fruitPending(sb, matureAtMs + 12 * H) === true);
+  const wilted = materializePlant({ ...sb, water: 0, sun: 0, love: 0, statsAt: new Date(matureAtMs).toISOString(), growthAt: new Date(matureAtMs).toISOString() }, matureAtMs + 13 * H);
+  check("Dâu: dù héo, quả đã chín vẫn chờ thu (fruitReadyAt không bị trễ bởi sức khỏe)", fruitPending(wilted, matureAtMs + 13 * H) === true);
+}
+
+/* --- Kịch bản 7: đồng hồ máy chạy lùi (2 máy lệch giờ) — không tính trùng tăng trưởng --- */
+{
+  let p7 = createPlant("sunflower", t0);
+  p7 = { ...p7, water: 100, sun: 100, love: 100 };
+  const fwd = materializePlant(p7, t0 + 10 * H);
+  const back = materializePlant(fwd, t0 + 5 * H); // máy khác có đồng hồ chậm hơn 5h
+  check("Đồng hồ lùi: growthAt KHÔNG bị kéo lùi", back.growthAt === fwd.growthAt, `growthAt=${back.growthAt} vs ${fwd.growthAt}`);
+  check("Đồng hồ lùi: tăng trưởng không đổi", back.growthRecordedMs === fwd.growthRecordedMs);
+  const again = materializePlant(back, t0 + 12 * H);
+  check("Sau khi đồng hồ quay lại: chỉ tính thêm đúng 2h (không tính trùng đoạn 5-10h)", Math.abs(again.growthRecordedMs - 12 * H) < 5 * 60000, `growth=${(again.growthRecordedMs / H).toFixed(2)}h`);
+}
 
 console.log(failures === 0 ? "\nTẤT CẢ KỊCH BẢN ĐẠT" : `\nCÓ ${failures} KỊCH BẢN CHƯA ĐẠT`);
 process.exit(failures === 0 ? 0 : 1);

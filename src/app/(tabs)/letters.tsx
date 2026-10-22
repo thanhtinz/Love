@@ -25,11 +25,11 @@ export default function LettersScreen() {
   return (
     <ScrollView style={s.screen} contentContainerStyle={[s.scroll, { paddingTop: 44 }]}>
       <SectionTitle icon="mail">Hộp thư tình yêu</SectionTitle>
-      <Text style={s.sub}>Thư rơi ra khi hai bạn chăm cây, lên giai đoạn, hoàn thành nhiệm vụ và chơi Vòng quay yêu thương. Mở thư để nhận Xu Tim.</Text>
+      <Text style={s.sub}>Thư rơi khi chăm cây, lên giai đoạn và làm nhiệm vụ. Mở thư để nhận Xu Tim.</Text>
 
       <View style={s.card}>
         <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
-          <Text style={{ fontWeight: "900", color: C.text }}>Bộ sưu tập thư</Text>
+          <Text style={s.cardTitle}>Bộ sưu tập thư</Text>
           <View style={s.chip}><Ionicons name="mail-open" size={13} color={C.pinkDark} /><Text style={s.chipText}>{ownedIds.size}/36 lá</Text></View>
         </View>
         <View style={{ height: 10, borderRadius: 99, backgroundColor: "#f1f5f9", marginTop: 9, overflow: "hidden" }}>
@@ -46,11 +46,11 @@ export default function LettersScreen() {
             );
           })}
         </View>
-        <Text style={s.small}>Ô sáng là lá thư đã sưu tập được. Thư Huyền thoại hiếm nhất — trồng Sakura và Cây Huyền Thoại để tăng cơ hội nhé.</Text>
+        <Text style={s.small}>Ô sáng là thư đã sưu tập. Thư Huyền thoại hiếm nhất.</Text>
       </View>
 
       <View style={s.card}>
-        <Text style={{ fontWeight: "900", color: C.text }}>Thư chưa mở ({unopened.length})</Text>
+        <Text style={s.cardTitle}>Thư chưa mở ({unopened.length})</Text>
         <View style={{ gap: 9, marginTop: 10 }}>
           {unopened.map((l) => {
             const rs = RARITY_STYLE[l.rarity];
@@ -58,7 +58,7 @@ export default function LettersScreen() {
               <TouchableOpacity key={l.id} style={[styles.letterRow, { borderColor: rs.border, backgroundColor: rs.bg }]} onPress={() => openLetter(l)}>
                 <Ionicons name="mail" size={24} color={rs.text} />
                 <View style={{ flex: 1 }}>
-                  <Text style={{ fontWeight: "800", color: C.text }}>Thư {rs.label} — {l.source}</Text>
+                  <Text style={{ fontFamily: "BeVietnamPro_800ExtraBold", color: C.text }}>Thư {rs.label} — {l.source}</Text>
                   <Text style={s.small}>Rơi lúc {new Date(l.droppedAt).toLocaleString("vi-VN")} · Chạm để mở và nhận Xu</Text>
                 </View>
                 <Ionicons name="chevron-forward" size={18} color={C.textFaint} />
@@ -70,7 +70,7 @@ export default function LettersScreen() {
       </View>
 
       <View style={s.card}>
-        <Text style={{ fontWeight: "900", color: C.text }}>Thư đã mở ({opened.length})</Text>
+        <Text style={s.cardTitle}>Thư đã mở ({opened.length})</Text>
         <View style={{ gap: 9, marginTop: 10 }}>
           {opened.map((l) => {
             const msg = LOVE_MESSAGES.find((m) => m.id === l.messageId);
@@ -96,7 +96,7 @@ export default function LettersScreen() {
         <View style={styles.modalWrap}>
           <View style={styles.modalCard}>
             <Ionicons name="mail-open" size={36} color={C.pink} />
-            {reading && <Text style={[s.chip, { color: RARITY_STYLE[reading.rarity].text, backgroundColor: RARITY_STYLE[reading.rarity].bg, paddingHorizontal: 10, paddingVertical: 4, fontWeight: "800", fontSize: 12 }]}>Thư {RARITY_STYLE[reading.rarity].label}</Text>}
+            {reading && <Text style={[s.chip, { color: RARITY_STYLE[reading.rarity].text, backgroundColor: RARITY_STYLE[reading.rarity].bg, paddingHorizontal: 10, paddingVertical: 4, fontFamily: "BeVietnamPro_800ExtraBold", fontSize: 12 }]}>Thư {RARITY_STYLE[reading.rarity].label}</Text>}
             <Text style={styles.letterText}>{readingMsg?.text}</Text>
             <Text style={s.small}>{reading?.source} · {reading ? new Date(reading.droppedAt).toLocaleString("vi-VN") : ""}</Text>
             <TouchableOpacity style={s.btn} onPress={() => setReading(null)}><Text style={s.btnText}>Đóng thư</Text></TouchableOpacity>
@@ -110,6 +110,6 @@ export default function LettersScreen() {
 const styles = StyleSheet.create({
   letterRow: { flexDirection: "row", alignItems: "center", gap: 10, borderWidth: 1.5, borderColor: "#e2e8f0", backgroundColor: "#fff", borderRadius: 14, padding: 11 },
   modalWrap: { flex: 1, backgroundColor: "rgba(15,23,42,0.5)", alignItems: "center", justifyContent: "center", padding: 22 },
-  modalCard: { backgroundColor: "#fff7ed", borderRadius: 22, borderWidth: 2, borderColor: "#fda4af", padding: 22, alignItems: "center", gap: 10, width: "100%" },
-  letterText: { fontSize: 16.5, lineHeight: 25, color: "#7f1d1d", textAlign: "center", fontWeight: "600" },
+  modalCard: { backgroundColor: "#fff7ed", borderRadius: 22, borderWidth: 1.5, borderColor: "#F0C6CE", padding: 22, alignItems: "center", gap: 10, width: "100%" },
+  letterText: { fontSize: 16.5, lineHeight: 25, color: "#7f1d1d", textAlign: "center", fontFamily: "BeVietnamPro_600SemiBold" },
 });

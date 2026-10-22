@@ -35,24 +35,24 @@ export default function LoveNotesScreen() {
       <ScreenHeader title="Love Notes" subtitle="Lời nhắn ghim lâu dài của từng người + ghi chú nhanh chung" />
       <ScrollView contentContainerStyle={s.scroll}>
         {/* Lời nhắn của BẠN */}
-        <View style={[s.card, { borderColor: C.pink, borderWidth: 2 }]}>
+        <View style={[s.card, { borderColor: "#FFC4CF", borderWidth: 1.5 }]}>
           <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
             <PersonChip state={state} slot={me.slot} />
-            <Text style={{ fontWeight: "900", color: C.text, flex: 1 }}>Lời nhắn của bạn</Text>
+            <Text style={{ fontFamily: "BeVietnamPro_900Black", color: C.text, flex: 1 }}>Lời nhắn của bạn</Text>
           </View>
           <TextInput style={[s.input, { minHeight: 58, textAlignVertical: "top", marginTop: 10 }]} placeholder="Lời nhắn bạn muốn ghim cho người ấy đọc mỗi ngày..." placeholderTextColor={C.textFaint} value={myNote} onChangeText={setMyNote} multiline maxLength={200} />
           <TouchableOpacity style={[s.btn, { marginTop: 9 }]} onPress={saveMyNote}>
             <Ionicons name="save" size={15} color="#fff" /><Text style={s.btnText}>Lưu lời nhắn của bạn</Text>
           </TouchableOpacity>
-          {savedMsg ? <Text style={{ color: C.pinkDark, fontWeight: "700", fontSize: 12.5, marginTop: 6 }}>{savedMsg}</Text> : null}
+          {savedMsg ? <Text style={{ color: C.pinkDark, fontFamily: "BeVietnamPro_700Bold", fontSize: 12.5, marginTop: 6 }}>{savedMsg}</Text> : null}
         </View>
 
         {/* Lời nhắn của ĐỐI PHƯƠNG — chỉ xem */}
-        <View style={[s.card, { borderColor: "#bae6fd", borderWidth: 2, backgroundColor: "#f8fcff" }]}>
+        <View style={[s.card, { borderColor: "#BDEAE4", borderWidth: 2, backgroundColor: "#F4FBF9" }]}>
           <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
             <PersonChip state={state} slot={partner.slot} showYouTag={false} />
-            <Text style={{ fontWeight: "900", color: C.text, flex: 1 }}>Lời nhắn của {partner.name}</Text>
-            <View style={s.chip}><Ionicons name="eye" size={12} color="#0369a1" /><Text style={[s.chipText, { color: "#0369a1" }]}>Chỉ xem</Text></View>
+            <Text style={{ fontFamily: "BeVietnamPro_900Black", color: C.text, flex: 1 }}>Lời nhắn của {partner.name}</Text>
+            <View style={[s.chip, { backgroundColor: "#D9F4F0" }]}><Ionicons name="eye" size={12} color="#0B7A6E" /><Text style={[s.chipText, { color: "#0B7A6E" }]}>Chỉ xem</Text></View>
           </View>
           <Text style={{ color: C.text, fontSize: 14.5, lineHeight: 21, marginTop: 9, fontStyle: state.loveNotes[partner.slot] ? "normal" : "italic" }}>
             {state.loveNotes[partner.slot] || `${partner.name} chưa ghim lời nhắn nào.`}
@@ -62,14 +62,14 @@ export default function LoveNotesScreen() {
 
         {/* Ghi chú nhanh */}
         <View style={s.card}>
-          <Text style={{ fontWeight: "900", color: C.text }}>Ghi chú nhanh</Text>
+          <Text style={s.cardTitle}>Ghi chú nhanh</Text>
           <Text style={s.sub}>Mỗi ghi chú ghi rõ người dán. Tối đa {CONTENT_LIMITS.note} ký tự, nghỉ {CONTENT_ADD_MIN_INTERVAL_MS / 1000} giây giữa 2 lần dán.</Text>
           <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8, marginTop: 10 }}>
             {state.notes.map((n) => (
               <View key={n.id} style={{ width: "48%", borderRadius: 14, padding: 10, minHeight: 78, backgroundColor: n.color }}>
                 <Text style={{ fontSize: 13, color: "#7f1d1d", lineHeight: 18 }}>{n.text}</Text>
                 <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginTop: 6 }}>
-                  {n.authorSlot ? <PersonChip state={state} slot={n.authorSlot} size={16} /> : <Text style={{ fontSize: 10.5, color: "#9f1239", fontWeight: "700" }}>{n.author}</Text>}
+                  {n.authorSlot ? <PersonChip state={state} slot={n.authorSlot} size={16} /> : <Text style={{ fontSize: 10.5, color: "#9f1239", fontFamily: "BeVietnamPro_700Bold" }}>{n.author}</Text>}
                   <TouchableOpacity onPress={() => dispatch({ type: "DEL_NOTE", id: n.id })}><Ionicons name="trash-outline" size={14} color="#9f1239" /></TouchableOpacity>
                 </View>
               </View>

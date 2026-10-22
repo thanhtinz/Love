@@ -48,7 +48,7 @@ export default function SpinWheelScreen() {
         setResult("Một lá thư vừa bay vào Hộp thư — qua tab Thư mở đọc nhé!");
       } else if (seg.kind === "mission") {
         const m = SPIN_MISSIONS[Math.floor(Math.random() * SPIN_MISSIONS.length)];
-        dispatch({ type: "ADD_BUCKET", item: { id: uid(), text: m, done: false, createdAt: new Date().toISOString(), authorSlot: me } });
+        dispatch({ type: "ADD_BUCKET", item: { id: uid(), text: m, done: false, createdAt: new Date().toISOString(), authorSlot: me }, force: true });
         setResult(`Nhiệm vụ đặc biệt: "${m}" — đã thêm vào Bucket List.`);
       } else setResult("Lượt quay thêm! Quay tiếp nào, không mất lượt.");
     });
@@ -65,7 +65,7 @@ export default function SpinWheelScreen() {
           return (
             <G key={i}>
               <Path d={wedgePath(115, 115, 108, a0, a1)} fill={seg.color} stroke="#fff" strokeWidth={2.5} />
-              <SvgText x={tx} y={ty} fontSize={10.5} fontWeight="800" fill="#fff" textAnchor="middle" transform={`rotate(${(mid * 180) / Math.PI + 90} ${tx} ${ty})`}>{seg.label}</SvgText>
+              <SvgText x={tx} y={ty} fontSize={10.5} fontFamily="BeVietnamPro_800ExtraBold" fill="#fff" textAnchor="middle" transform={`rotate(${(mid * 180) / Math.PI + 90} ${tx} ${ty})`}>{seg.label}</SvgText>
             </G>
           );
         })}
@@ -82,12 +82,12 @@ export default function SpinWheelScreen() {
             <View style={{ flexDirection: "row", alignItems: "center", gap: 9 }}>
               <PersonChip state={state} slot={me} />
               <Text style={{ flex: 1, fontSize: 13, color: C.text }}>Lượt của bạn hôm nay</Text>
-              <Text style={{ fontWeight: "900", color: C.pinkDark }}>{left}/{MAX_DAILY_SPINS} còn lại</Text>
+              <Text style={{ fontFamily: "BeVietnamPro_900Black", color: C.pinkDark }}>{left}/{MAX_DAILY_SPINS} còn lại</Text>
             </View>
             <View style={{ flexDirection: "row", alignItems: "center", gap: 9 }}>
               <PersonChip state={state} slot={partner.slot} />
               <Text style={{ flex: 1, fontSize: 13, color: C.text }}>Lượt của {partner.name} (chỉ xem)</Text>
-              <Text style={{ fontWeight: "800", color: C.textSoft }}>{MAX_DAILY_SPINS - partnerUsed}/{MAX_DAILY_SPINS} còn lại</Text>
+              <Text style={{ fontFamily: "BeVietnamPro_800ExtraBold", color: C.textSoft }}>{MAX_DAILY_SPINS - partnerUsed}/{MAX_DAILY_SPINS} còn lại</Text>
             </View>
           </View>
           <Text style={[s.small, { marginTop: 7 }]}>Lượt quay là của riêng từng người: bạn quay hết lượt không ảnh hưởng tới lượt của {partner.name}.</Text>
@@ -99,7 +99,7 @@ export default function SpinWheelScreen() {
             <Animated.View style={{ transform: [{ rotate: rot.interpolate({ inputRange: [0, 360], outputRange: ["0deg", "360deg"] }) }] }}>{wheel}</Animated.View>
             <View style={styles.wheelCenter}><Ionicons name="heart" size={22} color="#fff" /></View>
           </View>
-          {result ? <Text style={{ textAlign: "center", color: C.pinkDark, fontWeight: "700", marginTop: 10, lineHeight: 19 }}>{result}</Text> : null}
+          {result ? <Text style={{ textAlign: "center", color: C.pinkDark, fontFamily: "BeVietnamPro_700Bold", marginTop: 10, lineHeight: 19 }}>{result}</Text> : null}
           <TouchableOpacity style={[s.btn, { marginTop: 12, alignSelf: "stretch" }, (spinning || left <= 0) && { opacity: 0.5 }]} onPress={spin} disabled={spinning || left <= 0}>
             <Ionicons name="refresh" size={16} color="#fff" /><Text style={s.btnText}>{spinning ? "Đang quay..." : left <= 0 ? "Bạn đã hết lượt hôm nay" : "Quay ngay"}</Text>
           </TouchableOpacity>

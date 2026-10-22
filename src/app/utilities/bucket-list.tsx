@@ -27,7 +27,7 @@ export default function BucketListScreen() {
       <ScrollView contentContainerStyle={s.scroll}>
         <View style={s.card}>
           <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
-            <Text style={{ fontWeight: "900", color: C.text }}>Danh sách chung ({state.bucket.length} mục)</Text>
+            <Text style={s.cardTitle}>Danh sách chung ({state.bucket.length} mục)</Text>
             <View style={s.chip}><Ionicons name="checkmark-circle" size={13} color={C.pinkDark} /><Text style={s.chipText}>Đã xong {doneCount}</Text></View>
           </View>
           <View style={{ gap: 9, marginTop: 10 }}>

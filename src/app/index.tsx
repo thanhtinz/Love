@@ -27,6 +27,6 @@ export default function GateScreen() {
 
 const styles = StyleSheet.create({
   wrap: { flex: 1, alignItems: "center", justifyContent: "center", backgroundColor: C.bg, padding: 24 },
-  title: { fontSize: 24, fontWeight: "900", color: C.text, marginTop: 10 },
+  title: { fontSize: 24, fontFamily: "BeVietnamPro_900Black", color: C.text, marginTop: 10 },
   sub: { color: C.textSoft, marginTop: 6, fontSize: 13.5 },
 });

@@ -2,19 +2,23 @@ import React from "react";
 import { Text, View } from "react-native";
 import type { AppState, PersonId } from "../lib/types";
 import Avatar from "./Avatar";
-import { C } from "./ui";
+import { FONT, ROLE } from "./theme";
 
 /**
- * Định danh 2 người NHẤT QUÁN toàn app (chống lẫn lộn "mình" vs "người ấy"):
- * - Người đang đăng nhập: màu hồng rose + nhãn "Bạn".
- * - Người còn lại: màu sky + tên riêng của họ.
+ * Định danh 2 người NHẤT QUÁN toàn app (chống lẫn lộn "mình" vs "người ấy") — hệ màu 3 vai
+ * theo nghiên cứu (Cupla: "Pink for me. Teal for them. Navy for us"):
+ * - Người đang đăng nhập: HỒNG ĐÀO #FF8FA3 + nhãn "Bạn" + avatar + tên.
+ * - Người còn lại: XANH MINT #3EC6B8 + tên riêng của họ.
+ * Không bao giờ phân biệt chỉ bằng màu — chip luôn kèm avatar và tên.
  * Mọi màn hình hiển thị người đều PHẢI đi qua các helper ở đây, ánh xạ slot -> người
  * từ state (personA/personB + avatarA/avatarB), tuyệt đối không tự đoán "người đầu tiên = mình".
  */
-export const SELF_COLOR = C.pink; // #f43f5e
-export const SELF_BG = C.pinkSoft;
-export const PARTNER_COLOR = "#0284c7";
-export const PARTNER_BG = "#e0f2fe";
+export const SELF_COLOR = ROLE.selfDark; // sắc đậm của hồng đào để chữ đọc rõ trên nền sáng
+export const SELF_MAIN = ROLE.self;
+export const SELF_BG = ROLE.selfSoft;
+export const PARTNER_COLOR = ROLE.partnerDark; // sắc đậm của mint để chữ đọc rõ
+export const PARTNER_MAIN = ROLE.partner;
+export const PARTNER_BG = ROLE.partnerSoft;
 
 export interface PersonInfo { slot: PersonId; name: string; avatar: string; isSelf: boolean; color: string; bg: string }
 
@@ -38,10 +42,10 @@ export function PersonChip({ state, slot, size = 22, showYouTag = true }: { stat
   return (
     <View style={{ flexDirection: "row", alignItems: "center", gap: 5, backgroundColor: p.bg, borderRadius: 999, paddingLeft: 2, paddingRight: 8, paddingVertical: 2, alignSelf: "flex-start" }}>
       <Avatar id={p.avatar} size={size} />
-      <Text style={{ fontSize: 12, fontWeight: "800", color: p.color }}>{p.name}</Text>
+      <Text style={{ fontSize: 12, fontFamily: FONT.bold, color: p.color }}>{p.name}</Text>
       {p.isSelf && showYouTag && (
-        <View style={{ backgroundColor: SELF_COLOR, borderRadius: 999, paddingHorizontal: 6, paddingVertical: 1 }}>
-          <Text style={{ fontSize: 9.5, fontWeight: "900", color: "#fff" }}>Bạn</Text>
+        <View style={{ backgroundColor: ROLE.self, borderRadius: 999, paddingHorizontal: 6, paddingVertical: 1 }}>
+          <Text style={{ fontSize: 9.5, fontFamily: FONT.black, color: "#fff" }}>Bạn</Text>
         </View>
       )}
     </View>

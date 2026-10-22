@@ -56,13 +56,13 @@ export default function AccountScreen() {
 
       <View style={[s.card, { alignItems: "center", gap: 6 }]}>
         <Avatar id={user.avatar} size={76} />
-        <Text style={{ fontSize: 18, fontWeight: "900", color: C.text }}>{user.displayName}</Text>
+        <Text style={{ fontSize: 18, fontFamily: "BeVietnamPro_900Black", color: C.text }}>{user.displayName}</Text>
         <Text style={s.sub}>{user.email}</Text>
         <View style={s.chip}><Ionicons name={connected ? "wifi" : "cloud-offline"} size={13} color={C.pinkDark} /><Text style={s.chipText}>{connected ? "Realtime đang bật" : "Đang ngoại tuyến — sẽ đồng bộ khi có mạng"}</Text></View>
       </View>
 
       <View style={s.card}>
-        <Text style={{ fontWeight: "900", color: C.text }}>Hồ sơ hiển thị</Text>
+        <Text style={s.cardTitle}>Hồ sơ hiển thị</Text>
         <Text style={styles.label}>Tên hiển thị</Text>
         <TextInput style={s.input} value={name} onChangeText={setName} maxLength={24} placeholder="Tên của bạn" placeholderTextColor={C.textFaint} />
         <Text style={styles.label}>Avatar</Text>
@@ -81,17 +81,17 @@ export default function AccountScreen() {
 
       {couple && (
         <View style={s.card}>
-          <Text style={{ fontWeight: "900", color: C.text }}>Khu vườn của hai bạn</Text>
+          <Text style={s.cardTitle}>Khu vườn của hai bạn</Text>
           <View style={{ gap: 7, marginTop: 8 }}>
-            <View style={s.row}><Ionicons name="key" size={16} color={C.amber} /><Text style={{ color: C.text }}>Mã mời: <Text style={{ fontWeight: "900", letterSpacing: 2 }}>{couple.code}</Text></Text></View>
-            <View style={s.row}><Ionicons name="person" size={16} color={C.pink} /><Text style={{ color: C.text }}>Bạn là: <Text style={{ fontWeight: "900", color: C.pink }}>{user.displayName} (Bạn)</Text> · vị trí {couple.mySlot} trong vườn</Text></View>
+            <View style={s.row}><Ionicons name="key" size={16} color={C.amber} /><Text style={{ color: C.text }}>Mã mời: <Text style={{ fontFamily: "BeVietnamPro_900Black", letterSpacing: 2 }}>{couple.code}</Text></Text></View>
+            <View style={s.row}><Ionicons name="person" size={16} color={C.pink} /><Text style={{ color: C.text }}>Bạn là: <Text style={{ fontFamily: "BeVietnamPro_900Black", color: C.pink }}>{user.displayName} (Bạn)</Text> · vị trí {couple.mySlot} trong vườn</Text></View>
             {couple.members.map((m) => {
               const isMe = m.userId === user.id;
               return (
-                <View key={m.userId} style={[s.row, { backgroundColor: isMe ? C.pinkSoft : "#e0f2fe", borderRadius: 999, paddingLeft: 2, paddingRight: 10, paddingVertical: 2, alignSelf: "flex-start" }]}>
+                <View key={m.userId} style={[s.row, { backgroundColor: isMe ? C.pinkSoft : "#D9F4F0", borderRadius: 999, paddingLeft: 2, paddingRight: 10, paddingVertical: 2, alignSelf: "flex-start" }]}>
                   <Avatar id={m.avatar} size={26} />
-                  <Text style={{ color: isMe ? C.pinkDark : "#0369a1", fontWeight: "800" }}>{m.displayName}</Text>
-                  {isMe ? (<View style={{ backgroundColor: C.pink, borderRadius: 999, paddingHorizontal: 6, paddingVertical: 1 }}><Text style={{ fontSize: 9.5, fontWeight: "900", color: "#fff" }}>Bạn</Text></View>) : (<Text style={{ fontSize: 11, color: "#0369a1", fontWeight: "700" }}>Người ấy</Text>)}
+                  <Text style={{ color: isMe ? C.pinkDark : "#0B7A6E", fontFamily: "BeVietnamPro_800ExtraBold" }}>{m.displayName}</Text>
+                  {isMe ? (<View style={{ backgroundColor: C.pink, borderRadius: 999, paddingHorizontal: 6, paddingVertical: 1 }}><Text style={{ fontSize: 9.5, fontFamily: "BeVietnamPro_900Black", color: "#fff" }}>Bạn</Text></View>) : (<Text style={{ fontSize: 11, color: "#0B7A6E", fontFamily: "BeVietnamPro_700Bold" }}>Người ấy</Text>)}
                   <Text style={s.small}>· vị trí {m.slot}</Text>
                 </View>
               );
@@ -111,7 +111,7 @@ export default function AccountScreen() {
         </View>
       )}
 
-      {msg ? <Text style={{ color: C.pinkDark, fontWeight: "700", fontSize: 13 }}>{msg}</Text> : null}
+      {msg ? <Text style={{ color: C.pinkDark, fontFamily: "BeVietnamPro_700Bold", fontSize: 13 }}>{msg}</Text> : null}
 
       <TouchableOpacity style={styles.dangerBtn} onPress={confirmSignOut}>
         <Ionicons name="log-out-outline" size={17} color="#b91c1c" /><Text style={styles.dangerText}>Đăng xuất</Text>
@@ -123,9 +123,9 @@ export default function AccountScreen() {
 }
 
 const styles = StyleSheet.create({
-  label: { fontSize: 12.5, fontWeight: "700", color: C.textSoft, marginTop: 10, marginBottom: 5 },
+  label: { fontSize: 12.5, fontFamily: "BeVietnamPro_700Bold", color: C.textSoft, marginTop: 10, marginBottom: 5 },
   avatarBtn: { width: "22%", alignItems: "center", paddingVertical: 7, borderRadius: 13, borderWidth: 1.5, borderColor: "transparent", backgroundColor: "#fff7f8" },
   avatarOn: { borderColor: C.pink, backgroundColor: C.pinkSoft },
   dangerBtn: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 7, backgroundColor: "#fee2e2", borderRadius: 999, paddingVertical: 11 },
-  dangerText: { color: "#b91c1c", fontWeight: "800", fontSize: 14 },
+  dangerText: { color: "#b91c1c", fontFamily: "BeVietnamPro_800ExtraBold", fontSize: 14 },
 });

@@ -38,22 +38,22 @@ export default function LoveActionsScreen() {
             {LOVE_ACTIONS.map((a) => (
               <TouchableOpacity key={a.kind} disabled={disabled} onPress={() => dispatch({ type: "LOVE_ACTION", kind: a.kind, icon: a.icon, label: a.label, actor: meName, user: me.slot })} style={{ flex: 1, backgroundColor: C.pinkSoft, borderRadius: 16, paddingVertical: 12, alignItems: "center", gap: 3, opacity: disabled ? 0.45 : 1 }}>
                 <Ionicons name={a.icon.replace("-outline", "") as never} size={24} color={C.pinkDark} />
-                <Text style={{ fontSize: 11.5, fontWeight: "800", color: C.pinkDark }}>{a.name}</Text>
+                <Text style={{ fontSize: 11.5, fontFamily: "BeVietnamPro_800ExtraBold", color: C.pinkDark }}>{a.name}</Text>
               </TouchableOpacity>
             ))}
           </View>
           {state.lastLoveAction && (
-            <View style={{ marginTop: 11, backgroundColor: "#fdf2f8", borderRadius: 12, padding: 10, flexDirection: "row", gap: 8, alignItems: "center" }}>
+            <View style={{ marginTop: 11, backgroundColor: "#FFE9EE", borderRadius: 12, padding: 10, flexDirection: "row", gap: 8, alignItems: "center" }}>
               <Avatar id={state.lastLoveAction.memoAvatar || (state.lastLoveAction.by === "A" ? state.avatarA : state.avatarB)} size={28} />
               <Text style={{ flex: 1, fontSize: 12.5, color: C.pinkDark }}>
-                Gần nhất: <Text style={{ fontWeight: "800" }}>{state.lastLoveAction.by === me.slot ? `Bạn (${state.lastLoveAction.actor})` : state.lastLoveAction.actor}</Text> vừa {state.lastLoveAction.label} cho {state.lastLoveAction.by === me.slot ? partner.name : `Bạn (${me.name})`} · {new Date(state.lastLoveAction.at).toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" })}
+                Gần nhất: <Text style={{ fontFamily: "BeVietnamPro_800ExtraBold" }}>{state.lastLoveAction.by === me.slot ? `Bạn (${state.lastLoveAction.actor})` : state.lastLoveAction.actor}</Text> vừa {state.lastLoveAction.label} cho {state.lastLoveAction.by === me.slot ? partner.name : `Bạn (${me.name})`} · {new Date(state.lastLoveAction.at).toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" })}
               </Text>
             </View>
           )}
         </View>
 
         <View style={s.card}>
-          <Text style={{ fontWeight: "900", color: C.text }}>Dòng yêu thương gần đây</Text>
+          <Text style={s.cardTitle}>Dòng yêu thương gần đây</Text>
           <View style={{ gap: 9, marginTop: 10 }}>
             {feed.map((a) => {
               const slot = senderSlotOf(a.actor);
@@ -62,7 +62,7 @@ export default function LoveActionsScreen() {
                 <View key={a.id} style={{ flexDirection: "row", gap: 8, alignItems: "center" }}>
                   <Ionicons name={a.icon as never} size={17} color={C.pink} />
                   <Text style={{ flex: 1, fontSize: 12.5, color: C.text }}>
-                    <Text style={{ fontWeight: "800" }}>{slot === me.slot ? `Bạn (${a.actor})` : a.actor}</Text> {a.text.replace(/^vừa\s*/, "")}{receiver ? ` — gửi cho ${slot === me.slot ? receiver : `Bạn (${me.name})`}` : ""}
+                    <Text style={{ fontFamily: "BeVietnamPro_800ExtraBold" }}>{slot === me.slot ? `Bạn (${a.actor})` : a.actor}</Text> {a.text.replace(/^vừa\s*/, "")}{receiver ? ` — gửi cho ${slot === me.slot ? receiver : `Bạn (${me.name})`}` : ""}
                   </Text>
                   <Text style={s.small}>{new Date(a.time).toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" })}</Text>
                 </View>

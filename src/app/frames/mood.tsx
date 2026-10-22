@@ -17,7 +17,7 @@ export default function FrameMoodScreen() {
       <ScreenHeader title="Khung Mood hai người" subtitle="Mỗi người một cột riêng, ghi rõ tên — không lẫn lộn" />
       <ScrollView contentContainerStyle={s.scroll}>
         <FrameExport kind="mood">
-          <Text style={{ fontSize: 16, fontWeight: "900", color: C.pinkDark }}>Tâm trạng hôm nay</Text>
+          <Text style={{ fontSize: 16, fontFamily: "BeVietnamPro_900Black", color: C.pinkDark }}>Tâm trạng hôm nay</Text>
           <View style={{ flexDirection: "row", gap: 22 }}>
             {(["A", "B"] as const).map((slot) => (
               <View key={slot} style={{ alignItems: "center", gap: 5 }}>

@@ -1,6 +1,6 @@
 import {
   AppState, CollectedTree, DECAY_PER_HOUR, PlantState, TreeState,
-  getStage, normalizeState, uid,
+  finiteNum, getStage, isPlainObject, normalizeState, uid,
 } from "./types";
 
 /**
@@ -217,29 +217,39 @@ export function materializePlant(plant: PlantState, nowMs: number = Date.now()):
   let matureAt = plant.matureAt || "";
   let fruitReadyAt = plant.fruitReadyAt || "";
   const total = totalGrowthMs(sp);
-  if (isFinite(from) && nowMs > from) {
-    let t = from;
-    while (t < nowMs) {
-      const step = Math.min(STEP_MS, nowMs - t);
-      const hours = step / HOUR;
-      stats = {
-        water: clampStat(stats.water - DECAY_PER_HOUR.water * sp.waterDecayMul * hours),
-        sun: clampStat(stats.sun - DECAY_PER_HOUR.sun * sp.sunDecayMul * hours),
-        love: clampStat(stats.love - DECAY_PER_HOUR.love * hours),
-      };
-      if (!matureAt) {
-        growth += growthFactor(stats) * step;
-        if (growth >= total) {
-          growth = total;
-          matureAt = new Date(t + step).toISOString();
-          if (sp.fruitCycleMs > 0 && !fruitReadyAt) fruitReadyAt = new Date(t + step + sp.fruitCycleMs).toISOString();
-        }
-      }
-      t += step;
+  if (!isFinite(from) || nowMs <= from) {
+    // Đồng hồ máy chạy LÙI so với mốc ghi sổ (hay gặp khi 2 máy lệch giờ nhau):
+    // TUYỆT ĐỐI không kéo growthAt/statsAt lùi theo — bản cũ vẫn ghi growthAt = now
+    // khiến khoảng thời gian đã ghi sổ bị tính tăng trưởng LẦN HAI khi đồng hồ quay
+    // lại, cây lớn "trùng" một đoạn. Giữ nguyên mốc cũ, chỉ chốt trưởng thành nếu đủ.
+    if (!matureAt && growth >= total) {
+      matureAt = plant.plantedAt;
+      if (sp.fruitCycleMs > 0 && !fruitReadyAt) fruitReadyAt = new Date(new Date(matureAt).getTime() + sp.fruitCycleMs).toISOString();
+      return { ...plant, matureAt, fruitReadyAt };
     }
-  } else if (!matureAt && growth >= total) {
-    matureAt = plant.plantedAt;
-    if (sp.fruitCycleMs > 0 && !fruitReadyAt) fruitReadyAt = new Date(new Date(matureAt).getTime() + sp.fruitCycleMs).toISOString();
+    return { ...plant };
+  }
+  let t = from;
+  while (t < nowMs) {
+    const step = Math.min(STEP_MS, nowMs - t);
+    const hours = step / HOUR;
+    stats = {
+      water: clampStat(stats.water - DECAY_PER_HOUR.water * sp.waterDecayMul * hours),
+      sun: clampStat(stats.sun - DECAY_PER_HOUR.sun * sp.sunDecayMul * hours),
+      love: clampStat(stats.love - DECAY_PER_HOUR.love * hours),
+    };
+    if (!matureAt) {
+      growth += growthFactor(stats) * step;
+      if (growth >= total) {
+        growth = total;
+        matureAt = new Date(t + step).toISOString();
+        if (sp.fruitCycleMs > 0 && !fruitReadyAt) fruitReadyAt = new Date(t + step + sp.fruitCycleMs).toISOString();
+      }
+    }
+    t += step;
+    // Thoát sớm: chỉ số đã chạm 0 hết thì từ đây không còn gì thay đổi nữa
+    // (chưa trưởng thành -> tốc độ 0 vĩnh viễn tới khi được chăm; đã trưởng thành -> chỉ chờ hao về 0).
+    if (stats.water === 0 && stats.sun === 0 && stats.love === 0) break;
   }
   const nowIso = new Date(nowMs).toISOString();
   return {
@@ -339,26 +349,32 @@ export function careStatus(plant: PlantState, kind: "water" | "sun" | "love" | "
 }
 
 /* ---------- Chuẩn hoá + MIGRATION V4 -> V5 ---------- */
-function normalizePlant(raw: Partial<PlantState>, index: number): PlantState {
+function normalizePlant(rawInput: Partial<PlantState>, index: number): PlantState {
+  const raw: Partial<PlantState> = isPlainObject(rawInput) ? rawInput : {};
   const base = createPlant(typeof raw.speciesId === "string" && SPECIES.some((s) => s.id === raw.speciesId) ? raw.speciesId : "love-tree");
+  const statOr = (v: unknown) => clampStat(finiteNum(v, 60));
+  const countOr = (v: unknown) => Math.max(0, Math.floor(finiteNum(v, 0)));
+  const strOr = (v: unknown, fallback: string) => (typeof v === "string" && v ? v : fallback);
   return {
     ...base, ...raw,
-    id: raw.id || `plant-${index}-${uid()}`,
+    id: typeof raw.id === "string" && raw.id ? raw.id : `plant-${index}-${uid()}`,
     speciesId: base.speciesId,
-    plantedAt: raw.plantedAt || base.plantedAt,
-    growthRecordedMs: typeof raw.growthRecordedMs === "number" ? raw.growthRecordedMs : 0,
-    growthAt: raw.growthAt || raw.statsAt || raw.plantedAt || base.growthAt,
-    totalBoostMs: typeof raw.totalBoostMs === "number" ? raw.totalBoostMs : 0,
-    water: typeof raw.water === "number" ? raw.water : 60,
-    sun: typeof raw.sun === "number" ? raw.sun : 60,
-    love: typeof raw.love === "number" ? raw.love : 60,
-    statsAt: raw.statsAt || raw.growthAt || raw.plantedAt || base.statsAt,
-    careCount: typeof raw.careCount === "number" ? raw.careCount : 0,
-    lastCareAtBy: { A: (raw.lastCareAtBy && raw.lastCareAtBy.A) || "", B: (raw.lastCareAtBy && raw.lastCareAtBy.B) || "" },
-    announcedStage: typeof raw.announcedStage === "number" ? raw.announcedStage : 0,
-    matureAt: raw.matureAt || "",
-    fruitReadyAt: raw.fruitReadyAt || "",
-    harvestCount: typeof raw.harvestCount === "number" ? raw.harvestCount : 0,
+    plantedAt: strOr(raw.plantedAt, base.plantedAt),
+    growthRecordedMs: Math.max(0, finiteNum(raw.growthRecordedMs, 0)),
+    growthAt: strOr(raw.growthAt, "") || strOr(raw.statsAt, "") || strOr(raw.plantedAt, base.growthAt),
+    totalBoostMs: Math.max(0, finiteNum(raw.totalBoostMs, 0)),
+    water: statOr(raw.water),
+    sun: statOr(raw.sun),
+    love: statOr(raw.love),
+    statsAt: strOr(raw.statsAt, "") || strOr(raw.growthAt, "") || strOr(raw.plantedAt, base.statsAt),
+    careCount: countOr(raw.careCount),
+    lastCareAt: typeof raw.lastCareAt === "string" ? raw.lastCareAt : "",
+    lastCareBy: typeof raw.lastCareBy === "string" ? raw.lastCareBy : "",
+    lastCareAtBy: { A: typeof raw.lastCareAtBy?.A === "string" ? raw.lastCareAtBy.A : "", B: typeof raw.lastCareAtBy?.B === "string" ? raw.lastCareAtBy.B : "" },
+    announcedStage: countOr(raw.announcedStage),
+    matureAt: typeof raw.matureAt === "string" ? raw.matureAt : "",
+    fruitReadyAt: typeof raw.fruitReadyAt === "string" ? raw.fruitReadyAt : "",
+    harvestCount: countOr(raw.harvestCount),
   };
 }
 
@@ -390,19 +406,43 @@ export function plantFromLegacyTree(tree: TreeState): PlantState {
 }
 
 /** normalizeState đầy đủ cho V5 (dùng thay normalizeState ở store — áp cả cho state từ Supabase room_state). */
-export function normalizeStateV5(raw: Partial<AppState> & { createdAt?: string }): AppState {
+export function normalizeStateV5(rawInput: Partial<AppState> & { createdAt?: string }): AppState {
+  const raw: Partial<AppState> & { createdAt?: string } = isPlainObject(rawInput) ? rawInput : {};
   const s = normalizeState(raw);
+  const rawPlants = (raw as Partial<AppState>).plants;
+  // Dấu hiệu state do BẢN MOBILE ghi (bản web không bao giờ ghi các trường này):
+  // dùng để phân biệt "plants: [] vì đã thu hết cây" (mobile) với "chưa từng có plants" (web).
+  const hasMobileMarkers = Boolean(
+    (raw as Partial<AppState>).games || (raw as Partial<AppState>).loveNotes ||
+    (raw as Partial<AppState>).frameRewards || (raw as Partial<AppState>).loveLimits ||
+    (raw as Partial<AppState>).updatedAt,
+  );
   let plants: PlantState[];
-  if (Array.isArray((raw as Partial<AppState>).plants) && (raw as Partial<AppState>).plants!.length > 0) {
-    plants = (raw as Partial<AppState>).plants!.slice(0, MAX_PLOTS).map((p, i) => normalizePlant(p, i));
+  if (Array.isArray(rawPlants) && rawPlants.length > 0) {
+    plants = rawPlants.slice(0, MAX_PLOTS).map((p, i) => normalizePlant(p, i));
+  } else if (Array.isArray(rawPlants) && hasMobileMarkers) {
+    // BUG cũ: state mobile có plants rỗng (đã thu cây cuối cùng vào kỷ niệm) bị rơi xuống
+    // nhánh migration legacy và HỒI SINH cây từ state.tree cũ mỗi lần tải/đồng bộ.
+    plants = [];
   } else if (s.tree && (s.tree.careCount > 0 || s.tree.xp > 0)) {
     plants = [plantFromLegacyTree(s.tree)];
   } else {
     const fresh = createPlant("love-tree");
     plants = [{ ...fresh, water: s.tree?.water ?? 60, sun: s.tree?.sun ?? 60, love: s.tree?.love ?? 60 }];
   }
-  const selectedPlantId = plants.some((p) => p.id === raw.selectedPlantId) ? (raw.selectedPlantId as string) : plants[0].id;
-  const treeCollection: CollectedTree[] = Array.isArray(raw.treeCollection) ? raw.treeCollection.filter((c) => c && c.speciesId) : [];
+  const selectedPlantId = plants.length > 0 && plants.some((p) => p.id === raw.selectedPlantId)
+    ? (raw.selectedPlantId as string)
+    : (plants[0]?.id || "");
+  const treeCollection: CollectedTree[] = Array.isArray(raw.treeCollection)
+    ? raw.treeCollection.filter((c) => isPlainObject(c) && typeof c.speciesId === "string").map((c) => ({
+        id: typeof c.id === "string" ? c.id : uid(),
+        speciesId: c.speciesId,
+        plantedAt: typeof c.plantedAt === "string" ? c.plantedAt : "",
+        maturedAt: typeof c.maturedAt === "string" ? c.maturedAt : "",
+        collectedAt: typeof c.collectedAt === "string" ? c.collectedAt : "",
+        careCount: Math.max(0, Math.floor(finiteNum(c.careCount, 0))),
+      }))
+    : [];
   return { ...s, plants, selectedPlantId, treeCollection };
 }
 
