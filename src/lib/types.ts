@@ -1,4 +1,21 @@
 export type PersonId = "A" | "B";
+/* ---------- v3: tài khoản — bộ avatar chibi để chọn khi đăng ký ---------- */
+export interface AvatarOption { id: string; emoji: string; label: string; bg: string }
+export const AVATARS: AvatarOption[] = [
+  { id: "svg-a", emoji: "🌸", label: "Bé Hoa (SVG)", bg: "#ffe4ec" },
+  { id: "svg-b", emoji: "💙", label: "Bé Sao (SVG)", bg: "#dbeafe" },
+  { id: "bunny", emoji: "🐰", label: "Thỏ con", bg: "#fdf2f8" },
+  { id: "bear", emoji: "🐻", label: "Gấu nâu", bg: "#fef3c7" },
+  { id: "cat", emoji: "🐱", label: "Mèo con", bg: "#ffedd5" },
+  { id: "dog", emoji: "🐶", label: "Cún con", bg: "#fef9c3" },
+  { id: "fox", emoji: "🦊", label: "Cáo nhỏ", bg: "#fff7ed" },
+  { id: "panda", emoji: "🐼", label: "Gấu trúc", bg: "#f1f5f9" },
+  { id: "frog", emoji: "🐸", label: "Ếch xanh", bg: "#dcfce7" },
+  { id: "pig", emoji: "🐷", label: "Heo hồng", bg: "#fce7f3" },
+  { id: "chick", emoji: "🐣", label: "Gà con", bg: "#fefce8" },
+  { id: "koala", emoji: "🐨", label: "Koala", bg: "#e2e8f0" },
+];
+export function avatarById(id?: string): AvatarOption { return AVATARS.find((a) => a.id === id) || AVATARS[0]; }
 export type Rarity = "common" | "rare" | "legendary";
 export type ShopCategory = "pot" | "scene" | "accessory";
 export interface TreeState { xp: number; water: number; sun: number; love: number; careCount: number; lastCareAt: string; lastCareBy: string; statsAt: string; }
@@ -28,6 +45,10 @@ export interface AppState {
   lastLoveAction: LastLoveAction | null;
   onboarded: boolean;
   everOnboarded: boolean;
+  // --- v3: danh tính lấy từ tài khoản của 2 thành viên + tên khu vườn ---
+  gardenName: string;
+  avatarA: string;
+  avatarB: string;
 }
 export const STAGES = [
   { name: "Hạt giống", emoji: "🌰", minXp: 0, desc: "Một hạt mầm tình yêu vừa được gieo", scale: 0.7 },
@@ -108,6 +129,9 @@ export const defaultState: AppState = {
   lastLoveAction: null,
   onboarded: false,
   everOnboarded: false,
+  gardenName: "Khu Vườn Tình Yêu",
+  avatarA: "svg-a",
+  avatarB: "svg-b",
 };
 export function normalizeState(raw: Partial<AppState>): AppState {
   // State v1 chưa có field onboarded: nếu đã có lịch sử dùng app thì coi như đã onboard để không làm phiền lại
@@ -126,6 +150,9 @@ export function normalizeState(raw: Partial<AppState>): AppState {
     lastLoveAction: raw.lastLoveAction || null,
     onboarded: typeof raw.onboarded === "boolean" ? raw.onboarded : hasHistory,
     everOnboarded: typeof raw.everOnboarded === "boolean" ? raw.everOnboarded : hasHistory,
+    gardenName: raw.gardenName || defaultState.gardenName,
+    avatarA: raw.avatarA || defaultState.avatarA,
+    avatarB: raw.avatarB || defaultState.avatarB,
   };
 }
 export const RARITY_STYLE: Record<Rarity, { label: string; ring: string; bg: string; text: string; emoji: string }> = {

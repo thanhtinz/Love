@@ -3,6 +3,8 @@ import React, { createContext, useContext, useEffect, useReducer, useRef } from 
 import { AppState, CARE_COINS, LETTER_COINS, LoveLetter, MemoryItem, ONBOARD_GIFT_COINS, QUEST_COINS, ShopCategory, decayedStats, defaultState, getStage, normalizeState, today, uid } from "./types";
 import { shopItem } from "./data";
 import { RealtimeSync } from "./realtime";
+import { useAuth } from "./auth";
+import { getSupabase, HAS_SUPABASE } from "./supabase";
 
 export type Action =
   | { type: "SET_STATE"; state: AppState }
@@ -29,9 +31,11 @@ export type Action =
   | { type: "ADD_MEMORY"; memory: MemoryItem }
   | { type: "DEL_MEMORY"; id: string }
   | { type: "COMPLETE_ONBOARDING"; a: string; b: string; startDate: string; user: "A" | "B"; roomCode: string }
-  | { type: "REOPEN_ONBOARDING" };
+  | { type: "REOPEN_ONBOARDING" }
+  // --- v3: danh tính từ tài khoản + thiết lập vườn sau ghép cặp ---
+  | { type: "SET_IDENTITY"; a: string; b: string; avatarA: string; avatarB: string; user: "A" | "B"; roomCode: string }
+  | { type: "SETUP_GARDEN"; gardenName: string; startDate: string };
 
-const KEY = "love-app-v1";
 function pushAct(s: AppState, actor: string, text: string, emoji: string): AppState["activities"] {
   return [{ id: uid(), actor, text, time: new Date().toISOString(), emoji }, ...s.activities].slice(0, 40);
 }
@@ -172,19 +176,104 @@ function reducer(state: AppState, action: Action): AppState {
       };
     }
     case "REOPEN_ONBOARDING": return { ...state, onboarded: false };
+    case "SET_IDENTITY": {
+      // Tên/avatar/slot/mã phòng lấy từ TÀI KHOẢN của 2 thành viên (không chọn tay nữa).
+      // Không đổi gì -> trả nguyên state để tránh vòng lặp render/sync.
+      if (state.personA === action.a && state.personB === action.b && state.avatarA === action.avatarA && state.avatarB === action.avatarB && state.currentUser === action.user && state.roomCode === action.roomCode) return state;
+      return { ...state, personA: action.a, personB: action.b, avatarA: action.avatarA, avatarB: action.avatarB, currentUser: action.user, roomCode: action.roomCode };
+    }
+    case "SETUP_GARDEN": {
+      const firstTime = !state.everOnboarded;
+      return {
+        ...state,
+        gardenName: action.gardenName || state.gardenName,
+        startDate: action.startDate || state.startDate,
+        onboarded: true, everOnboarded: true,
+        coins: firstTime ? state.coins + ONBOARD_GIFT_COINS : state.coins,
+        activities: pushAct(state, "Khu vườn", firstTime ? `chào mừng hai bạn đến với "${action.gardenName || state.gardenName}"! Tặng +${ONBOARD_GIFT_COINS} Xu Tim làm quà 🎁` : "đã cập nhật thông tin khu vườn", "🎉"),
+      };
+    }
     default: return state;
   }
 }
 
+/* ---------- v3: state vườn được scope theo couple id ---------- */
+const LEGACY_KEY = "love-app-v1"; // key của V1/V2 (trước khi có tài khoản)
+const CLAIM_KEY = "love-legacy-claimed"; // đánh dấu khu vườn V2 cũ đã được couple đầu tiên nhận lại
+const gardenKey = (coupleId: string) => `love-garden-${coupleId}`;
+
 const Ctx = createContext<{ state: AppState; dispatch: React.Dispatch<Action>; connected: boolean }>({ state: defaultState, dispatch: () => {}, connected: false });
 export function LoveProvider({ children }: { children: React.ReactNode }) {
+  const auth = useAuth();
+  const coupleId = auth.couple?.id ?? null;
+  const coupleCode = auth.couple?.code ?? null;
   const [state, rawDispatch] = useReducer(reducer, defaultState);
   const [connected, setConnected] = React.useState(false);
-  const [hydrated, setHydrated] = React.useState(false);
+  const [hydratedFor, setHydratedFor] = React.useState<string | null>(null);
+  const scope = coupleId ?? "lobby";
+  const hydrated = hydratedFor === scope;
   const syncRef = useRef<RealtimeSync | null>(null);
   const isRemote = useRef(false);
+  const remoteSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const stateRef = useRef(state); stateRef.current = state;
-  useEffect(() => { try { const raw = localStorage.getItem(KEY); if (raw) rawDispatch({ type: "SET_STATE", state: normalizeState(JSON.parse(raw)) }); } catch {} setHydrated(true); }, []);
+  const storageKeyRef = useRef(LEGACY_KEY);
+  storageKeyRef.current = coupleId ? gardenKey(coupleId) : LEGACY_KEY;
+
+  /* Nạp state của couple hiện tại: Supabase room_state -> cache local theo couple -> nhận lại vườn V2 cũ (lần đầu) */
+  useEffect(() => {
+    let cancelled = false;
+    setHydratedFor(null);
+    (async () => {
+      let initial: AppState | null = null;
+      if (coupleId) {
+        if (auth.mode === "supabase" && HAS_SUPABASE) {
+          const sb = await getSupabase();
+          if (sb) {
+            try {
+              const { data } = await sb.from("room_state").select("state").eq("couple_id", coupleId).maybeSingle();
+              const remote = (data as { state?: AppState } | null)?.state;
+              if (remote && Object.keys(remote).length > 0) initial = normalizeState(remote);
+            } catch { /* rơi xuống cache local */ }
+          }
+        }
+        if (!initial) { try { const raw = localStorage.getItem(gardenKey(coupleId)); if (raw) initial = normalizeState(JSON.parse(raw)); } catch {} }
+        if (!initial) {
+          // Couple đầu tiên tạo trên máy này được nhận lại nguyên khu vườn V2 (key love-app-v1) để không mất cây/thư đã trồng
+          try {
+            const legacy = localStorage.getItem(LEGACY_KEY);
+            if (legacy && !localStorage.getItem(CLAIM_KEY)) {
+              initial = normalizeState(JSON.parse(legacy));
+              localStorage.setItem(CLAIM_KEY, coupleId);
+            }
+          } catch {}
+        }
+      } else {
+        try { const raw = localStorage.getItem(LEGACY_KEY); if (raw) initial = normalizeState(JSON.parse(raw)); } catch {}
+      }
+      if (cancelled) return;
+      rawDispatch({ type: "SET_STATE", state: initial ?? defaultState });
+      setHydratedFor(scope);
+    })();
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [coupleId]);
+
+  /* Danh tính trong vườn lấy từ tài khoản 2 thành viên: tên, avatar, slot của tôi, mã mời = mã phòng */
+  useEffect(() => {
+    if (!hydrated || !auth.couple || !auth.user) return;
+    const mA = auth.couple.members.find((m) => m.slot === "A");
+    const mB = auth.couple.members.find((m) => m.slot === "B");
+    rawDispatch({
+      type: "SET_IDENTITY",
+      a: mA?.displayName || "Bé A",
+      b: mB?.displayName || "Người thương",
+      avatarA: mA?.avatar || "svg-a",
+      avatarB: mB?.avatar || "svg-b",
+      user: auth.couple.mySlot,
+      roomCode: auth.couple.code,
+    });
+  }, [hydrated, auth.couple, auth.user]);
+
   // v2: tick mỗi phút để cây "sống thật" (chỉ số tự giảm theo thời gian) + áp dụng ngay khi mở app
   useEffect(() => {
     if (!hydrated) return;
@@ -192,26 +281,42 @@ export function LoveProvider({ children }: { children: React.ReactNode }) {
     const iv = setInterval(() => rawDispatch({ type: "TICK" }), 60000);
     return () => clearInterval(iv);
   }, [hydrated]);
+
+  /* Realtime theo couple: channel dùng couple id (ổn định, duy nhất); chưa ghép cặp thì theo mã phòng như cũ */
+  const channelId = coupleId ?? state.roomCode;
   useEffect(() => {
     if (!hydrated) return;
-    const sync = new RealtimeSync(state.roomCode, (payload) => {
+    const sync = new RealtimeSync(channelId, (payload) => {
       const p = payload as { kind?: string; state?: AppState };
       if (p?.kind === "state" && p.state && p.state.roomCode === stateRef.current.roomCode) { isRemote.current = true; rawDispatch({ type: "SET_STATE", state: p.state }); }
     });
     sync.connect(); syncRef.current = sync; setConnected(true);
     const onStorage = (e: StorageEvent) => {
-      if (e.key === KEY && e.newValue) { try { const s = JSON.parse(e.newValue) as AppState; if (s.roomCode === stateRef.current.roomCode) { isRemote.current = true; rawDispatch({ type: "SET_STATE", state: s }); } } catch {} }
-      if (e.key === "love-app-sync" && e.newValue) { try { const { payload } = JSON.parse(e.newValue); if (payload?.kind === "state") { isRemote.current = true; rawDispatch({ type: "SET_STATE", state: payload.state }); } } catch {} }
+      if (e.key === storageKeyRef.current && e.newValue) { try { const s = JSON.parse(e.newValue) as AppState; if (s.roomCode === stateRef.current.roomCode) { isRemote.current = true; rawDispatch({ type: "SET_STATE", state: s }); } } catch {} }
+      if (e.key === "love-app-sync" && e.newValue) { try { const { payload } = JSON.parse(e.newValue); if (payload?.kind === "state" && payload.state?.roomCode === stateRef.current.roomCode) { isRemote.current = true; rawDispatch({ type: "SET_STATE", state: payload.state }); } } catch {} }
     };
     window.addEventListener("storage", onStorage);
     return () => { sync.disconnect(); window.removeEventListener("storage", onStorage); }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [hydrated, state.roomCode]);
+  }, [hydrated, channelId]);
+
+  /* Lưu: cache local theo couple + broadcast + (Supabase) debounce upsert vào room_state theo couple_id */
   useEffect(() => {
     if (!hydrated) return;
-    try { localStorage.setItem(KEY, JSON.stringify(state)); } catch {}
+    try { localStorage.setItem(storageKeyRef.current, JSON.stringify(state)); } catch {}
     if (isRemote.current) { isRemote.current = false; return; }
     syncRef.current?.send({ kind: "state", state });
+    if (coupleId && coupleCode && auth.mode === "supabase" && HAS_SUPABASE) {
+      if (remoteSaveTimer.current) clearTimeout(remoteSaveTimer.current);
+      remoteSaveTimer.current = setTimeout(() => {
+        void (async () => {
+          const sb = await getSupabase();
+          if (!sb) return;
+          await sb.from("room_state").upsert({ couple_id: coupleId, state: stateRef.current, updated_at: new Date().toISOString() }).then(() => {}, () => {});
+        })();
+      }, 800);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state, hydrated]);
   const dispatch: React.Dispatch<Action> = (a) => { rawDispatch(a); };
   return <Ctx.Provider value={{ state, dispatch, connected }}>{children}</Ctx.Provider>;

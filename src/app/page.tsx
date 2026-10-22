@@ -6,7 +6,9 @@ import Memories from "@/components/Memories";
 import Onboarding from "@/components/Onboarding";
 import { LoveActions, LoveToast } from "@/components/LoveActions";
 import { ActivityFeed, BucketList, DailyQuestion, DateIdea, LoveNotes, MoodPicker } from "@/components/Widgets";
+import { AuthScreen, PairScreen } from "@/components/AuthScreens";
 import { useLove } from "@/lib/store";
+import { useAuth } from "@/lib/auth";
 const TABS = [
   { id: "home", label: "🏠 Trang chủ" }, { id: "tree", label: "🌳 Cây tình yêu" }, { id: "notes", label: "📌 Ghi chú" }, { id: "bucket", label: "🎯 Bucket List" }, { id: "question", label: "💬 Câu hỏi" }, { id: "memories", label: "📸 Kỷ niệm" },
 ] as const;
@@ -32,7 +34,23 @@ function PetalRain() {
 export default function Home() {
   const [tab, setTab] = useState<Tab>("home");
   const { state } = useLove();
+  const auth = useAuth();
   const pendingCount = state.letters.filter((l) => !l.opened).length;
+
+  /* ---- V3: cổng tài khoản — chưa login / chưa ghép cặp thì chưa vào được vườn ---- */
+  if (!auth.ready) {
+    return (
+      <main className="min-h-screen bg-[radial-gradient(ellipse_at_top,#ffe4ec_0%,#fff9f0_45%,#ecfdf5_100%)] flex items-center justify-center p-4">
+        <div className="text-center animate-pop">
+          <p className="text-6xl animate-bounceSoft">🌱</p>
+          <p className="mt-2 font-display font-bold text-pink-500">Đang mở cửa khu vườn... 💖</p>
+        </div>
+      </main>
+    );
+  }
+  if (!auth.user) return <AuthScreen />;
+  if (!auth.couple) return <PairScreen />;
+
   return (
     <main className="relative min-h-screen bg-[radial-gradient(ellipse_at_top,#ffe4ec_0%,#fff9f0_45%,#ecfdf5_100%)] pb-24 sm:pb-8">
       {tab === "home" && <PetalRain />}
@@ -49,7 +67,7 @@ export default function Home() {
         {tab === "bucket" && (<div key="bucket" className="animate-fadeUp"><BucketList /></div>)}
         {tab === "question" && (<div key="question" className="space-y-4 animate-fadeUp"><DailyQuestion /><MoodPicker /></div>)}
         {tab === "memories" && (<div key="memories" className="animate-fadeUp"><Memories /></div>)}
-        <footer className="text-center text-xs text-slate-400 pt-2">Làm bằng 💖 cho hai người — mở 2 tab cùng phòng để chơi realtime cùng nhau • Có thể “Thêm vào màn hình chính” như một app 📱</footer>
+        <footer className="text-center text-xs text-slate-400 pt-2">Làm bằng 💖 cho hai người — mỗi người một tài khoản, ghép cặp bằng mã mời để chơi realtime cùng nhau • Có thể “Thêm vào màn hình chính” như một app 📱</footer>
       </div>
       {/* Mobile bottom nav */}
       <nav className="sm:hidden fixed bottom-0 inset-x-0 z-40 bg-white/90 backdrop-blur border-t-2 border-pink-100 flex justify-around py-2">
