@@ -9,6 +9,7 @@ const config: Config = {
       pop: "pop 0.4s ease-out", rise: "rise 1.2s ease-out forwards", fall: "fall 2.2s cubic-bezier(.2,.7,.4,1) forwards",
       sway: "sway 2.6s ease-in-out infinite", glow: "glow 1.6s ease-in-out infinite", confetti: "confetti 2.4s ease-out forwards",
       shakeTree: "shakeTree 0.7s ease-in-out", sparkle: "sparkle 1s ease-in-out infinite", drift: "drift 5s ease-in-out infinite",
+      flutter: "flutter 6s ease-in-out infinite", fadeUp: "fadeUp 0.5s ease-out both", petal: "petal 13s linear infinite",
     },
     keyframes: {
       float: { "0%,100%": { transform: "translateY(0)" }, "50%": { transform: "translateY(-10px)" } },
@@ -23,6 +24,9 @@ const config: Config = {
       shakeTree: { "0%,100%": { transform: "rotate(0deg) scale(1)" }, "20%": { transform: "rotate(-4deg) scale(1.06)" }, "45%": { transform: "rotate(4deg) scale(1.08)" }, "70%": { transform: "rotate(-2deg) scale(1.04)" } },
       sparkle: { "0%,100%": { opacity: "0.3", transform: "scale(.8)" }, "50%": { opacity: "1", transform: "scale(1.2)" } },
       drift: { "0%,100%": { transform: "translate(0,0)" }, "50%": { transform: "translate(8px,-10px)" } },
+      flutter: { "0%,100%": { transform: "translate(0,0) rotate(-8deg)" }, "25%": { transform: "translate(26px,-20px) rotate(10deg)" }, "55%": { transform: "translate(52px,2px) rotate(-6deg)" }, "78%": { transform: "translate(24px,14px) rotate(8deg)" } },
+      fadeUp: { "0%": { opacity: "0", transform: "translateY(14px)" }, "100%": { opacity: "1", transform: "translateY(0)" } },
+      petal: { "0%": { transform: "translate(0,-6vh) rotate(0deg)", opacity: "0" }, "8%": { opacity: "0.55" }, "50%": { transform: "translate(4vw,50vh) rotate(190deg)" }, "92%": { opacity: "0.5" }, "100%": { transform: "translate(-2vw,104vh) rotate(360deg)", opacity: "0" } },
     },
   } },
   plugins: [],

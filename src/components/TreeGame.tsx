@@ -1,13 +1,15 @@
 "use client";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useLove, myName } from "@/lib/store";
-import { CARE_MILESTONES, LoveLetter, RARITY_STYLE, getStage, today, uid } from "@/lib/types";
-import { ACHIEVEMENTS, LOVE_MESSAGES, QUESTS, pickMessage } from "@/lib/data";
+import { CARE_MILESTONES, LoveLetter, RARITY_STYLE, decayedStats, getStage, today, treeHealth, uid } from "@/lib/types";
+import { ACHIEVEMENTS, LOVE_MESSAGES, QUESTS, pickMessage, shopItem, timeSky } from "@/lib/data";
 import FloatingHearts, { Burst } from "./FloatingHearts";
+import Shop from "./Shop";
 
 type Kind = "water" | "sun" | "love" | "bug";
 const PARTICLES: Record<Kind, string[]> = { water: ["💧", "💦", "🔵", "🫧"], sun: ["☀️", "✨", "🌟", "💛"], love: ["💖", "💗", "💕", "❤️"], bug: ["🍃", "🐛", "✨", "🌿"] };
 const XP: Record<Kind, number> = { water: 10, sun: 10, love: 12, bug: 8 };
+const GROUND_DECOR = ["🍀", "🌼", "🌷", "🌸", "🍄", "🌻", "🌺", "🍀"];
 interface Particle { id: number; emoji: string; x: number; delay: number; }
 interface Falling { id: string; emoji: string; x: number; rarity: string; }
 
@@ -31,6 +33,22 @@ export default function TreeGame() {
   const opened = state.letters.filter((l) => l.opened);
   const daily = state.daily.date === today() ? state.daily : { ...state.daily, water: 0, love: 0, sun: 0, bug: 0, caredA: false, caredB: false, claimed: [] as string[] };
   const questProgress = (q: (typeof QUESTS)[0]) => q.key === "both" ? (daily.caredA ? 1 : 0) + (daily.caredB ? 1 : 0) : daily[q.key];
+
+  // --- v2: chỉ số THẬT sau decay (force tick 500ms bên dưới giúp hiển thị luôn tươi) ---
+  const stats = decayedStats(state.tree);
+  const health = treeHealth(stats);
+  const wilted = health.status === "wilted";
+
+  // --- v2: cảnh vườn — nền trang bị ở shop, scene-auto thì theo giờ thật ---
+  const sceneItem = shopItem(state.equipped.scene);
+  const potItem = shopItem(state.equipped.pot);
+  const accItem = shopItem(state.equipped.accessory);
+  const hour = new Date().getHours();
+  const autoSky = timeSky(hour);
+  const isNight = sceneItem.id === "scene-night" || (sceneItem.id === "scene-auto" && autoSky.night);
+  const skyGrad = sceneItem.id === "scene-auto" ? autoSky.sky : sceneItem.visual;
+  const orb = sceneItem.id === "scene-night" ? "🌙" : sceneItem.id === "scene-sunset" ? "🌇" : sceneItem.id === "scene-rainbow" ? "🌈" : autoSky.orb;
+  const butterflies = (health.status === "happy" ? 2 : 0) + (accItem.id === "acc-butterfly" ? 2 : 0);
 
   // Thư mới từ người kia (remote) cũng rơi xuống
   useEffect(() => {
@@ -88,7 +106,7 @@ export default function TreeGame() {
   }
 
   const bar = (label: string, v: number, color: string, icon: string) => (
-    <div><div className="flex justify-between text-xs font-bold text-slate-600"><span>{icon} {label}</span><span>{v}%</span></div><div className="h-3.5 rounded-full bg-white/80 overflow-hidden mt-1 shadow-inner"><div className={`h-full ${color} transition-all duration-700 rounded-full`} style={{ width: `${v}%` }} /></div></div>
+    <div><div className="flex justify-between text-xs font-bold text-slate-600"><span>{icon} {label}</span><span>{Math.round(v)}%{v < 20 ? " ⚠️" : ""}</span></div><div className="h-3.5 rounded-full bg-white/80 overflow-hidden mt-1 shadow-inner"><div className={`h-full ${v < 20 ? "bg-gradient-to-r from-red-300 to-red-400" : color} transition-all duration-700 rounded-full`} style={{ width: `${v}%` }} /></div></div>
   );
   const cdLeft = (k: Kind) => Math.max(0, 2500 - (Date.now() - (cooldowns[k] || 0)));
   const [, force] = useState(0); useEffect(() => { const iv = setInterval(() => force((x) => x + 1), 500); return () => clearInterval(iv); }, []);
@@ -97,25 +115,45 @@ export default function TreeGame() {
 
   return (
     <div className="space-y-4">
-      <section className="relative overflow-hidden rounded-[2rem] border-2 border-pink-100 bg-gradient-to-b from-sky-100 via-pink-50 to-emerald-50 p-4 pb-2 shadow-[0_10px_40px_rgba(244,83,131,0.15)]">
-        {/* mây trôi + nắng */}
-        <span className="absolute top-3 left-4 text-3xl animate-drift opacity-80">☁️</span><span className="absolute top-8 right-8 text-3xl animate-drift opacity-70">☁️</span>
-        <span className="absolute top-2 right-3 text-4xl animate-sparkle">☀️</span>
+      <section className={`relative overflow-hidden rounded-[2rem] border-2 ${isNight ? "border-indigo-200" : "border-pink-100"} bg-gradient-to-b ${skyGrad} p-4 pb-2 shadow-[0_10px_40px_rgba(244,83,131,0.15)] transition-colors duration-1000`}>
+        {/* trời theo giờ / cảnh trang bị */}
+        {!isNight && <><span className="absolute top-3 left-4 text-3xl animate-drift opacity-80">☁️</span><span className="absolute top-8 right-8 text-3xl animate-drift opacity-70">☁️</span></>}
+        {isNight && <><span className="absolute top-4 left-8 text-lg animate-sparkle">✨</span><span className="absolute top-10 left-1/3 text-sm animate-sparkle">⭐</span><span className="absolute top-5 right-1/4 text-lg animate-sparkle">✨</span><span className="absolute top-16 right-10 text-xs animate-float">🪰</span></>}
+        <span className="absolute top-2 right-3 text-4xl animate-sparkle">{orb}</span>
+        <span className={`absolute top-3 left-1/2 -translate-x-1/2 rounded-full px-2.5 py-0.5 text-[10px] font-bold ${isNight ? "bg-indigo-900/40 text-indigo-50" : "bg-white/60 text-slate-500"}`}>{sceneItem.id === "scene-auto" ? `🕐 ${autoSky.label} • cảnh theo giờ thật` : `${sceneItem.emoji} Cảnh: ${sceneItem.name}`}</span>
         {celebrate && <div className="absolute inset-0 pointer-events-none z-20">{confetti.map((c) => <span key={c.id} className="absolute top-0 animate-confetti text-2xl" style={{ left: `${c.x}%`, animationDelay: `${c.delay}s` }}>{c.emoji}</span>)}<div className="absolute inset-x-4 top-16 rounded-3xl bg-white/90 border-2 border-amber-300 py-3 text-center font-display font-bold text-amber-600 text-lg animate-pop shadow-xl">🎉 LÊN CẤP! Cây đã thành “{stage.name}” {stage.emoji}</div></div>}
-        {comboFlash && <div className="absolute inset-x-6 top-4 z-20 rounded-full bg-gradient-to-r from-amber-300 to-pink-400 text-white text-center font-display font-bold py-2 animate-pop shadow-lg">✨ COMBO SONG CHĂM! Hai đứa cùng chăm cây ✨</div>}
-        <div className="relative h-[290px] flex flex-col items-center justify-end">
+        {comboFlash && <div className="absolute inset-x-6 top-10 z-20 rounded-full bg-gradient-to-r from-amber-300 to-pink-400 text-white text-center font-display font-bold py-2 animate-pop shadow-lg">✨ COMBO SONG CHĂM! Hai đứa cùng chăm cây ✨</div>}
+        <div className="relative h-[320px] flex flex-col items-center justify-end">
           <FloatingHearts bursts={bursts} />
           {particles.map((p) => <span key={p.id} className="absolute top-16 animate-rise text-2xl pointer-events-none" style={{ left: `${p.x}%`, animationDelay: `${p.delay}s` }}>{p.emoji}</span>)}
           {falling.map((f) => <span key={f.id} className={`absolute top-6 animate-fall text-4xl z-10 ${f.rarity !== "common" ? "animate-glow" : ""}`} style={{ left: `${f.x}%` }}>{f.emoji}</span>)}
-          <div className={`relative z-[5] transition-transform ${shaking ? "animate-shakeTree" : "animate-sway"} ${celebrate ? "animate-glow" : ""}`} style={{ transform: `scale(${stage.scale})`, transformOrigin: "bottom center" }}>
-            <span className="text-[110px] leading-none block drop-shadow-lg select-none">{stage.emoji}</span>
-            {stage.index >= 4 && <><span className="absolute -top-2 -left-4 text-2xl animate-sparkle">✨</span><span className="absolute top-4 -right-5 text-2xl animate-sparkle">🌸</span></>}
+          {/* bướm bay khi cây khoẻ / mua phụ kiện đàn bướm */}
+          {Array.from({ length: butterflies }).map((_, i) => (
+            <span key={i} className="absolute text-2xl animate-flutter pointer-events-none z-[7]" style={{ top: `${52 + i * 26}px`, left: `${12 + i * 22}%`, animationDelay: `${i * 1.3}s` }}>🦋</span>
+          ))}
+          <div className={`relative z-[5] transition-transform ${shaking ? "animate-shakeTree" : wilted ? "" : "animate-sway"} ${celebrate ? "animate-glow" : ""}`} style={{ transform: `scale(${stage.scale})`, transformOrigin: "bottom center" }}>
+            <span className="text-[110px] leading-none block drop-shadow-lg select-none transition-all duration-700" style={{ filter: wilted ? "grayscale(0.7) sepia(0.35) brightness(0.92)" : undefined, transform: wilted ? "rotate(-7deg) translateY(10px)" : undefined }}>{wilted ? "🥀" : stage.emoji}</span>
+            {!wilted && stage.index >= 4 && <><span className="absolute -top-2 -left-4 text-2xl animate-sparkle">✨</span><span className="absolute top-4 -right-5 text-2xl animate-sparkle">🌸</span></>}
+            {/* phụ kiện trang bị */}
+            {accItem.id === "acc-bow" && <span className="absolute -top-4 right-1 text-3xl animate-bounceSoft">🎀</span>}
+            {accItem.id === "acc-chime" && <span className="absolute top-0 -left-9 text-3xl animate-sway">🎐</span>}
+            {accItem.id === "acc-lantern" && <span className="absolute bottom-1 -right-10 text-3xl animate-glow">🏮</span>}
           </div>
-          {/* mặt đất + thư nằm dưới gốc */}
+          {/* chậu cây trang bị ở shop */}
+          <div className="relative z-[4] -mt-3 flex flex-col items-center">
+            <div className={`w-28 h-9 rounded-b-[1.8rem] rounded-t-md bg-gradient-to-br ${potItem.visual} border-2 border-white/60 shadow-md grid place-items-center`} title={potItem.name}>
+              <span className="text-sm drop-shadow">{potItem.emoji}</span>
+            </div>
+            <span className={`text-[10px] font-bold mt-0.5 ${isNight ? "text-indigo-50" : "text-slate-500"}`}>{potItem.name}</span>
+          </div>
+          {/* mặt đất + hoa cỏ nhiều dần theo cấp cây + thư nằm dưới gốc */}
           <div className="w-full mt-1">
-            <div className="h-5 rounded-[50%] bg-gradient-to-r from-emerald-200 via-emerald-300 to-emerald-200 mx-6" />
+            <div className={`flex justify-between px-8 -mb-1 text-sm select-none ${isNight ? "opacity-70" : ""}`} aria-hidden>
+              {GROUND_DECOR.slice(0, stage.index + 2).map((g, i) => <span key={i} className={wilted ? "grayscale opacity-60" : ""}>{g}</span>)}
+            </div>
+            <div className={`h-5 rounded-[50%] bg-gradient-to-r mx-6 ${isNight ? "from-emerald-700 via-emerald-800 to-emerald-700" : "from-emerald-200 via-emerald-300 to-emerald-200"}`} />
             <div className="min-h-[52px] flex flex-wrap justify-center gap-2 pt-2 pb-1">
-              {pending.length === 0 && <p className="text-[11px] text-slate-400 font-semibold">Chăm cây để làm rơi thư tình 💌 (tỉ lệ ~35%, combo/mốc/lên cấp chắc chắn rơi!)</p>}
+              {pending.length === 0 && <p className={`text-[11px] font-semibold ${isNight ? "text-indigo-100/80" : "text-slate-400"}`}>Chăm cây để làm rơi thư tình 💌 (tỉ lệ ~35%, combo/mốc/lên cấp chắc chắn rơi!)</p>}
               {pending.map((l) => (
                 <button key={l.id} onClick={() => setSelected(l)} className={`rounded-2xl border-2 px-3 py-2 font-display font-bold text-sm hover:scale-110 hover:-rotate-3 transition animate-bounceSoft ${RARITY_STYLE[l.rarity].ring}`} title="Bấm để mở thư">
                   {RARITY_STYLE[l.rarity].emoji} Thư {RARITY_STYLE[l.rarity].label} — bấm mở!
@@ -124,12 +162,17 @@ export default function TreeGame() {
             </div>
           </div>
         </div>
-        <div className="relative z-[6] text-center pb-2">
-          <h2 className="font-display text-xl font-bold text-pink-600">{stage.name} {stage.emoji} <span className="text-sm text-slate-500">• Cấp {stage.index + 1}/7 • {state.tree.xp} XP • Đã chăm {state.tree.careCount} lần</span></h2>
+        {/* trạng thái sống của cây */}
+        <div className={`relative z-[6] mx-auto max-w-md rounded-full px-4 py-1.5 text-center text-xs font-bold animate-pop ${wilted ? "bg-red-100 text-red-600 border-2 border-red-200" : health.status === "need" ? "bg-amber-100 text-amber-700 border-2 border-amber-200" : "bg-white/70 text-emerald-600 border-2 border-emerald-100"}`} key={health.status + health.lowest}>
+          {wilted ? "🥀 " : health.status === "happy" ? "😍 " : health.status === "need" ? "🥺 " : "🌿 "}{health.message}
+        </div>
+        <div className="relative z-[6] text-center pb-2 pt-2">
+          <h2 className="font-display text-xl font-bold text-pink-600">{stage.name} {stage.emoji} <span className="text-sm text-slate-500">• Cấp {stage.index + 1}/7 • {state.tree.xp} XP • Đã chăm {state.tree.careCount} lần</span> <span className="ml-1 inline-block rounded-full bg-amber-100 text-amber-700 px-2.5 py-0.5 text-xs align-middle">🪙 {state.coins} Xu Tim</span></h2>
           <p className="text-sm text-slate-500 font-semibold">{stage.desc}</p>
           {stage.next ? <><div className="mt-2 h-3 rounded-full bg-white overflow-hidden shadow-inner"><div className="h-full bg-gradient-to-r from-pink-400 via-rose-400 to-amber-300 transition-all duration-700" style={{ width: `${stage.progressToNext}%` }} /></div><p className="text-[11px] text-slate-400 mt-1">Còn {stage.next.minXp - state.tree.xp} XP tới “{stage.next.name}”</p></> : <p className="text-xs font-bold text-violet-500 mt-1">👑 Cấp tối đa rồi — huyền thoại!</p>}
         </div>
-        <div className="grid gap-2 pb-3 relative z-[6]">{bar("Nước", state.tree.water, "bg-gradient-to-r from-sky-300 to-sky-500", "💧")}{bar("Nắng", state.tree.sun, "bg-gradient-to-r from-amber-300 to-amber-500", "☀️")}{bar("Tình yêu", state.tree.love, "bg-gradient-to-r from-pink-300 to-rose-500", "💖")}</div>
+        <div className="grid gap-2 pb-1 relative z-[6]">{bar("Nước", stats.water, "bg-gradient-to-r from-sky-300 to-sky-500", "💧")}{bar("Nắng", stats.sun, "bg-gradient-to-r from-amber-300 to-amber-500", "☀️")}{bar("Tình yêu", stats.love, "bg-gradient-to-r from-pink-300 to-rose-500", "💖")}</div>
+        <p className="text-[11px] text-slate-400 pb-2 relative z-[6]">⏳ Cây sống thật: chỉ số tự giảm theo thời gian (Nước −2.5/giờ, Nắng −1.8/giờ, Tình yêu −1.2/giờ) — nhớ ghé chăm cây mỗi ngày kẻo cây héo nhé!</p>
         <div className="grid grid-cols-4 gap-2 pb-4 relative z-[6]">
           {([["water", "💧", "Tưới nước"], ["sun", "☀️", "Tắm nắng"], ["love", "💖", "Bón tim"], ["bug", "🐛", "Bắt sâu"]] as [Kind, string, string][]).map(([k, em, label]) => (
             <button key={k} disabled={cdLeft(k) > 0} onClick={() => doAction(k)} className="rounded-3xl bg-white/90 border-2 border-pink-100 py-3 font-display font-bold text-pink-600 shadow hover:scale-105 active:scale-95 transition disabled:opacity-50 disabled:scale-100">
@@ -147,7 +190,7 @@ export default function TreeGame() {
             {QUESTS.map((q) => { const prog = Math.min(q.target, questProgress(q)); const done = prog >= q.target; const claimed = daily.claimed.includes(q.id); return (
               <li key={q.id} className="flex items-center gap-2 rounded-2xl bg-pink-50/70 px-3 py-2 text-sm">
                 <span>{q.emoji}</span><span className={`flex-1 font-semibold ${done ? "text-emerald-600" : "text-slate-600"}`}>{q.label} ({prog}/{q.target}) {done && "✅"}</span>
-                {done && !claimed && <button onClick={() => claimQuest(q)} className="rounded-full bg-amber-400 text-white text-xs font-bold px-3 py-1.5 hover:scale-105 animate-bounceSoft">Nhận +{q.rewardXp} XP 🎁</button>}
+                {done && !claimed && <button onClick={() => claimQuest(q)} className="rounded-full bg-amber-400 text-white text-xs font-bold px-3 py-1.5 hover:scale-105 animate-bounceSoft">Nhận +{q.rewardXp} XP +{q.rewardCoins}🪙 🎁</button>}
                 {claimed && <span className="text-xs font-bold text-slate-400">Đã nhận ✓</span>}
               </li> ); })}
           </ul>
@@ -159,6 +202,9 @@ export default function TreeGame() {
           <button onClick={() => setShowBox(!showBox)} className="mt-3 w-full rounded-full bg-gradient-to-r from-pink-400 to-violet-400 text-white font-display font-bold py-2.5 hover:scale-[1.02] transition">💌 Hộp thư tình yêu — Đã sưu tập {opened.length}/{LOVE_MESSAGES.length} thư {pending.length ? `• ${pending.length} thư chưa mở!` : ""}</button>
         </section>
       </div>
+
+      {/* v2: Cửa hàng trang trí vườn */}
+      <Shop />
 
       {/* Hộp thư / Album */}
       {showBox && (

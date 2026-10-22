@@ -1,0 +1,17 @@
+{
+  "name": "Khu Vườn Tình Yêu",
+  "short_name": "Vườn Tình Yêu",
+  "description": "App cute chibi cho couple: trồng cây tình yêu, thư tình rơi, kỷ niệm và tiện ích cho hai người.",
+  "id": "/",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#fff5f7",
+  "theme_color": "#f45383",
+  "lang": "vi",
+  "icons": [
+    { "src": "/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" },
+    { "src": "/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "maskable" }
+  ]
+}
