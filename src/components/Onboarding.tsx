@@ -4,6 +4,7 @@ import { useLove } from "@/lib/store";
 import { useAuth } from "@/lib/auth";
 import { today } from "@/lib/types";
 import ChibiAvatar from "./ChibiAvatar";
+import { Icon } from "./Icon";
 
 /**
  * V3 — Bước thiết lập khu vườn SAU KHI đã login + ghép cặp xong:
@@ -24,20 +25,20 @@ export default function Onboarding() {
     <div className="fixed inset-0 z-[70] bg-pink-900/40 backdrop-blur-sm flex items-end sm:items-center justify-center p-3">
       <div className="w-full max-w-md rounded-[2rem] border-4 border-pink-200 bg-gradient-to-b from-white via-pink-50 to-amber-50 p-5 animate-pop shadow-2xl max-h-[92vh] overflow-auto">
         <div className="flex items-center justify-center gap-1">
-          <ChibiAvatar avatarId={state.avatarA} size={60} /><span className="text-3xl animate-bounceSoft">💖</span><ChibiAvatar avatarId={state.avatarB} size={60} />
+          <ChibiAvatar avatarId={state.avatarA} size={60} /><span className="animate-bounceSoft text-rose-500"><Icon name="heartFill" className="w-8 h-8" /></span><ChibiAvatar avatarId={state.avatarB} size={60} />
         </div>
-        <h2 className="text-center font-display text-2xl font-bold text-pink-600 mt-1">Hai bạn đã thành một cặp! 🎉</h2>
+        <h2 className="text-center font-display text-2xl font-bold text-pink-600 mt-1 flex items-center justify-center gap-2">Hai bạn đã thành một cặp! <Icon name="party" className="w-6 h-6 text-amber-500" /></h2>
         <p className="text-center text-sm font-semibold text-slate-500 mt-1">
-          <b>{state.personA}</b> ♥ <b>{auth.couple.members.length > 1 ? state.personB : "đang chờ người thương vào vườn..."}</b><br />
-          Đặt tên cho khu vườn và chọn ngày bắt đầu yêu để gieo hạt mầm đầu tiên nhé 🌱
+          <b>{state.personA}</b> <Icon name="heartFill" className="w-4 h-4 inline text-pink-500" /> <b>{auth.couple.members.length > 1 ? state.personB : "đang chờ người thương vào vườn..."}</b><br />
+          Đặt tên cho khu vườn và chọn ngày bắt đầu yêu để gieo hạt mầm đầu tiên nhé
         </p>
-        {!state.everOnboarded && <p className="mt-2 text-center text-xs font-bold text-amber-600 bg-amber-100 rounded-full py-1.5 px-3">🎁 Hoàn thành bước này nhận ngay quà chào mừng +30 Xu Tim 🪙</p>}
+        {!state.everOnboarded && <p className="mt-2 text-center text-xs font-bold text-amber-600 bg-amber-100 rounded-full py-1.5 px-3 flex items-center justify-center gap-1.5"><Icon name="gift" className="w-4 h-4" /> Hoàn thành bước này nhận ngay quà chào mừng +30 Xu Tim <Icon name="coin" className="w-4 h-4" /></p>}
         <div className="mt-4 space-y-3">
-          <label className="text-xs font-bold text-slate-500">Tên khu vườn của hai bạn 🏡<input value={gardenName} onChange={(e) => setGardenName(e.target.value)} placeholder="vd: Vườn của Tín & Người thương" className={input} /></label>
-          <label className="text-xs font-bold text-slate-500">Ngày bắt đầu yêu 💘<input type="date" value={start} onChange={(e) => setStart(e.target.value)} className={input} /></label>
+          <label className="text-xs font-bold text-slate-500">Tên khu vườn của hai bạn <Icon name="home" className="w-3.5 h-3.5 inline text-pink-400" /><input value={gardenName} onChange={(e) => setGardenName(e.target.value)} placeholder="vd: Vườn của Tín & Người thương" className={input} /></label>
+          <label className="text-xs font-bold text-slate-500">Ngày bắt đầu yêu <Icon name="heart" className="w-3.5 h-3.5 inline text-rose-400" /><input type="date" value={start} onChange={(e) => setStart(e.target.value)} className={input} /></label>
         </div>
-        <p className="mt-3 text-center text-[11px] font-bold text-slate-400">Mã mời của vườn: <span className="font-display tracking-[0.2em] text-pink-500">{auth.couple.code}</span> — gửi cho người thương nếu họ chưa vào nhé 💌</p>
-        <button onClick={submit} className="mt-3 w-full rounded-full bg-gradient-to-r from-pink-500 to-rose-400 text-white font-display font-bold text-lg py-3 hover:scale-[1.02] active:scale-95 transition shadow-lg">Gieo hạt mầm thôi! 🌱💖</button>
+        <p className="mt-3 text-center text-[11px] font-bold text-slate-400">Mã mời của vườn: <span className="font-display tracking-[0.2em] text-pink-500">{auth.couple.code}</span> — gửi cho người thương nếu họ chưa vào nhé</p>
+        <button onClick={submit} className="mt-3 w-full rounded-full bg-gradient-to-r from-pink-500 to-rose-400 text-white font-display font-bold text-lg py-3 hover:scale-[1.02] active:scale-95 transition shadow-lg flex items-center justify-center gap-2">Gieo hạt mầm thôi! <Icon name="sprout" className="w-5 h-5" /><Icon name="heartFill" className="w-5 h-5" /></button>
       </div>
     </div>
   );

@@ -1,19 +1,19 @@
 export type PersonId = "A" | "B";
 /* ---------- v3: tài khoản — bộ avatar chibi để chọn khi đăng ký ---------- */
-export interface AvatarOption { id: string; emoji: string; label: string; bg: string }
+export interface AvatarOption { id: string; label: string; bg: string }
 export const AVATARS: AvatarOption[] = [
-  { id: "svg-a", emoji: "🌸", label: "Bé Hoa (SVG)", bg: "#ffe4ec" },
-  { id: "svg-b", emoji: "💙", label: "Bé Sao (SVG)", bg: "#dbeafe" },
-  { id: "bunny", emoji: "🐰", label: "Thỏ con", bg: "#fdf2f8" },
-  { id: "bear", emoji: "🐻", label: "Gấu nâu", bg: "#fef3c7" },
-  { id: "cat", emoji: "🐱", label: "Mèo con", bg: "#ffedd5" },
-  { id: "dog", emoji: "🐶", label: "Cún con", bg: "#fef9c3" },
-  { id: "fox", emoji: "🦊", label: "Cáo nhỏ", bg: "#fff7ed" },
-  { id: "panda", emoji: "🐼", label: "Gấu trúc", bg: "#f1f5f9" },
-  { id: "frog", emoji: "🐸", label: "Ếch xanh", bg: "#dcfce7" },
-  { id: "pig", emoji: "🐷", label: "Heo hồng", bg: "#fce7f3" },
-  { id: "chick", emoji: "🐣", label: "Gà con", bg: "#fefce8" },
-  { id: "koala", emoji: "🐨", label: "Koala", bg: "#e2e8f0" },
+  { id: "svg-a", label: "Bé Hoa (SVG)", bg: "#ffe4ec" },
+  { id: "svg-b", label: "Bé Sao (SVG)", bg: "#dbeafe" },
+  { id: "bunny", label: "Thỏ con", bg: "#fdf2f8" },
+  { id: "bear", label: "Gấu nâu", bg: "#fef3c7" },
+  { id: "cat", label: "Mèo con", bg: "#ffedd5" },
+  { id: "dog", label: "Cún con", bg: "#fef9c3" },
+  { id: "fox", label: "Cáo nhỏ", bg: "#fff7ed" },
+  { id: "panda", label: "Gấu trúc", bg: "#f1f5f9" },
+  { id: "frog", label: "Ếch xanh", bg: "#dcfce7" },
+  { id: "pig", label: "Heo hồng", bg: "#fce7f3" },
+  { id: "chick", label: "Gà con", bg: "#fefce8" },
+  { id: "koala", label: "Koala", bg: "#e2e8f0" },
 ];
 export function avatarById(id?: string): AvatarOption { return AVATARS.find((a) => a.id === id) || AVATARS[0]; }
 export type Rarity = "common" | "rare" | "legendary";
@@ -51,13 +51,13 @@ export interface AppState {
   avatarB: string;
 }
 export const STAGES = [
-  { name: "Hạt giống", emoji: "🌰", minXp: 0, desc: "Một hạt mầm tình yêu vừa được gieo", scale: 0.7 },
-  { name: "Mầm non", emoji: "🌱", minXp: 20, desc: "Mầm nhỏ đã nhú lên rồi nè!", scale: 0.85 },
-  { name: "Cây con", emoji: "🌿", minXp: 50, desc: "Cây con xanh mướt đáng yêu", scale: 1 },
-  { name: "Cây lớn", emoji: "🌳", minXp: 100, desc: "Tán lá sum suê, tình cảm vững chãi", scale: 1.15 },
-  { name: "Nụ hoa", emoji: "🌷", minXp: 180, desc: "Nụ hoa e ấp sắp nở", scale: 1.3 },
-  { name: "Nở hoa", emoji: "🌸", minXp: 280, desc: "Hoa nở rực rỡ, thơm ngát", scale: 1.45 },
-  { name: "Cây trái tim", emoji: "💖", minXp: 400, desc: "Đỉnh cao! Cây kết trái tim lấp lánh", scale: 1.6 },
+  { name: "Hạt giống", minXp: 0, desc: "Một hạt mầm tình yêu vừa được gieo", scale: 0.7 },
+  { name: "Mầm non", minXp: 20, desc: "Mầm nhỏ đã nhú lên rồi nè!", scale: 0.85 },
+  { name: "Cây con", minXp: 50, desc: "Cây con xanh mướt đáng yêu", scale: 1 },
+  { name: "Cây lớn", minXp: 100, desc: "Tán lá sum suê, tình cảm vững chãi", scale: 1.15 },
+  { name: "Nụ hoa", minXp: 180, desc: "Nụ hoa e ấp sắp nở", scale: 1.3 },
+  { name: "Nở hoa", minXp: 280, desc: "Hoa nở rực rỡ, thơm ngát", scale: 1.45 },
+  { name: "Cây trái tim", minXp: 400, desc: "Đỉnh cao! Cây kết trái tim lấp lánh", scale: 1.6 },
 ];
 export function getStage(xp: number) {
   let idx = 0; STAGES.forEach((s, i) => { if (xp >= s.minXp) idx = i; });
@@ -90,14 +90,14 @@ export function treeHealth(stats: { water: number; sun: number; love: number }):
   const entries = [["water", stats.water], ["sun", stats.sun], ["love", stats.love]] as const;
   const [lowest, min] = entries.reduce((a, b) => (b[1] < a[1] ? b : a));
   const msgs: Record<string, string> = {
-    water: "Cây đang khát nước nè 🥺 — tưới cho cây một chút nhé!",
-    sun: "Cây đang thiếu nắng nè 🌥️ — cho cây tắm nắng đi!",
-    love: "Cây đang nhớ yêu thương nè 💔 — bón tim cho cây nhé!",
+    water: "Cây đang khát nước nè — tưới cho cây một chút nhé!",
+    sun: "Cây đang thiếu nắng nè — cho cây tắm nắng đi!",
+    love: "Cây đang nhớ yêu thương nè — bón tim cho cây nhé!",
   };
   if (min < 20) return { status: "wilted", message: msgs[lowest], lowest };
   if (min < 40) return { status: "need", message: msgs[lowest], lowest };
-  if (min >= 70) return { status: "happy", message: "Cây đang rất hạnh phúc, bướm bay quanh vườn 🦋", lowest };
-  return { status: "ok", message: "Cây đang ổn nè 🌿 Nhớ chăm đều để cây luôn tươi nhé!", lowest };
+  if (min >= 70) return { status: "happy", message: "Cây đang rất hạnh phúc, bướm bay quanh vườn", lowest };
+  return { status: "ok", message: "Cây đang ổn nè. Nhớ chăm đều để cây luôn tươi nhé!", lowest };
 }
 
 /* ---------- v2: tiền tệ + phần thưởng Xu Tim ---------- */
@@ -110,14 +110,14 @@ export const LETTER_COINS: Record<Rarity, number> = { common: 10, rare: 25, lege
 export const defaultState: AppState = {
   roomCode: "LOVE01", personA: "Bé A", personB: "Bé B", startDate: today(), currentUser: "A",
   tree: { xp: 0, water: 40, sun: 40, love: 40, careCount: 0, lastCareAt: "", lastCareBy: "", statsAt: new Date().toISOString() },
-  moods: { A: "😊", B: "🥰", date: today() },
-  notes: [{ id: "seed1", author: "Bé A", text: "Chào mừng đến với khu vườn tình yêu của hai đứa mình 💕", color: "bg-pink-100", createdAt: new Date().toISOString() }],
+  moods: { A: "joy", B: "love", date: today() },
+  notes: [{ id: "seed1", author: "Bé A", text: "Chào mừng đến với khu vườn tình yêu của hai đứa mình", color: "bg-pink-100", createdAt: new Date().toISOString() }],
   bucket: [
     { id: "b1", text: "Cùng nhau đi Đà Lạt ngắm hoa", done: false, createdAt: new Date().toISOString() },
     { id: "b2", text: "Nấu một bữa ăn cùng nhau", done: true, createdAt: new Date().toISOString() },
   ],
   answers: { date: today(), A: "", B: "" },
-  activities: [{ id: "a0", actor: "Hệ thống", text: "đã tạo khu vườn tình yêu", time: new Date().toISOString(), emoji: "🌱" }],
+  activities: [{ id: "a0", actor: "Hệ thống", text: "đã tạo khu vườn tình yêu", time: new Date().toISOString(), emoji: "sprout" }],
   letters: [],
   daily: { date: today(), water: 0, love: 0, sun: 0, bug: 0, caredA: false, caredB: false, claimed: [] },
   streak: { count: 0, lastDate: "" },
@@ -125,7 +125,7 @@ export const defaultState: AppState = {
   coins: START_COINS,
   inventory: ["pot-basic", "scene-auto", "acc-none"],
   equipped: { pot: "pot-basic", scene: "scene-auto", accessory: "acc-none" },
-  memories: [{ id: "m0", title: "Ngày khu vườn tình yêu bắt đầu 🌱", date: today(), desc: "Ngày hai đứa gieo hạt mầm đầu tiên. Cùng nhau chăm cây lớn lên mỗi ngày nhé!", imageUrl: "", author: "Hệ thống", createdAt: new Date().toISOString() }],
+  memories: [{ id: "m0", title: "Ngày khu vườn tình yêu bắt đầu", date: today(), desc: "Ngày hai đứa gieo hạt mầm đầu tiên. Cùng nhau chăm cây lớn lên mỗi ngày nhé!", imageUrl: "", author: "Hệ thống", createdAt: new Date().toISOString() }],
   lastLoveAction: null,
   onboarded: false,
   everOnboarded: false,
@@ -133,11 +133,24 @@ export const defaultState: AppState = {
   avatarA: "svg-a",
   avatarB: "svg-b",
 };
+
+/* ---------- v4: bỏ emoji khỏi chuỗi hiển thị (dữ liệu cũ trong DB/localStorage có thể còn emoji) ---------- */
+export function stripEmoji(s: string): string {
+  return s.replace(/[\u{1F000}-\u{1FAFF}\u{2600}-\u{27BF}\u{2B00}-\u{2BFF}\u{FE0F}\u{200D}\u{2190}-\u{21FF}\u{2300}-\u{23FF}]/gu, "").replace(/\s{2,}/g, " ").trim();
+}
+/** Mood V1–V3 lưu bằng emoji; V4 dùng id. Map này viết bằng unicode escape để source không chứa ký tự emoji. */
+export const MOOD_LEGACY_MAP: Record<string, string> = {
+  "\u{1F60A}": "joy", "\u{1F970}": "love", "\u{1F60D}": "heartEyes", "\u{1F634}": "sleepy",
+  "\u{1F97A}": "pleading", "\u{1F624}": "huff", "\u{1F912}": "sick", "\u{1F389}": "celebrate",
+  "\u{1F60C}": "calm", "\u{1F973}": "excited", "\u{1F622}": "sad", "\u{1F525}": "energetic",
+};
+export function normalizeMood(m: string): string { return MOOD_LEGACY_MAP[m] || m; }
 export function normalizeState(raw: Partial<AppState>): AppState {
   // State v1 chưa có field onboarded: nếu đã có lịch sử dùng app thì coi như đã onboard để không làm phiền lại
   const hasHistory = Boolean((raw.tree && raw.tree.careCount > 0) || (raw.letters && raw.letters.length > 0) || (raw.notes && raw.notes.length > 1) || (raw.personA && raw.personA !== "Bé A") || (raw.personB && raw.personB !== "Bé B"));
   return {
     ...defaultState, ...raw,
+    moods: { ...defaultState.moods, ...(raw.moods || {}), A: normalizeMood((raw.moods && raw.moods.A) || defaultState.moods.A), B: normalizeMood((raw.moods && raw.moods.B) || defaultState.moods.B) },
     tree: { ...defaultState.tree, ...(raw.tree || {}), statsAt: (raw.tree && (raw.tree.statsAt || raw.tree.lastCareAt)) || defaultState.tree.statsAt },
     daily: { ...defaultState.daily, ...(raw.daily || {}) },
     streak: { ...defaultState.streak, ...(raw.streak || {}) },
@@ -155,8 +168,8 @@ export function normalizeState(raw: Partial<AppState>): AppState {
     avatarB: raw.avatarB || defaultState.avatarB,
   };
 }
-export const RARITY_STYLE: Record<Rarity, { label: string; ring: string; bg: string; text: string; emoji: string }> = {
-  common: { label: "Thường", ring: "border-pink-300 bg-pink-50", bg: "bg-pink-100 text-pink-600", text: "text-pink-600", emoji: "💌" },
-  rare: { label: "Hiếm ✨ Song chăm", ring: "border-amber-400 bg-amber-50 shadow-[0_0_24px_rgba(251,191,36,0.45)]", bg: "bg-amber-100 text-amber-700", text: "text-amber-600", emoji: "✨💌" },
-  legendary: { label: "Huyền thoại 👑", ring: "border-violet-400 bg-gradient-to-br from-violet-50 via-pink-50 to-amber-50 shadow-[0_0_32px_rgba(167,139,250,0.5)]", bg: "bg-violet-100 text-violet-700", text: "text-violet-600", emoji: "👑💌" },
+export const RARITY_STYLE: Record<Rarity, { label: string; ring: string; bg: string; text: string }> = {
+  common: { label: "Thường", ring: "border-pink-300 bg-pink-50", bg: "bg-pink-100 text-pink-600", text: "text-pink-600" },
+  rare: { label: "Hiếm — Song chăm", ring: "border-amber-400 bg-amber-50 shadow-[0_0_24px_rgba(251,191,36,0.45)]", bg: "bg-amber-100 text-amber-700", text: "text-amber-600" },
+  legendary: { label: "Huyền thoại", ring: "border-violet-400 bg-gradient-to-br from-violet-50 via-pink-50 to-amber-50 shadow-[0_0_32px_rgba(167,139,250,0.5)]", bg: "bg-violet-100 text-violet-700", text: "text-violet-600" },
 };

@@ -181,9 +181,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   /* ---- Đăng ký ---- */
   const signUp = useCallback(async (emailRaw: string, password: string, displayName: string, avatar: string): Promise<AuthResult> => {
     const email = emailRaw.trim().toLowerCase();
-    if (!EMAIL_RE.test(email)) return { error: "Email chưa đúng định dạng nè, bạn kiểm tra lại nhé 📮" };
-    if (password.length < 6) return { error: "Mật khẩu cần ít nhất 6 ký tự nha 🔐" };
-    if (!displayName.trim()) return { error: "Cho vườn biết tên hiển thị của bạn nhé 🌸" };
+    if (!EMAIL_RE.test(email)) return { error: "Email chưa đúng định dạng nè, bạn kiểm tra lại nhé" };
+    if (password.length < 6) return { error: "Mật khẩu cần ít nhất 6 ký tự nha" };
+    if (!displayName.trim()) return { error: "Cho vườn biết tên hiển thị của bạn nhé" };
     if (MODE === "supabase") {
       const sb = await getSupabase(); if (!sb) return { error: "Chưa kết nối được Supabase, thử lại sau nhé." };
       const pending = readJson<Record<string, { displayName: string; avatar: string }>>(PENDING_KEY, {});
@@ -191,14 +191,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       writeJson(PENDING_KEY, pending);
       const { data, error } = await sb.auth.signUp({ email, password, options: { data: { display_name: displayName.trim(), avatar } } });
       if (error) {
-        if (/already|registered|exists/i.test(error.message)) return { error: "Email này đã có tài khoản rồi — bạn đăng nhập nhé 💌" };
+        if (/already|registered|exists/i.test(error.message)) return { error: "Email này đã có tài khoản rồi — bạn đăng nhập nhé" };
         return { error: `Đăng ký chưa thành công: ${error.message}` };
       }
       if (data.session && data.user) { const p = await sbEnsureProfile(sb, data.user); await applyUser(p); return {}; }
       return { needConfirm: true }; // Supabase yêu cầu xác nhận email -> chưa có session ngay
     }
     const accounts = readAccounts();
-    if (accounts.some((a) => a.email === email)) return { error: "Email này đã có tài khoản trên máy này rồi — bạn đăng nhập nhé 💌" };
+    if (accounts.some((a) => a.email === email)) return { error: "Email này đã có tài khoản trên máy này rồi — bạn đăng nhập nhé" };
     const salt = newSalt();
     const acc: LocalAccount = { id: uid(), email, salt, hash: await hashPassword(password, salt), displayName: displayName.trim(), avatar, createdAt: new Date().toISOString() };
     writeJson(ACCOUNTS_KEY, [...accounts, acc]);
@@ -210,18 +210,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   /* ---- Đăng nhập ---- */
   const signIn = useCallback(async (emailRaw: string, password: string): Promise<AuthResult> => {
     const email = emailRaw.trim().toLowerCase();
-    if (!EMAIL_RE.test(email)) return { error: "Email chưa đúng định dạng nè 📮" };
+    if (!EMAIL_RE.test(email)) return { error: "Email chưa đúng định dạng nè" };
     if (MODE === "supabase") {
       const sb = await getSupabase(); if (!sb) return { error: "Chưa kết nối được Supabase, thử lại sau nhé." };
       const { data, error } = await sb.auth.signInWithPassword({ email, password });
-      if (error) return { error: "Sai email hoặc mật khẩu rồi — thử lại nhẹ nhàng nhé 🥺" };
+      if (error) return { error: "Sai email hoặc mật khẩu rồi — thử lại nhẹ nhàng nhé" };
       if (data.user) { const p = await sbEnsureProfile(sb, data.user); await applyUser(p); }
       return {};
     }
     const acc = readAccounts().find((a) => a.email === email);
-    if (!acc) return { error: "Chưa có tài khoản với email này trên máy này — bạn đăng ký trước nhé 🌸" };
+    if (!acc) return { error: "Chưa có tài khoản với email này trên máy này — bạn đăng ký trước nhé" };
     const hash = await hashPassword(password, acc.salt);
-    if (hash !== acc.hash) return { error: "Sai mật khẩu rồi — thử lại nhẹ nhàng nhé 🥺" };
+    if (hash !== acc.hash) return { error: "Sai mật khẩu rồi — thử lại nhẹ nhàng nhé" };
     writeJson(SESSION_KEY, { userId: acc.id });
     await applyUser({ id: acc.id, email: acc.email, displayName: acc.displayName, avatar: acc.avatar });
     return {};
@@ -235,8 +235,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const resetPassword = useCallback(async (emailRaw: string): Promise<AuthResult> => {
     const email = emailRaw.trim().toLowerCase();
-    if (!EMAIL_RE.test(email)) return { error: "Nhập email đúng định dạng để nhận hướng dẫn nhé 📮" };
-    if (MODE === "local") return { error: "Ở chế độ trên máy này, mật khẩu đã được băm một chiều nên không khôi phục được 🥺 Bật Supabase (xem README) để có tính năng quên mật khẩu qua email nhé." };
+    if (!EMAIL_RE.test(email)) return { error: "Nhập email đúng định dạng để nhận hướng dẫn nhé" };
+    if (MODE === "local") return { error: "Ở chế độ trên máy này, mật khẩu đã được băm một chiều nên không khôi phục được. Bật Supabase (xem README) để có tính năng quên mật khẩu qua email nhé." };
     const sb = await getSupabase(); if (!sb) return { error: "Chưa kết nối được Supabase, thử lại sau nhé." };
     const { error } = await sb.auth.resetPasswordForEmail(email, { redirectTo: window.location.origin });
     if (error) return { error: `Chưa gửi được email khôi phục: ${error.message}` };
@@ -254,7 +254,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         if (!error) { await applyUser(user); return {}; }
         if (!/unique|duplicate|23505/i.test(error.message)) return { error: `Tạo khu vườn chưa thành công: ${error.message}` };
       }
-      return { error: "Tạo mã mời bị trùng nhiều lần, bạn thử lại nhé 🎲" };
+      return { error: "Tạo mã mời bị trùng nhiều lần, bạn thử lại nhé" };
     }
     const couples = readCouples();
     let code = genRoomCode();
@@ -268,13 +268,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const joinCouple = useCallback(async (codeRaw: string): Promise<AuthResult> => {
     if (!user) return { error: "Bạn cần đăng nhập trước nhé." };
     const code = codeRaw.trim().toUpperCase();
-    if (code.length < 4) return { error: "Mã mời ngắn quá nè, kiểm tra lại nhé 🔑" };
+    if (code.length < 4) return { error: "Mã mời ngắn quá nè, kiểm tra lại nhé" };
     if (MODE === "supabase") {
       const sb = await getSupabase(); if (!sb) return { error: "Chưa kết nối được Supabase." };
       const { error } = await sb.rpc("join_couple", { p_code: code });
       if (error) {
-        if (/CODE_NOT_FOUND/.test(error.message)) return { error: "Mã mời không đúng — bạn xin lại mã từ người thương nhé 🔑" };
-        if (/COUPLE_FULL/.test(error.message)) return { error: "Khu vườn này đã đủ 2 người rồi, không vào thêm được nữa 🥺" };
+        if (/CODE_NOT_FOUND/.test(error.message)) return { error: "Mã mời không đúng — bạn xin lại mã từ người thương nhé" };
+        if (/COUPLE_FULL/.test(error.message)) return { error: "Khu vườn này đã đủ 2 người rồi, không vào thêm được nữa" };
         return { error: `Vào khu vườn chưa thành công: ${error.message}` };
       }
       await applyUser(user);
@@ -282,10 +282,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
     const couples = readCouples();
     const idx = couples.findIndex((c) => c.code === code);
-    if (idx < 0) return { error: "Mã mời không đúng — bạn xin lại mã từ người thương nhé 🔑" };
+    if (idx < 0) return { error: "Mã mời không đúng — bạn xin lại mã từ người thương nhé" };
     const c = couples[idx];
     if (c.members.some((m) => m.userId === user.id)) { await applyUser(user); return {}; }
-    if (c.members.length >= 2) return { error: "Khu vườn này đã đủ 2 người rồi, không vào thêm được nữa 🥺" };
+    if (c.members.length >= 2) return { error: "Khu vườn này đã đủ 2 người rồi, không vào thêm được nữa" };
     const slot: "A" | "B" = c.members.some((m) => m.slot === "A") ? "B" : "A";
     c.members = [...c.members, { userId: user.id, slot }];
     couples[idx] = c;
@@ -309,7 +309,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const updateMyProfile = useCallback(async (displayName: string, avatar: string): Promise<AuthResult> => {
     if (!user) return { error: "Bạn cần đăng nhập trước nhé." };
     const name = displayName.trim();
-    if (!name) return { error: "Tên hiển thị không được để trống nhé 🌸" };
+    if (!name) return { error: "Tên hiển thị không được để trống nhé" };
     if (MODE === "supabase") {
       const sb = await getSupabase(); if (!sb) return { error: "Chưa kết nối được Supabase." };
       const { error } = await sb.from("profiles").update({ display_name: name, avatar }).eq("id", user.id);

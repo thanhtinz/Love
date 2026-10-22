@@ -1,15 +1,21 @@
-# 💖 Khu Vườn Tình Yêu — Web App cho Couple
+# Khu Vườn Tình Yêu — Web App cho Couple
 
 App cute chibi cho 2 người: **game trồng cây tình yêu có thư tình rơi ra**, mood, ghi chú, bucket list, câu hỏi mỗi ngày — tương tác **realtime** giữa 2 người.
 
-## 🆕 Có gì mới ở V3 — Tài khoản riêng cho mỗi người
+## Có gì mới ở V4 — Icon CSS/SVG thay toàn bộ emoji
+
+- Hệ thống không còn dùng emoji ở bất kỳ đâu trong giao diện: mọi biểu tượng là **icon SVG inline + CSS** tự vẽ trong `src/components/Icon.tsx` (hơn 60 icon: tim, giọt nước, mặt trời, thư, vương miện...), màu/size/animation điều khiển bằng Tailwind.
+- Mặt cảm xúc (mood) là component `FaceIcon` vẽ SVG với 12 biến thể; cây 7 giai đoạn là component `TreeArt` SVG lớn dần theo cấp; avatar thú chibi cũng vẽ SVG từng loài.
+- Dữ liệu cũ (mood/activity đã lưu bằng emoji từ V1–V3) được tự động map/strip khi hiển thị nên không vỡ dữ liệu của người dùng hiện tại.
+
+## Có gì mới ở V3 — Tài khoản riêng cho mỗi người
 
 - **👤 Mỗi người một tài khoản, tự đăng ký / đăng nhập:** mở app chưa login là chỉ thấy màn hình **Đăng nhập / Đăng ký** (email + mật khẩu có hiện/ẩn, tối thiểu 6 ký tự, tên hiển thị, chọn avatar chibi từ 12 mẫu). Có **đăng xuất** (ở Header + phần cài đặt), báo lỗi tiếng Việt thân thiện (email đã tồn tại, sai mật khẩu...).
 - **💞 Ghép cặp bằng mã mời sau khi login:** chưa có cặp → chọn **"Tạo khu vườn mới"** (bạn ngồi ghế A, nhận **mã mời 6 ký tự**) hoặc **"Nhập mã mời"** của người thương (vào ghế B). Tối đa **2 người/vườn**; mã sai hoặc vườn đã đủ 2 người đều báo lỗi rõ ràng. Tên + avatar trong vườn **lấy từ hồ sơ tài khoản** của từng người (không còn chọn tay "Tôi là A/B").
 - **🏡 Thiết lập vườn sau ghép cặp:** đặt **tên khu vườn** + **ngày bắt đầu yêu** (vẫn giữ quà +30 Xu Tim lần đầu). Mục **"Tài khoản & Khu vườn"** trong ⚙️ Sửa ở Header: xem thành viên + mã mời (bấm chép), đổi tên/avatar của mình, **Rời khu vườn** (có xác nhận — dữ liệu vườn được giữ lại cho người còn lại), đăng xuất.
 - **🔒 Dữ liệu scope theo couple:** mỗi vườn có state riêng theo `couple id` (local: key `love-garden-<coupleId>`; Supabase: bảng `room_state` theo `couple_id` + realtime broadcast theo channel của couple). Khu vườn cũ của V2 (key `love-app-v1`) sẽ được **couple đầu tiên tạo trên máy này nhận lại (claim)** — không mất cây, thư, xu đã có.
 
-## 👤 Tài khoản & đăng nhập — 2 chế độ
+## Tài khoản & đăng nhập — 2 chế độ
 
 App tự nhận diện chế độ theo biến môi trường, không cần cấu hình gì thêm:
 
@@ -25,7 +31,7 @@ App tự nhận diện chế độ theo biến môi trường, không cần cấ
 
 **Luồng sử dụng:** Đăng ký (email, mật khẩu, tên, avatar) → Đăng nhập → Tạo vườn mới (nhận mã mời) *hoặc* nhập mã mời của người thương → Đặt tên vườn + ngày bắt đầu yêu → Vào vườn chơi. Người tạo là ghế A, người nhập mã là ghế B.
 
-## 🆕 Có gì mới ở V2
+## Có gì mới ở V2
 
 - **🌱 Cây "sống thật":** chỉ số Nước/Nắng/Tình yêu **tự giảm theo thời gian thực** (Nước −2.5/giờ, Nắng −1.8/giờ, Tình yêu −1.2/giờ, tính từ mốc `statsAt` lưu trong state; áp dụng khi mở app + tick mỗi phút). Chỉ số thấp → cây **héo thật**: chuyển thành 🥀 xám cụp xuống, thanh chỉ số đỏ cảnh báo, banner theo chỉ số thiếu ("Cây đang khát nước nè 🥺"...). Chăm lại là cây tươi lại ngay.
 - **🪙 Xu Tim + 🛍️ Cửa hàng trang trí vườn:** kiếm Xu Tim khi chăm cây (+4~6), nhận nhiệm vụ ngày (+20), mở thư (+10 Thường / +25 Hiếm / +50 Huyền thoại). Dùng mua & trang bị **4 chậu** (đất nung / gốm xanh 60 / hồng chibi 90 / vàng hoàng kim 180), **4 nền cảnh** (theo giờ thật / hoàng hôn 80 / đêm sao 100 / cầu vồng 150), **4 phụ kiện** (nơ hồng 40 / chuông gió 55 / đèn lồng 70 / đàn bướm 85). Có sẵn **50 Xu Tim khởi đầu** + **30 Xu Tim quà onboarding** → mua được Nơ hồng ngay hôm đầu. Đồ đã mua + đồ đang trang bị sync realtime cho cả 2.
@@ -43,7 +49,7 @@ App tự nhận diện chế độ theo biến môi trường, không cần cấ
 - **Header chibi:** 2 avatar theo tài khoản của 2 thành viên, tên khu vườn, đếm ngày yêu + countdown mốc 100/200/365... ngày, mã mời, số dư Xu Tim, trạng thái kết nối, chip tài khoản của bạn + đăng xuất.
 - **🌈 Mood hôm nay** (mỗi người 1 mood, thấy nhau realtime), **📌 Love Notes** tường pastel thêm/xoá, **🎯 Bucket List** + thanh %, **💬 Câu hỏi mỗi ngày** (24 câu xoay vòng theo ngày, cả 2 trả lời mới mở khóa đáp án nhau), **🎲 Gợi ý hẹn hò ngẫu nhiên**.
 
-## 💌 Cơ chế rơi thư (chi tiết)
+## Cơ chế rơi thư (chi tiết)
 
 | Tình huống | Tỉ lệ / Điều kiện | Hạng thư |
 |---|---|---|
@@ -63,6 +69,22 @@ App tự nhận diện chế độ theo biến môi trường, không cần cấ
 1. **Mặc định (không cần cấu hình):** State của vườn lưu `localStorage` theo couple (key `love-garden-<coupleId>`) + đồng bộ qua **BroadcastChannel** (`love-room-<coupleId>`) + `storage` event. Hai tài khoản trên **cùng máy** (2 tab/2 trình duyệt), cùng vào một khu vườn → tưới cây, rơi thư, mở thư, đổi mood, thêm note... hiện bên kia **ngay lập tức**, kèm activity feed trực tiếp.
 2. **Realtime thật khác máy (Supabase):** `lib/realtime.ts` là lớp abstraction — nếu có env Supabase thì tự dùng thêm **Supabase Realtime Broadcast** channel theo couple id, đồng thời state được lưu (debounce) lên bảng `room_state` theo `couple_id` để máy nào mở lên cũng thấy cùng một khu vườn. Không có env thì bỏ qua êm (lazy import, không crash, build bình thường).
 
+## Chỉ dùng qua webapp đã cài (cổng PWA — V4)
+
+Từ V4, app **chỉ hoạt động khi đã cài thành webapp (PWA standalone)** trên điện thoại:
+
+- Mở domain bằng **trình duyệt thường** (điện thoại hay PC) -> bị chặn ở **màn hình hướng dẫn cài**, không thấy app/không thấy màn hình đăng nhập.
+- Nhận diện standalone bằng `matchMedia('(display-mode: standalone)')` + `navigator.standalone` (iOS) trong component `AppGate`.
+- **Android/Chrome:** menu 3 chấm -> "Cài đặt ứng dụng" / "Thêm vào màn hình chính". Nếu trình duyệt phát sự kiện `beforeinstallprompt`, màn hình hướng dẫn hiện nút **"Cài app ngay"** bấm 1 lần.
+- **iPhone/Safari:** nút Chia sẻ -> "Thêm vào Màn hình chính" -> "Thêm" (iOS không có `beforeinstallprompt` nên chỉ có hướng dẫn từng bước).
+- **PC/máy tính:** hiện **mã QR của chính domain** (sinh bằng thư viện `qrcode`) để quét bằng điện thoại + dòng địa chỉ dạng chữ. Lý do chặn PC: app thiết kế cho 2 chiếc điện thoại, dùng như app thật ngoài màn hình chính.
+- Mở link trong **webview Zalo/Facebook** sẽ có thêm cảnh báo mở bằng Chrome/Safari vì webview không cài được PWA.
+- Điều kiện cài đặt thật: `public/sw.js` (service worker, cache app shell, network-first cho same-origin, không cache/can thiệp request Supabase cross-origin) + icon PNG sinh bằng code tại `src/app/icons/icon-192`, `src/app/icons/icon-512`, `src/app/icons/apple-touch-icon` (dùng `ImageResponse` của `next/og`, repo không chứa file binary).
+
+### Dev local khi cần test bằng trình duyệt
+
+Cổng chặn có bypass **chỉ dành cho dev**: tạo file `.env.local` với `NEXT_PUBLIC_ALLOW_BROWSER=true` rồi chạy `npm run dev` — app sẽ mở thẳng trong trình duyệt. **Tuyệt đối không set biến này trên Vercel/production** (không set = chặn tuyệt đối như mô tả trên).
+
 ## Chạy local
 
 ```bash
@@ -70,7 +92,7 @@ npm install
 npm run dev   # mở http://localhost:3000
 ```
 
-## 🚀 Deploy lên Vercel (xem demo trực tiếp)
+## Deploy lên Vercel (xem demo trực tiếp)
 
 1. Push repo này lên GitHub (đã có sẵn tại `thanhtinz/Love`).
 2. Vào [vercel.com](https://vercel.com) → **Add New → Project** → **Import** repo GitHub vừa chọn → framework tự nhận diện **Next.js**, giữ nguyên mọi cấu hình mặc định.

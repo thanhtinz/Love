@@ -1,7 +1,7 @@
 "use client";
 import React, { createContext, useContext, useEffect, useReducer, useRef } from "react";
 import { AppState, CARE_COINS, LETTER_COINS, LoveLetter, MemoryItem, ONBOARD_GIFT_COINS, QUEST_COINS, ShopCategory, decayedStats, defaultState, getStage, normalizeState, today, uid } from "./types";
-import { shopItem } from "./data";
+import { moodLabel, shopItem } from "./data";
 import { RealtimeSync } from "./realtime";
 import { useAuth } from "./auth";
 import { getSupabase, HAS_SUPABASE } from "./supabase";
@@ -97,13 +97,13 @@ function reducer(state: AppState, action: Action): AppState {
         const y = new Date(Date.now() - 86400000).toISOString().slice(0, 10);
         streak = { count: streak.lastDate === y ? streak.count + 1 : 1, lastDate: td };
       }
-      const label = { water: "tưới nước 💧", sun: "tắm nắng ☀️", love: "bón tim 💖", bug: "bắt sâu 🐛" }[action.kind];
-      let acts = pushAct(state, action.actor, `vừa ${label} cho cây (+${CARE_COINS[action.kind]} Xu Tim 🪙)`, { water: "💧", sun: "☀️", love: "💖", bug: "🐛" }[action.kind]);
+      const label = { water: "tưới nước", sun: "tắm nắng", love: "bón tim", bug: "bắt sâu" }[action.kind];
+      let acts = pushAct(state, action.actor, `vừa ${label} cho cây (+${CARE_COINS[action.kind]} Xu Tim)`, { water: "drop", sun: "sun", love: "heart", bug: "bug" }[action.kind]);
       let letters = state.letters; let ach = state.achievements;
-      if (action.combo) { ach = unlock(state, ["combo"]); acts = [{ id: uid(), actor: "Combo", text: `Song chăm! ${action.actor} + người thương cùng chăm cây ✨`, time: new Date().toISOString(), emoji: "✨" }, ...acts].slice(0, 40); }
+      if (action.combo) { ach = unlock(state, ["combo"]); acts = [{ id: uid(), actor: "Combo", text: `Song chăm! ${action.actor} + người thương cùng chăm cây`, time: new Date().toISOString(), emoji: "sparkle" }, ...acts].slice(0, 40); }
       const newStage = getStage(t.xp).index;
-      if (newStage > oldStage) acts = [{ id: uid(), actor: "Cây tình yêu", text: `đã LÊN CẤP thành "${getStage(t.xp).name}" 🎉`, time: new Date().toISOString(), emoji: "🎉" }, ...acts].slice(0, 40);
-      if (action.drop) { letters = [action.drop, ...state.letters].slice(0, 100); acts = [{ id: uid(), actor: "Cây tình yêu", text: `vừa rơi ra một lá thư ${action.drop.rarity === "legendary" ? "HUYỀN THOẠI 👑" : action.drop.rarity === "rare" ? "HIẾM ✨" : ""} — bấm vào thư dưới gốc cây để mở!`, time: new Date().toISOString(), emoji: "💌" }, ...acts].slice(0, 40); }
+      if (newStage > oldStage) acts = [{ id: uid(), actor: "Cây tình yêu", text: `đã LÊN CẤP thành "${getStage(t.xp).name}"`, time: new Date().toISOString(), emoji: "party" }, ...acts].slice(0, 40);
+      if (action.drop) { letters = [action.drop, ...state.letters].slice(0, 100); acts = [{ id: uid(), actor: "Cây tình yêu", text: `vừa rơi ra một lá thư ${action.drop.rarity === "legendary" ? "HUYỀN THOẠI" : action.drop.rarity === "rare" ? "HIẾM" : ""} — bấm vào thư dưới gốc cây để mở!`, time: new Date().toISOString(), emoji: "envelope" }, ...acts].slice(0, 40); }
       return checkAch({ ...state, tree: t, daily, streak, letters, achievements: ach, activities: acts, coins: state.coins + CARE_COINS[action.kind] });
     }
     case "OPEN_LETTER": {
@@ -111,30 +111,30 @@ function reducer(state: AppState, action: Action): AppState {
       if (!target || target.opened) return state;
       const letters = state.letters.map((l) => (l.id === action.id ? { ...l, opened: true, openedAt: new Date().toISOString(), openedBy: action.opener } : l));
       const gain = LETTER_COINS[target.rarity];
-      return checkAch({ ...state, letters, coins: state.coins + gain, activities: pushAct(state, action.opener, `đã mở một lá thư ${target.rarity === "legendary" ? "Huyền thoại 👑" : target.rarity === "rare" ? "Hiếm ✨" : "tình yêu 💌"} (+${gain} Xu Tim 🪙)`, "💌") });
+      return checkAch({ ...state, letters, coins: state.coins + gain, activities: pushAct(state, action.opener, `đã mở một lá thư ${target.rarity === "legendary" ? "Huyền thoại" : target.rarity === "rare" ? "Hiếm" : "tình yêu"} (+${gain} Xu Tim)`, "envelope") });
     }
     case "CLAIM_QUEST": {
       if (freshDaily(state).claimed.includes(action.questId)) return state;
       const daily = { ...freshDaily(state), claimed: [...freshDaily(state).claimed, action.questId] };
       const tree = { ...state.tree, xp: state.tree.xp + action.rewardXp };
-      let acts = pushAct(state, action.actor, `hoàn thành nhiệm vụ ngày, nhận +${action.rewardXp} XP và +${QUEST_COINS} Xu Tim 🎁`, "🎁");
+      let acts = pushAct(state, action.actor, `hoàn thành nhiệm vụ ngày, nhận +${action.rewardXp} XP và +${QUEST_COINS} Xu Tim`, "gift");
       let letters = state.letters;
-      if (action.drop) { letters = [action.drop, ...state.letters].slice(0, 100); acts = [{ id: uid(), actor: "Nhiệm vụ", text: "thưởng một lá thư tình yêu 💌 dưới gốc cây!", time: new Date().toISOString(), emoji: "💌" }, ...acts].slice(0, 40); }
+      if (action.drop) { letters = [action.drop, ...state.letters].slice(0, 100); acts = [{ id: uid(), actor: "Nhiệm vụ", text: "thưởng một lá thư tình yêu dưới gốc cây!", time: new Date().toISOString(), emoji: "envelope" }, ...acts].slice(0, 40); }
       return checkAch({ ...state, daily, tree, letters, activities: acts, coins: state.coins + QUEST_COINS });
     }
     case "ADD_XP": return { ...state, tree: { ...state.tree, xp: state.tree.xp + action.xp } };
     case "SET_MOOD": {
       const name = action.user === "A" ? state.personA : state.personB;
-      return { ...state, moods: { ...state.moods, [action.user]: action.mood, date: today() }, activities: pushAct(state, name, `đổi mood thành ${action.mood}`, action.mood) };
+      return { ...state, moods: { ...state.moods, [action.user]: action.mood, date: today() }, activities: pushAct(state, name, `đổi tâm trạng: ${moodLabel(action.mood)}`, "smile") };
     }
-    case "ADD_NOTE": return { ...state, notes: [action.note, ...state.notes], activities: pushAct(state, action.note.author, "đã dán một ghi chú mới", "📌") };
+    case "ADD_NOTE": return { ...state, notes: [action.note, ...state.notes], activities: pushAct(state, action.note.author, "đã dán một ghi chú mới", "note") };
     case "DEL_NOTE": return { ...state, notes: state.notes.filter((n) => n.id !== action.id) };
     case "ADD_BUCKET": return { ...state, bucket: [...state.bucket, action.item] };
     case "TOGGLE_BUCKET": return { ...state, bucket: state.bucket.map((b) => (b.id === action.id ? { ...b, done: !b.done } : b)) };
     case "DEL_BUCKET": return { ...state, bucket: state.bucket.filter((b) => b.id !== action.id) };
     case "ANSWER": {
       const name = action.user === "A" ? state.personA : state.personB;
-      return { ...state, answers: { date: today(), A: state.answers.A, B: state.answers.B, [action.user]: action.text }, activities: pushAct(state, name, "đã trả lời câu hỏi hôm nay", "💬") };
+      return { ...state, answers: { date: today(), A: state.answers.A, B: state.answers.B, [action.user]: action.text }, activities: pushAct(state, name, "đã trả lời câu hỏi hôm nay", "chat") };
     }
     case "BUY_ITEM": {
       const item = shopItem(action.itemId);
@@ -144,7 +144,7 @@ function reducer(state: AppState, action: Action): AppState {
         coins: state.coins - item.price,
         inventory: [...state.inventory, item.id],
         equipped: { ...state.equipped, [item.category]: item.id },
-        activities: pushAct(state, action.actor, `đã mua "${item.name}" ${item.emoji} ở cửa hàng vườn (-${item.price} Xu Tim)`, "🛍️"),
+        activities: pushAct(state, action.actor, `đã mua "${item.name}" ở cửa hàng vườn (-${item.price} Xu Tim)`, "bag"),
       });
       return next;
     }
@@ -156,11 +156,11 @@ function reducer(state: AppState, action: Action): AppState {
       return {
         ...state,
         lastLoveAction: { kind: action.kind, emoji: action.emoji, label: action.label, by: action.user, actor: action.actor, at: new Date().toISOString() },
-        activities: pushAct(state, action.actor, `vừa ${action.label} ${action.emoji}`, action.emoji),
+        activities: pushAct(state, action.actor, `vừa ${action.label}`, action.emoji),
       };
     }
     case "ADD_MEMORY": {
-      return checkAch({ ...state, memories: [action.memory, ...state.memories], activities: pushAct(state, action.memory.author, `đã thêm kỷ niệm "${action.memory.title}"`, "📸") });
+      return checkAch({ ...state, memories: [action.memory, ...state.memories], activities: pushAct(state, action.memory.author, `đã thêm kỷ niệm "${action.memory.title}"`, "camera") });
     }
     case "DEL_MEMORY": return { ...state, memories: state.memories.filter((m) => m.id !== action.id) };
     case "COMPLETE_ONBOARDING": {
@@ -172,7 +172,7 @@ function reducer(state: AppState, action: Action): AppState {
         roomCode: (action.roomCode || state.roomCode).toUpperCase(),
         onboarded: true, everOnboarded: true,
         coins: firstTime ? state.coins + ONBOARD_GIFT_COINS : state.coins,
-        activities: pushAct(state, "Khu vườn", firstTime ? `chào mừng hai bạn đến với Khu Vườn Tình Yêu! Tặng +${ONBOARD_GIFT_COINS} Xu Tim làm quà 🎁` : "đã cập nhật thông tin khu vườn", "🎉"),
+        activities: pushAct(state, "Khu vườn", firstTime ? `chào mừng hai bạn đến với Khu Vườn Tình Yêu! Tặng +${ONBOARD_GIFT_COINS} Xu Tim làm quà` : "đã cập nhật thông tin khu vườn", "party"),
       };
     }
     case "REOPEN_ONBOARDING": return { ...state, onboarded: false };
@@ -190,7 +190,7 @@ function reducer(state: AppState, action: Action): AppState {
         startDate: action.startDate || state.startDate,
         onboarded: true, everOnboarded: true,
         coins: firstTime ? state.coins + ONBOARD_GIFT_COINS : state.coins,
-        activities: pushAct(state, "Khu vườn", firstTime ? `chào mừng hai bạn đến với "${action.gardenName || state.gardenName}"! Tặng +${ONBOARD_GIFT_COINS} Xu Tim làm quà 🎁` : "đã cập nhật thông tin khu vườn", "🎉"),
+        activities: pushAct(state, "Khu vườn", firstTime ? `chào mừng hai bạn đến với "${action.gardenName || state.gardenName}"! Tặng +${ONBOARD_GIFT_COINS} Xu Tim làm quà` : "đã cập nhật thông tin khu vườn", "party"),
       };
     }
     default: return state;
