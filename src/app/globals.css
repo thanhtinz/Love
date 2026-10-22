@@ -1,0 +1,6 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+body { font-family: 'Quicksand', sans-serif; background: #fff5f7; }
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-thumb { background: #fda4bc; border-radius: 999px; }
