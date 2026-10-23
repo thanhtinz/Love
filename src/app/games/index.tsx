@@ -8,7 +8,7 @@ import { today, type PersonId } from "../../lib/types";
 import Avatar from "../../components/Avatar";
 import { partnerOf, selfOf, type PersonInfo } from "../../components/PersonChip";
 import { HeartGameImage } from "../../components/Art";
-import { COLOR, FONT, RADIUS, ROLE, SPACE, TYPE } from "../../components/theme";
+import { COLOR, FONT, RADIUS, ROLE, SPACE, TILE, TYPE } from "../../components/theme";
 import { Medallion, ScreenHeader, s } from "../../components/ui";
 
 /**
@@ -58,25 +58,25 @@ export default function GamesHubScreen() {
       id: "spin", route: "/games/spin-wheel", name: "Vòng quay yêu thương",
       desc: "Quay trúng Xu Tim, XP và thư tình cho khu vườn của hai đứa.",
       status: spinsLeft > 0 ? `Bạn còn ${spinsLeft}/${MAX_DAILY_SPINS} lượt quay hôm nay` : "Hôm nay bạn đã quay hết lượt",
-      icon: "refresh-circle", color: ROLE.selfDark, bg: ROLE.selfSoft,
+      icon: "refresh-circle", color: TILE.icon, bg: TILE.bg,
     },
     {
       id: "quiz", route: "/games/quiz", name: "Hiểu ý nhau",
       desc: "4 câu hỏi mỗi ngày, đáp án niêm phong tới khi cả hai cùng trả lời.",
       status: quizBothDone ? "Cả hai đã trả lời — vào xem độ hợp ý" : quizDone ? "Bạn đã trả lời — đang chờ người ấy" : "Hôm nay hai đứa chưa trả lời",
-      icon: "chatbubbles", color: ROLE.partnerDark, bg: ROLE.partnerSoft,
+      icon: "chatbubbles", color: TILE.icon, bg: TILE.bg,
     },
     {
       id: "memory", route: "/games/memory-match", name: "Ghép cặp ký ức",
       desc: "Lật 12 lá, tìm 6 cặp mặt mood giống nhau trước khi hết giờ.",
       status: memoryClaimed ? "Bạn đã nhận thưởng hôm nay rồi" : "Thưởng ngày vẫn đang chờ bạn",
-      icon: "grid", color: ROLE.shared, bg: ROLE.sharedSoft,
+      icon: "grid", color: TILE.icon, bg: TILE.bg,
     },
     {
       id: "dice", route: "/games/love-dice", name: "Xúc xắc hẹn hò",
       desc: "Gieo xúc xắc, nhận một nhiệm vụ hẹn hò ngẫu nhiên cho hai đứa.",
       status: diceClaimed ? "Bạn đã nhận thưởng hôm nay rồi" : "Thưởng ngày vẫn đang chờ bạn",
-      icon: "dice", color: ROLE.selfDark, bg: ROLE.selfSoft,
+      icon: "dice", color: TILE.icon, bg: TILE.bg,
     },
   ];
 
@@ -113,12 +113,12 @@ export default function GamesHubScreen() {
 
         {/* GAME NỔI BẬT HÔM NAY */}
         <View style={s.card}>
-          <View style={{ height: 138, borderRadius: RADIUS.inner, backgroundColor: featured.bg, alignItems: "center", justifyContent: "center", overflow: "hidden" }}>
+          <View style={{ height: 156, borderRadius: RADIUS.inner, backgroundColor: TILE.bg, alignItems: "center", justifyContent: "center", overflow: "hidden" }}>
             {featured.id === "spin" ? (
-              <HeartGameImage size={124} />
+              <HeartGameImage size={140} />
             ) : (
-              <View style={{ width: 92, height: 92, borderRadius: 46, backgroundColor: "#fff", alignItems: "center", justifyContent: "center" }}>
-                <Ionicons name={featured.icon as never} size={44} color={featured.color} />
+              <View style={{ width: 104, height: 104, borderRadius: 52, backgroundColor: "#fff", alignItems: "center", justifyContent: "center" }}>
+                <Ionicons name={featured.icon as never} size={50} color={featured.color} />
               </View>
             )}
           </View>

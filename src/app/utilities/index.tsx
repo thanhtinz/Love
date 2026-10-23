@@ -4,12 +4,14 @@ import { useLove } from "../../lib/store";
 import { QUESTS } from "../../lib/data";
 import { countdownLabel, nextEvent } from "../../lib/features";
 import { today } from "../../lib/types";
-import { C, FeatureCard, ScreenHeader, s } from "../../components/ui";
+import { FeatureCard, ScreenHeader, s } from "../../components/ui";
 
 /**
  * Hub Tiện ích: CHỈ là lưới thẻ điều hướng — mỗi tiện ích có màn hình riêng.
  * Không nhúng bất kỳ chức năng đầy đủ nào tại đây.
  * Route Stack gốc (/utilities) — không đặt trong (tabs) dạng tab ẩn, xem ghi chú ở games/index.tsx.
+ * Vòng polish 2026-10-23: mọi hàng dùng TILE trung tính thống nhất (không còn
+ * 11 hàng 11 màu pastel); badge trạng thái đi qua hệ chip (done/waiting/info).
  */
 export default function UtilitiesHubScreen() {
   const { state } = useLove();
@@ -29,17 +31,17 @@ export default function UtilitiesHubScreen() {
       <ScreenHeader fallback="/(tabs)/couple" title="Tiện ích đôi mình" subtitle="Mỗi tiện ích một màn hình riêng — trạng thái của bạn và của người ấy luôn tách bạch" />
       <ScrollView contentContainerStyle={s.scroll}>
       <View style={{ gap: 9 }}>
-        <FeatureCard icon="happy" title="Mood hôm nay" desc="Mood của bạn và của người ấy hôm nay" color={C.amber} bg="#fef3c7" route="/utilities/mood" badge={moodDone ? undefined : "Chưa chọn"} />
-        <FeatureCard icon="chatbubbles" title="Câu hỏi mỗi ngày" desc="Trả lời riêng — mở đáp án khi cả hai cùng xong" color={C.sky} bg="#D9F4F0" route="/utilities/daily-question" badge={myAnswered ? "Đã trả lời" : "Chưa trả lời"} />
-        <FeatureCard icon="heart" title="Hành động yêu thương" desc="Ôm, hôn gió, tặng hoa, thả sao" color={C.pink} bg={C.pinkSoft} route="/utilities/love-actions" />
-        <FeatureCard icon="document-text" title="Love Notes" desc="Lời nhắn yêu thương của từng người + ghi chú nhanh" color={C.violet} bg="#ede9fe" route="/utilities/love-notes" />
-        <FeatureCard icon="list" title="Bucket List" desc="Những việc muốn làm cùng nhau" color={C.green} bg="#dcfce7" route="/utilities/bucket-list" />
-        <FeatureCard icon="compass" title="Gợi ý hẹn hò" desc="Ý tưởng hẹn hò ngẫu nhiên — lưu vào Bucket List" color="#ea580c" bg="#ffedd5" route="/utilities/date-ideas" />
-        <FeatureCard icon="camera" title="Dòng kỷ niệm" desc="Kỷ niệm hai bạn lưu giữ + cây trưởng thành đã thu" color={C.pink} bg={C.pinkSoft} route="/utilities/memories" />
-        <FeatureCard icon="calendar" title="Ngày đặc biệt" desc={nextEv ? `${nextEv.event.title} — ${countdownLabel(nextEv.daysUntil)}` : "Kỷ niệm, sinh nhật, chuyến đi — đếm ngược cùng nhau"} color={C.violet} bg="#ede9fe" route="/utilities/events" badge={nextEv && nextEv.daysUntil <= 7 ? countdownLabel(nextEv.daysUntil) : undefined} />
-        <FeatureCard icon="trophy" title="Nhiệm vụ & huy hiệu" desc={unclaimedQuests > 0 ? `Nhiệm vụ riêng của bạn + huy hiệu chung (${unclaimedQuests} chưa nhận)` : "Bạn đã nhận hết thưởng nhiệm vụ hôm nay"} color={C.amber} bg="#fef3c7" route="/utilities/quests" />
-        <FeatureCard icon="bag-handle" title="Cửa hàng trang trí" desc="Chậu, khung cảnh, phụ kiện bằng Xu Tim chung" color={C.amber} bg="#fef3c7" route="/utilities/shop" />
-        <FeatureCard icon="image" title="Khung màn hình" desc="3 khung kỷ niệm xuất ảnh PNG: đếm ngày, cây hôm nay, mood" color={C.sky} bg="#D9F4F0" route="/frames" />
+        <FeatureCard icon="happy" title="Mood hôm nay" desc="Mood của bạn và của người ấy hôm nay" route="/utilities/mood" badge={moodDone ? undefined : "Chưa chọn"} badgeVariant="waiting" />
+        <FeatureCard icon="chatbubbles" title="Câu hỏi mỗi ngày" desc="Trả lời riêng — mở đáp án khi cả hai cùng xong" route="/utilities/daily-question" badge={myAnswered ? "Đã trả lời" : "Chưa trả lời"} badgeVariant={myAnswered ? "done" : "waiting"} />
+        <FeatureCard icon="heart" title="Hành động yêu thương" desc="Ôm, hôn gió, tặng hoa, thả sao" route="/utilities/love-actions" />
+        <FeatureCard icon="document-text" title="Love Notes" desc="Lời nhắn yêu thương của từng người + ghi chú nhanh" route="/utilities/love-notes" />
+        <FeatureCard icon="list" title="Bucket List" desc="Những việc muốn làm cùng nhau" route="/utilities/bucket-list" />
+        <FeatureCard icon="compass" title="Gợi ý hẹn hò" desc="Ý tưởng hẹn hò ngẫu nhiên — lưu vào Bucket List" route="/utilities/date-ideas" />
+        <FeatureCard icon="camera" title="Dòng kỷ niệm" desc="Kỷ niệm hai bạn lưu giữ + cây trưởng thành đã thu" route="/utilities/memories" />
+        <FeatureCard icon="calendar" title="Ngày đặc biệt" desc={nextEv ? `${nextEv.event.title} — ${countdownLabel(nextEv.daysUntil)}` : "Kỷ niệm, sinh nhật, chuyến đi — đếm ngược cùng nhau"} route="/utilities/events" badge={nextEv && nextEv.daysUntil <= 7 ? countdownLabel(nextEv.daysUntil) : undefined} badgeVariant="info" />
+        <FeatureCard icon="trophy" title="Nhiệm vụ & huy hiệu" desc={unclaimedQuests > 0 ? `Nhiệm vụ riêng của bạn + huy hiệu chung (${unclaimedQuests} chưa nhận)` : "Bạn đã nhận hết thưởng nhiệm vụ hôm nay"} route="/utilities/quests" />
+        <FeatureCard icon="bag-handle" title="Cửa hàng trang trí" desc="Chậu, khung cảnh, phụ kiện bằng Xu Tim chung" route="/utilities/shop" />
+        <FeatureCard icon="image" title="Khung màn hình" desc="3 khung kỷ niệm xuất ảnh PNG: đếm ngày, cây hôm nay, mood" route="/frames" />
       </View>
       </ScrollView>
     </View>

@@ -5,7 +5,7 @@ import { useLove } from "../../lib/store";
 import { CONTENT_ADD_MIN_INTERVAL_MS, CONTENT_LIMITS, uid } from "../../lib/types";
 import { BucketEmptyArt } from "../../components/Art";
 import { PersonChip, selfOf } from "../../components/PersonChip";
-import { C, LoadMoreRow, ScreenHeader, s, useNow } from "../../components/ui";
+import { C, LoadMoreRow, ScreenHeader, StatusChip, s, useNow } from "../../components/ui";
 
 const PAGE = 10;
 
@@ -37,7 +37,7 @@ export default function BucketListScreen() {
         <View style={s.card}>
           <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
             <Text style={[s.cardTitle, { flex: 1 }]}>Danh sách chung ({state.bucket.length} mục)</Text>
-            <View style={s.chip}><Ionicons name="checkmark-circle" size={13} color={C.pinkDark} /><Text style={s.chipText}>Đã xong {doneCount}</Text></View>
+            <StatusChip icon="checkmark-circle" label={`Đã xong ${doneCount}`} variant="done" />
             <TouchableOpacity style={[s.btn, { paddingHorizontal: 12, minHeight: 44 }]} onPress={() => setFormOpen(true)} accessibilityLabel="Thêm mục bucket list">
               <Ionicons name="add" size={18} color="#fff" /><Text style={s.btnText}>Thêm</Text>
             </TouchableOpacity>

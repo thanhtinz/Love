@@ -12,8 +12,8 @@ import { dayKeyLocal, treeHealth, type AppState, type LoveLetter, type PersonId,
 import { DECOR_FENCE_ART, DECOR_ITEM_ART, DECOR_PATH_ART, DECOR_SCENE_ART, EmptyPlotScene, LetterEnvelopeImage, MascotArt, PetImage, PlantScene } from "../../components/Art";
 import Avatar from "../../components/Avatar";
 import { partnerOf, selfOf } from "../../components/PersonChip";
-import { COLOR, FONT, RADIUS, ROLE, SHADOW_FLOAT, SPACE, TYPE } from "../../components/theme";
-import { ProgressBar, SkeletonCard, StatBar, s, useNow } from "../../components/ui";
+import { COLOR, FONT, RADIUS, ROLE, SHADOW_FLOAT, SPACE, TILE, TYPE } from "../../components/theme";
+import { ProgressBar, SkeletonCard, StatBar, s, tabBarPad, useNow } from "../../components/ui";
 
 /**
  * Tab Vườn — hệ "Vườn giấy ấm" (mockup vòng 2, user duyệt 2026-10-23).
@@ -30,12 +30,14 @@ import { ProgressBar, SkeletonCard, StatBar, s, useNow } from "../../components/
  * Toàn bộ logic chăm/gieo hạt/thư rơi giữ nguyên như trước vòng làm lại giao diện.
  */
 
-/** 4 hành động chăm: medallion tròn theo vai/màu ngữ nghĩa của mockup vòng 2. */
+/** 4 hành động chăm: MỘT họ tile thống nhất (nền TILE giấy-hồng cho cả 4);
+ *  chỉ glyph giữ màu ngữ nghĩa của chỉ số tương ứng (Nước mint · Nắng rose ·
+ *  Tình yêu primary) — "Bắt sâu" không có chỉ số riêng nên dùng ink-rose mặc định. */
 const CARE_BTNS: { kind: CareKind; icon: string; label: string; color: string; bg: string }[] = [
-  { kind: "water", icon: "water", label: "Tưới nước", color: ROLE.partnerDark, bg: ROLE.partnerSoft },
-  { kind: "sun", icon: "sunny", label: "Phơi nắng", color: ROLE.selfDark, bg: ROLE.selfSoft },
-  { kind: "love", icon: "heart", label: "Lời yêu", color: ROLE.selfDark, bg: ROLE.selfSoft },
-  { kind: "bug", icon: "bug", label: "Bắt sâu", color: ROLE.shared, bg: ROLE.sharedSoft },
+  { kind: "water", icon: "water", label: "Tưới nước", color: ROLE.partnerDark, bg: TILE.bg },
+  { kind: "sun", icon: "sunny", label: "Phơi nắng", color: ROLE.selfDark, bg: TILE.bg },
+  { kind: "love", icon: "heart", label: "Lời yêu", color: COLOR.primary, bg: TILE.bg },
+  { kind: "bug", icon: "bug", label: "Bắt sâu", color: TILE.icon, bg: TILE.bg },
 ];
 
 /** Hàng nút chăm dạng cột (medallion 50 + nhãn) — nhận `now` từ panel cha (tick 1s). */
@@ -88,10 +90,11 @@ function PlantCarePanel({ plant, state, onCare, careMsg, onHarvest, onCollect }:
   const dotColor = health.status === "wilted" ? COLOR.danger : health.status === "need" ? COLOR.warning : ROLE.partner;
   return (
     <View style={s.card}>
-      {/* Dòng trạng thái tổng thể: chấm màu + đúng một câu */}
-      <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
-        <View style={{ width: 9, height: 9, borderRadius: 5, backgroundColor: dotColor, flexShrink: 0 }} />
-        <Text style={{ flex: 1, fontFamily: FONT.semibold, fontSize: 15, color: COLOR.text }}>{health.message}</Text>
+      {/* Dòng trạng thái tổng thể: chấm màu canh theo DÒNG ĐẦU của câu trạng
+          thái (câu có thể 2 dòng — chấm không còn trôi giữa khối chữ nữa) */}
+      <View style={{ flexDirection: "row", alignItems: "flex-start", gap: 8 }}>
+        <View style={{ width: 9, height: 9, borderRadius: 5, backgroundColor: dotColor, flexShrink: 0, marginTop: 6 }} />
+        <Text style={{ flex: 1, fontFamily: FONT.semibold, fontSize: 15, lineHeight: 21, color: COLOR.text }}>{health.message}</Text>
       </View>
 
       {health.status === "wilted" && (
@@ -154,11 +157,13 @@ function PlantCarePanel({ plant, state, onCare, careMsg, onHarvest, onCollect }:
   );
 }
 
-/** 3 hành động chăm pet — cùng ngôn ngữ medallion với nút chăm cây. */
+/** 3 hành động chăm pet — CÙNG họ tile với nút chăm cây (nền TILE thống nhất);
+ *  glyph giữ màu ngữ nghĩa: Cho ăn = hổ phách (Độ no) · Vuốt ve/Chơi cùng =
+ *  rose/primary (Niềm vui). */
 const PET_BTNS: { kind: PetCareKind; icon: string; label: string; color: string; bg: string }[] = [
-  { kind: "feed", icon: "restaurant", label: "Cho ăn", color: COLOR.warningText, bg: COLOR.warningSoft },
-  { kind: "pet", icon: "heart", label: "Vuốt ve", color: ROLE.selfDark, bg: ROLE.selfSoft },
-  { kind: "play", icon: "football", label: "Chơi cùng", color: ROLE.partnerDark, bg: ROLE.partnerSoft },
+  { kind: "feed", icon: "restaurant", label: "Cho ăn", color: COLOR.warningText, bg: TILE.bg },
+  { kind: "pet", icon: "heart", label: "Vuốt ve", color: ROLE.selfDark, bg: TILE.bg },
+  { kind: "play", icon: "football", label: "Chơi cùng", color: COLOR.primary, bg: TILE.bg },
 ];
 
 /**
@@ -329,7 +334,7 @@ export default function GardenScreen() {
     if (!p) {
       return (
         <TouchableOpacity key={i} style={styles.plotEmpty} onPress={() => setSeedOpen(true)} accessibilityLabel="Gieo hạt mới">
-          <EmptyPlotScene height={86} imgHeight={78} />
+          <EmptyPlotScene height={104} imgHeight={96} />
           <Text style={{ fontFamily: FONT.bold, fontSize: 13.5, color: COLOR.text, textAlign: "center", marginTop: 4 }}>Ô đất trống</Text>
           <Text style={{ fontSize: 12, color: COLOR.textSoft, textAlign: "center" }}>Gieo hạt mới</Text>
         </TouchableOpacity>
@@ -347,7 +352,7 @@ export default function GardenScreen() {
             <Text style={{ fontSize: 10.5, fontFamily: FONT.extrabold, color: "#fff", lineHeight: 13 }}>Đang chọn</Text>
           </View>
         )}
-        <PlantScene speciesId={p.speciesId} stageIndex={info.index} status={cellStatus} height={104} imgHeight={98} soilRatio={0.15} />
+        <PlantScene speciesId={p.speciesId} stageIndex={info.index} status={cellStatus} height={118} imgHeight={112} soilRatio={0.15} />
         <Text style={{ fontFamily: FONT.bold, fontSize: 13.5, color: COLOR.text, textAlign: "center", marginTop: 4 }} numberOfLines={1}>{speciesById(p.speciesId).name}</Text>
         <Text style={{ fontSize: 12, color: COLOR.textSoft, textAlign: "center" }} numberOfLines={1}>Giai đoạn {info.index + 1} · {info.stage.name}</Text>
       </TouchableOpacity>
@@ -366,7 +371,7 @@ export default function GardenScreen() {
 
   return (
     <View style={{ flex: 1 }}>
-      <ScrollView style={{ flex: 1, backgroundColor: COLOR.bg }} contentContainerStyle={{ padding: SPACE.screenX, paddingTop: insets.top + 14, paddingBottom: 30, gap: SPACE.sectionGap }}>
+      <ScrollView style={{ flex: 1, backgroundColor: COLOR.bg }} contentContainerStyle={{ padding: SPACE.screenX, paddingTop: insets.top + 14, paddingBottom: tabBarPad(insets.bottom, 10), gap: SPACE.sectionGap }}>
         {/* Đầu màn: H1 + mô tả + chip Xu Tim trắng */}
         <View style={{ flexDirection: "row", alignItems: "flex-start", gap: 10 }}>
           <View style={{ flex: 1, minWidth: 0 }}>
@@ -403,7 +408,9 @@ export default function GardenScreen() {
             ))}
             <View style={styles.yardPet}>
               <PetImage stage={petStageIndex(state.pet)} size={56} />
-              <Text style={{ fontSize: 10.5, fontFamily: FONT.extrabold, color: COLOR.text, marginTop: -2 }} numberOfLines={1}>{state.pet.name}</Text>
+              {/* Bóng đất mềm dưới chân pet — pet "đứng" trên sân thay vì lơ lửng */}
+              <View style={{ width: 46, height: 10, borderRadius: 999, backgroundColor: "rgba(51,39,46,0.13)", marginTop: -9 }} />
+              <Text style={{ fontSize: 10.5, fontFamily: FONT.extrabold, color: COLOR.text, marginTop: 3 }} numberOfLines={1}>{state.pet.name}</Text>
             </View>
           </View>
           {state.decor.fence && DECOR_FENCE_ART[state.decor.fence] ? (
@@ -463,8 +470,8 @@ export default function GardenScreen() {
 
         {/* Lối vào Cửa hàng trang trí (hàng E0 gọn — giữ lối vào shop của tab Vườn) */}
         <TouchableOpacity style={styles.shopRow} onPress={() => router.push("/utilities/shop")} accessibilityLabel="Mở cửa hàng trang trí" accessibilityRole="button">
-          <View style={{ width: 46, height: 46, borderRadius: 23, backgroundColor: COLOR.warningSoft, alignItems: "center", justifyContent: "center" }}>
-            <Ionicons name="bag-handle" size={22} color={COLOR.warningText} />
+          <View style={{ width: 46, height: 46, borderRadius: 23, backgroundColor: TILE.bg, alignItems: "center", justifyContent: "center" }}>
+            <Ionicons name="bag-handle" size={22} color={TILE.icon} />
           </View>
           <View style={{ flex: 1, minWidth: 0, gap: 2 }}>
             <Text style={{ fontFamily: FONT.semibold, fontSize: 15, color: COLOR.text }}>Cửa hàng trang trí</Text>

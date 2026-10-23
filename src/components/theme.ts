@@ -66,6 +66,7 @@ export const COLOR = {
   chevron: "#B9A6AE", // chevron trong hàng điều hướng
   onNavySoft: "#C9D6E4", // chữ phụ trên nền navy
   success: "#2F8F5B",
+  successText: "#21784A", // chữ trên nền successSoft (chip "đã xong/đã trả lời")
   successSoft: "#E2F4E9",
   warning: "#D98E1B", // sun — icon nắng / nhãn ấm
   warningText: "#A85B00", // chữ cảnh báo trên nền sáng
@@ -76,6 +77,15 @@ export const COLOR = {
   water: "#2F8FC4",
   legendary: "#C98512",
 } as const;
+
+/**
+ * Ô icon (tile/medallion) MẶC ĐỊNH cho MỌI hàng điều hướng trung tính — vòng polish
+ * 2026-10-23 chống "loạn màu icon": một tint giấy-hồng duy nhất + icon ink-rose.
+ * Ba màu vai (ROLE.self/partner/shared) CHỈ được nhuộm tile khi hàng đó nói về
+ * đúng người/vai đó (vd thẻ của người ấy, cột thành tích của từng người) — hàng
+ * tính năng trung tính (tiện ích, khung, game, sheet +) luôn dùng TILE này.
+ */
+export const TILE = { bg: ROLE.selfSoft, icon: ROLE.selfDark } as const;
 
 /* ---------- Spacing — nhịp "gần trong nhóm, xa giữa nhóm" ---------- */
 export const SPACE = {

@@ -6,8 +6,9 @@ import { countdownLabel, cycleInfo } from "../lib/features";
 import { parseDateKey, today } from "../lib/types";
 import Avatar from "../components/Avatar";
 import { partnerOf, selfOf } from "../components/PersonChip";
+import { MascotArt } from "../components/Art";
 import { COLOR, FONT, RADIUS, ROLE, SPACE } from "../components/theme";
-import { ScreenHeader, SkeletonCard, s } from "../components/ui";
+import { ClosingBand, ScreenHeader, SkeletonCard, s } from "../components/ui";
 
 /**
  * Màn Chu kỳ & quan tâm (hub Hai đứa) — nhận nuôi từ Meet You for Partners.
@@ -79,14 +80,14 @@ export default function CycleScreen() {
   return (
     <View style={s.screen}>
       <ScreenHeader title="Chu kỳ & quan tâm" subtitle="Hiểu giai đoạn của nhau để quan tâm đúng lúc" fallback="/(tabs)/couple" />
-      <ScrollView contentContainerStyle={s.scroll}>
+      <ScrollView contentContainerStyle={[s.scroll, { flexGrow: 1 }]}>
         {/* PHẦN CỦA NGƯỜI ẤY — chỉ tồn tại trên màn khi họ ĐÃ bật chia sẻ */}
         {partnerC.share && (
           <View style={s.card}>
             <View style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
               <Avatar id={partner.avatar} size={52} ring={partner.main} />
               <View style={{ flex: 1, minWidth: 0 }}>
-                <Text style={{ fontFamily: FONT.extrabold, fontSize: 17, color: COLOR.text }} numberOfLines={1}>Chu kỳ của {partner.name}</Text>
+                <Text style={{ fontFamily: FONT.extrabold, fontSize: 17, lineHeight: 22, color: COLOR.text }} numberOfLines={2}>Chu kỳ của {partner.name}</Text>
                 <Text style={s.sub}>Bạn ấy đã chọn chia sẻ với bạn</Text>
               </View>
             </View>
@@ -117,18 +118,21 @@ export default function CycleScreen() {
         {/* PHẦN CỦA BẠN */}
         <View style={s.card}>
           <Text style={s.cardTitle}>Chia sẻ của bạn</Text>
-          <View style={{ flexDirection: "row", alignItems: "center", gap: 12, marginTop: 12 }}>
+          {/* Công tắc canh theo DÒNG ĐẦU của khối nhãn 3 dòng (không trôi giữa) */}
+          <View style={{ flexDirection: "row", alignItems: "flex-start", gap: 12, marginTop: 12 }}>
             <View style={{ flex: 1, minWidth: 0 }}>
               <Text style={{ fontFamily: FONT.bold, fontSize: 15, color: COLOR.text }}>Chia sẻ chu kỳ với {partner.name}</Text>
               <Text style={s.sub}>Khi tắt, người ấy không thấy bất kỳ thông tin chu kỳ nào của bạn</Text>
             </View>
-            <Switch
-              value={myC.share}
-              onValueChange={(v) => dispatch({ type: "CYCLE_SET", user: me.slot, patch: { share: v } })}
-              trackColor={{ true: ROLE.self, false: COLOR.track }}
-              thumbColor="#fff"
-              accessibilityLabel="Chia sẻ chu kỳ với người ấy"
-            />
+            <View style={{ paddingTop: 2 }}>
+              <Switch
+                value={myC.share}
+                onValueChange={(v) => dispatch({ type: "CYCLE_SET", user: me.slot, patch: { share: v } })}
+                trackColor={{ true: ROLE.self, false: COLOR.track }}
+                thumbColor="#fff"
+                accessibilityLabel="Chia sẻ chu kỳ với người ấy"
+              />
+            </View>
           </View>
 
           {myC.share && (
@@ -171,6 +175,8 @@ export default function CycleScreen() {
         <Text style={[s.small, { lineHeight: 18, paddingHorizontal: 4 }]}>
           Miễn trừ: giai đoạn và ngày dự kiến ở đây chỉ là phép tính lịch đơn giản để hai đứa quan tâm và nhắc nhau những ngày quan trọng — không phải tư vấn y tế, không thay thế bác sĩ. Chu kỳ thật có thể lệch vài ngày; nếu có dấu hiệu bất thường về sức khoẻ, hãy đi khám nhé. App không lưu nhật ký triệu chứng hay bất kỳ dữ kiện y tế chi tiết nào khác.
         </Text>
+        <View style={{ flex: 1 }} />
+        <ClosingBand art={<MascotArt size={72} />} line="Biết giai đoạn của nhau, để những ngày nhạy cảm cũng trở thành ngày được quan tâm nhiều hơn." />
       </ScrollView>
     </View>
   );

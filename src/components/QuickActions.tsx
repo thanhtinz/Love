@@ -5,7 +5,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { decideCareDrop, myName, useLove } from "../lib/store";
 import { careStatus, speciesById } from "../lib/plants";
 import { PING_DAILY_MAX, today } from "../lib/types";
-import { COLOR, FONT, RADIUS, ROLE, SPACE } from "./theme";
+import { COLOR, FONT, RADIUS, SPACE, TILE } from "./theme";
 
 /**
  * Sheet hành động nhanh mở từ nút "+" ở giữa tab bar (mẫu Paired/Between:
@@ -47,45 +47,47 @@ export function QuickActions({ visible, onClose }: { visible: boolean; onClose: 
 
   const myPingsToday = state.pings.day.date === today() ? state.pings.day[me] : 0;
 
+  // Vòng polish 2026-10-23: cả 5 hàng dùng MỘT họ tile trung tính (TILE) —
+  // không còn 5 hàng 5 màu pastel như trước.
   const rows: { icon: string; label: string; desc: string; color: string; bg: string; onPress: () => void }[] = [
     {
       icon: "heart",
       label: "Gửi nhịp nhớ bạn",
       desc: myPingsToday >= PING_DAILY_MAX ? `Hôm nay bạn đã gửi đủ ${PING_DAILY_MAX} nhịp rồi` : `Chạm là gửi ngay một nhịp tim · hôm nay bạn đã gửi ${myPingsToday}/${PING_DAILY_MAX} nhịp`,
-      color: COLOR.primary,
-      bg: ROLE.selfSoft,
+      color: TILE.icon,
+      bg: TILE.bg,
       onPress: sendPing,
     },
     {
       icon: "water",
       label: "Tưới nước cho cây",
       desc: plant ? (selectedPlant ? `${speciesById(plant.speciesId).name} đang chọn trong vườn` : `Cây đầu tiên trong vườn: ${speciesById(plant.speciesId).name}`) : "Vườn chưa có cây — qua tab Vườn gieo hạt nhé",
-      color: COLOR.water,
-      bg: "#E3F2FB",
+      color: TILE.icon,
+      bg: TILE.bg,
       onPress: waterNow,
     },
     {
       icon: "heart",
       label: "Gửi yêu thương",
       desc: "Ôm, hôn gió, tặng hoa, thả sao cho người ấy",
-      color: COLOR.primary,
-      bg: ROLE.selfSoft,
+      color: TILE.icon,
+      bg: TILE.bg,
       onPress: () => go("/utilities/love-actions"),
     },
     {
       icon: "document-text",
       label: "Thêm ghi chú",
       desc: "Dán một lời nhắn nhanh lên Love Notes",
-      color: ROLE.shared,
-      bg: ROLE.sharedSoft,
+      color: TILE.icon,
+      bg: TILE.bg,
       onPress: () => go("/utilities/love-notes"),
     },
     {
       icon: "camera",
       label: "Thêm kỷ niệm",
       desc: "Lưu một khoảnh khắc vào Dòng kỷ niệm",
-      color: COLOR.warning,
-      bg: COLOR.warningSoft,
+      color: TILE.icon,
+      bg: TILE.bg,
       onPress: () => go("/utilities/memories"),
     },
   ];
@@ -108,8 +110,10 @@ export function QuickActions({ visible, onClose }: { visible: boolean; onClose: 
             <Ionicons name="chevron-forward" size={17} color={COLOR.chevron} />
           </TouchableOpacity>
         ))}
-        <TouchableOpacity onPress={onClose} style={{ alignItems: "center", justifyContent: "center", minHeight: 48, borderRadius: RADIUS.control, backgroundColor: "#fff", borderWidth: 1.5, borderColor: COLOR.lineStrong, marginTop: 2 }}>
-          <Text style={{ fontFamily: FONT.bold, fontSize: 14, color: COLOR.text }}>Đóng</Text>
+        {/* Nút đóng của sheet = nút chữ/ghost lặng (đồng nhất cách đóng sheet
+            trong app) — không còn styled như nút submit viền đậm nữa. */}
+        <TouchableOpacity onPress={onClose} style={{ alignItems: "center", justifyContent: "center", minHeight: 48, marginTop: 2 }} accessibilityRole="button" accessibilityLabel="Đóng">
+          <Text style={{ fontFamily: FONT.bold, fontSize: 14.5, color: COLOR.textSoft }}>Đóng</Text>
         </TouchableOpacity>
       </View>
     </Modal>

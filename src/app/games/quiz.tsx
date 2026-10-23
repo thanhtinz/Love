@@ -5,7 +5,7 @@ import { useLove, myName } from "../../lib/store";
 import { quizOfDay } from "../../lib/data";
 import { dayKeyLocal, today } from "../../lib/types";
 import { PersonChip, partnerOf } from "../../components/PersonChip";
-import { C, ProgressBar, ScreenHeader, s, useNow } from "../../components/ui";
+import { C, ProgressBar, ScreenHeader, StatusChip, s, useNow } from "../../components/ui";
 
 export default function QuizScreen() {
   const { state, dispatch } = useLove();
@@ -43,7 +43,7 @@ export default function QuizScreen() {
           <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
             <PersonChip state={state} slot={me} />
             <Text style={{ fontFamily: "BeVietnamPro_900Black", color: C.text, flex: 1 }}>Câu trả lời của bạn</Text>
-            {myDone && <View style={s.chip}><Ionicons name="lock-closed" size={12} color={C.pinkDark} /><Text style={s.chipText}>Đã niêm phong</Text></View>}
+            {myDone && <StatusChip icon="lock-closed" label="Đã niêm phong" variant="accent" />}
           </View>
           <View style={{ gap: 13, marginTop: 11 }}>
             {questions.map((q, qi) => (

@@ -6,8 +6,9 @@ import { useLove, makeLetter, myName, ownedMessageIds } from "../../lib/store";
 import { MAX_DAILY_SPINS, SPIN_MISSIONS, SPIN_SEGMENTS } from "../../lib/data";
 import { today, uid } from "../../lib/types";
 import { PersonChip, partnerOf } from "../../components/PersonChip";
-import { C, ScreenHeader, s } from "../../components/ui";
-import { HeartGameImage } from "../../components/Art";
+import { COLOR, ROLE } from "../../components/theme";
+import { C, ClosingBand, ScreenHeader, s } from "../../components/ui";
+import { HeartGameImage, MascotArt } from "../../components/Art";
 
 function wedgePath(cx: number, cy: number, r: number, a0: number, a1: number): string {
   const p = (a: number) => [cx + r * Math.cos(a), cy + r * Math.sin(a)];
@@ -94,7 +95,7 @@ export default function SpinWheelScreen() {
   return (
     <View style={s.screen}>
       <ScreenHeader fallback="/games" title="Vòng quay yêu thương" subtitle="Trúng Xu Tim, XP, thư tình hoặc nhiệm vụ hẹn hò" />
-      <ScrollView contentContainerStyle={s.scroll}>
+      <ScrollView contentContainerStyle={[s.scroll, { flexGrow: 1 }]}>
         <View style={s.card}>
           <View style={{ gap: 8 }}>
             <View style={{ flexDirection: "row", alignItems: "center", gap: 9 }}>
@@ -131,6 +132,8 @@ export default function SpinWheelScreen() {
             <Ionicons name="refresh" size={16} color="#fff" /><Text style={s.btnText}>{spinning ? "Đang quay..." : left <= 0 ? "Bạn đã hết lượt hôm nay" : "Quay ngay"}</Text>
           </TouchableOpacity>
         </View>
+        <View style={{ flex: 1 }} />
+        <ClosingBand art={<MascotArt size={72} />} line="Quay vui là chính — Xu, XP và thư trúng được đều bay về khu vườn chung của hai đứa." />
       </ScrollView>
     </View>
   );
@@ -140,9 +143,9 @@ const styles = StyleSheet.create({
   pointer: { marginBottom: -16, zIndex: 2 },
   wheelRing: {
     width: 256, height: 256, borderRadius: 128, backgroundColor: "#fff",
-    borderWidth: 2, borderColor: "#FCE7F1",
+    borderWidth: 2, borderColor: ROLE.selfSoft,
     alignItems: "center", justifyContent: "center",
-    shadowColor: "#d6336c", shadowOpacity: 0.14, shadowRadius: 14, shadowOffset: { width: 0, height: 4 }, elevation: 3,
+    shadowColor: COLOR.primary, shadowOpacity: 0.14, shadowRadius: 14, shadowOffset: { width: 0, height: 4 }, elevation: 3,
   },
-  wheelCenter: { position: "absolute", top: 113, alignSelf: "center", backgroundColor: C.pink, width: 42, height: 42, borderRadius: 21, alignItems: "center", justifyContent: "center", borderWidth: 3, borderColor: "#fff", overflow: "hidden" },
+  wheelCenter: { position: "absolute", top: 113, alignSelf: "center", backgroundColor: COLOR.primary, width: 42, height: 42, borderRadius: 21, alignItems: "center", justifyContent: "center", borderWidth: 3, borderColor: "#fff", overflow: "hidden" },
 });

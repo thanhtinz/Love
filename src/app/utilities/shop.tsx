@@ -1,12 +1,12 @@
 import React, { useState } from "react";
 import { ScrollView, Text, TouchableOpacity, View } from "react-native";
-import { Ionicons } from "@expo/vector-icons";
 import { useLove, myName } from "../../lib/store";
 import { DECOR_CATS, DECOR_ITEMS, SHOP_ITEMS, type DecorCategory } from "../../lib/data";
 import { PersonChip, selfOf } from "../../components/PersonChip";
-import { C, ScreenHeader, s } from "../../components/ui";
+import { COLOR, FONT } from "../../components/theme";
+import { ChipButton, ClosingBand, ScreenHeader, StatusChip, s } from "../../components/ui";
 import { Image } from "expo-image";
-import { DECOR_ART, SHOP_ART } from "../../components/Art";
+import { DECOR_ART, MascotArt, SHOP_ART } from "../../components/Art";
 
 const SHOP_CATS: { id: "pot" | "scene" | "accessory"; label: string }[] = [
   { id: "pot", label: "Chậu cây" },
@@ -19,6 +19,14 @@ const ALL_CATS: { id: CatId; label: string }[] = [
   ...DECOR_CATS.map((c) => ({ id: `decor-${c.id}` as CatId, label: c.label })),
 ];
 
+/**
+ * Vòng polish 2026-10-23:
+ * - Bỏ "mega-card" trắng bọc cả danh sách: món hàng là HÀNG trên nền canvas,
+ *   ngăn nhau bằng hairline — hết cảnh card-trong-card.
+ * - Trạng thái và giá dùng CHUNG một khuôn chip (ChipButton/StatusChip): "Đang
+ *   dùng" = điền accent, "Dùng/Đặt" = điền info, giá = trắng + viền (price).
+ * - Dải chip nhóm cuộn ngang có vệt mờ mềm ở mép phải để hiệu "còn cuộn tiếp".
+ */
 export default function ShopScreen() {
   const { state, dispatch } = useLove();
   const me = selfOf(state);
@@ -36,92 +44,93 @@ export default function ShopScreen() {
     : category === "path" ? state.decor.path === id
     : state.decor.placed.includes(id);
 
+  const rowDivider = (idx: number) => (idx === 0 ? null : { borderTopWidth: 1, borderTopColor: COLOR.border });
+
   return (
     <View style={s.screen}>
       <ScreenHeader fallback="/utilities" title="Cửa hàng trang trí" subtitle="Xu Tim là ví chung của khu vườn" />
-      <ScrollView contentContainerStyle={s.scroll}>
+      <ScrollView contentContainerStyle={[s.scroll, { flexGrow: 1 }]}>
         <View style={[s.card, { flexDirection: "row", alignItems: "center", gap: 10 }]}>
-          <View style={[s.chip, { paddingVertical: 7, paddingHorizontal: 12 }]}><Ionicons name="diamond" size={14} color={C.pinkDark} /><Text style={[s.chipText, { fontSize: 13 }]}>Ví chung: {state.coins} Xu Tim</Text></View>
+          <StatusChip icon="diamond" label={`Ví chung: ${state.coins} Xu Tim`} variant="accent" />
           <View style={{ flex: 1 }}>
             <Text style={s.small}>Người đang mua:</Text>
             <PersonChip state={state} slot={me.slot} />
           </View>
         </View>
 
-        {/* Chip lọc nhóm — cuộn ngang vì có thêm 4 nhóm trang trí vườn */}
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 7, paddingRight: 4 }}>
-          {ALL_CATS.map((c) => {
-            const on = cat === c.id;
-            return (
-              <TouchableOpacity key={c.id} onPress={() => setCat(c.id)} style={{ minHeight: 44, borderRadius: 999, alignItems: "center", justifyContent: "center", paddingHorizontal: 14, backgroundColor: on ? C.pink : "#fff", borderWidth: 1.5, borderColor: on ? C.pink : C.pinkBorder }}>
-                <Text style={{ fontFamily: "BeVietnamPro_700Bold", fontSize: 12.5, color: on ? "#fff" : C.textSoft }} numberOfLines={1}>{c.label}</Text>
-              </TouchableOpacity>
-            );
-          })}
-        </ScrollView>
+        {/* Chip lọc nhóm — cuộn ngang vì có thêm 4 nhóm trang trí vườn; vệt mờ
+            ở mép phải (3 lớp canvas bán trong) để chip cuối bị cắt đọc thành
+            "còn cuộn được" thay vì lỗi hiển thị. */}
+        <View style={{ position: "relative" }}>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 7, paddingRight: 30 }}>
+            {ALL_CATS.map((c) => {
+              const on = cat === c.id;
+              return (
+                <TouchableOpacity key={c.id} onPress={() => setCat(c.id)} style={{ minHeight: 44, borderRadius: 999, alignItems: "center", justifyContent: "center", paddingHorizontal: 14, backgroundColor: on ? COLOR.primary : "#fff", borderWidth: 1.5, borderColor: on ? COLOR.primary : COLOR.lineStrong }}>
+                  <Text style={{ fontFamily: FONT.bold, fontSize: 12.5, color: on ? "#fff" : COLOR.textSoft }} numberOfLines={1}>{c.label}</Text>
+                </TouchableOpacity>
+              );
+            })}
+          </ScrollView>
+          <View pointerEvents="none" style={{ position: "absolute", top: 0, bottom: 0, right: 0, width: 30, flexDirection: "row" }}>
+            <View style={{ flex: 1, backgroundColor: "rgba(255,247,240,0.35)" }} />
+            <View style={{ flex: 1, backgroundColor: "rgba(255,247,240,0.6)" }} />
+            <View style={{ flex: 1, backgroundColor: "rgba(255,247,240,0.88)" }} />
+          </View>
+        </View>
 
         {!isDecor && (
-          <View style={s.card}>
-            <View style={{ gap: 8 }}>
-              {items.map((item) => {
-                const owned = state.inventory.includes(item.id);
-                const equipped = state.equipped[cat as (typeof SHOP_CATS)[number]["id"]] === item.id;
-                return (
-                  <View key={item.id} style={{ flexDirection: "row", alignItems: "center", gap: 9, backgroundColor: "#fff", borderRadius: 13, borderWidth: 1.5, borderColor: "#f1f5f9", padding: 9 }}>
-                    <View style={{ width: 44, height: 44, borderRadius: 12, overflow: "hidden", backgroundColor: "#fff", borderWidth: 1, borderColor: "#f1f5f9" }}>
-                      <Image source={SHOP_ART[item.id]} style={{ width: "100%", height: "100%" }} contentFit="cover" accessibilityLabel={item.name} />
-                    </View>
-                    <View style={{ flex: 1, minWidth: 0 }}>
-                      <Text style={{ fontFamily: "BeVietnamPro_700Bold", color: C.text, fontSize: 13 }}>{item.name}</Text>
-                      <Text style={s.small}>{item.desc}</Text>
-                    </View>
-                    {equipped ? (<View style={[s.chip, { flexShrink: 0 }]}><Text style={s.chipText}>Đang dùng</Text></View>) : owned ? (
-                      <TouchableOpacity style={[s.btnGhost, { flexShrink: 0 }]} onPress={() => dispatch({ type: "EQUIP_ITEM", category: cat as (typeof SHOP_CATS)[number]["id"], itemId: item.id })}><Text style={s.btnGhostText}>Dùng</Text></TouchableOpacity>
-                    ) : (
-                      <TouchableOpacity style={[s.btnGhost, { flexShrink: 0 }, state.coins < item.price && { opacity: 0.5 }]} disabled={state.coins < item.price} onPress={() => dispatch({ type: "BUY_ITEM", itemId: item.id, actor: meName })}>
-                        <Ionicons name="diamond" size={13} color={C.pinkDark} /><Text style={s.btnGhostText}>{item.price} Xu</Text>
-                      </TouchableOpacity>
-                    )}
+          <View>
+            {items.map((item, idx) => {
+              const owned = state.inventory.includes(item.id);
+              const equipped = state.equipped[cat as (typeof SHOP_CATS)[number]["id"]] === item.id;
+              return (
+                <View key={item.id} style={[{ flexDirection: "row", alignItems: "center", gap: 11, paddingVertical: 12 }, rowDivider(idx)]}>
+                  <View style={{ width: 46, height: 46, borderRadius: 12, overflow: "hidden", backgroundColor: "#fff", borderWidth: 1, borderColor: COLOR.border }}>
+                    <Image source={SHOP_ART[item.id]} style={{ width: "100%", height: "100%" }} contentFit="cover" accessibilityLabel={item.name} />
                   </View>
-                );
-              })}
-            </View>
+                  <View style={{ flex: 1, minWidth: 0 }}>
+                    <Text style={{ fontFamily: FONT.bold, color: COLOR.text, fontSize: 13.5 }}>{item.name}</Text>
+                    <Text style={s.small}>{item.desc}</Text>
+                  </View>
+                  {equipped ? (
+                    <StatusChip label="Đang dùng" variant="accent" />
+                  ) : owned ? (
+                    <ChipButton label="Dùng" variant="info" onPress={() => dispatch({ type: "EQUIP_ITEM", category: cat as (typeof SHOP_CATS)[number]["id"], itemId: item.id })} />
+                  ) : (
+                    <ChipButton label={`${item.price} Xu`} icon="diamond" variant="price" disabled={state.coins < item.price} onPress={() => dispatch({ type: "BUY_ITEM", itemId: item.id, actor: meName })} />
+                  )}
+                </View>
+              );
+            })}
           </View>
         )}
 
         {isDecor && decorCat && (
-          <View style={s.card}>
-            <View style={{ gap: 8 }}>
-              {decorItems.map((item) => {
-                const owned = state.decor.owned.includes(item.id);
-                const equipped = decorEquipped(item.id, item.category);
-                const placedFull = item.category === "item" && state.decor.placed.length >= 3 && !equipped;
-                return (
-                  <View key={item.id} style={{ flexDirection: "row", alignItems: "center", gap: 9, backgroundColor: "#fff", borderRadius: 13, borderWidth: 1.5, borderColor: "#f1f5f9", padding: 9 }}>
-                    <View style={{ width: 44, height: 44, borderRadius: 12, overflow: "hidden", backgroundColor: "#fff", borderWidth: 1, borderColor: "#f1f5f9" }}>
-                      <Image source={DECOR_ART[item.id]} style={{ width: "100%", height: "100%" }} contentFit={item.category === "scene" ? "cover" : "contain"} accessibilityLabel={item.name} />
-                    </View>
-                    <View style={{ flex: 1, minWidth: 0 }}>
-                      <Text style={{ fontFamily: "BeVietnamPro_700Bold", color: C.text, fontSize: 13 }}>{item.name}</Text>
-                      <Text style={s.small}>{item.desc}</Text>
-                    </View>
-                    {equipped ? (
-                      <TouchableOpacity style={[s.chip, { flexShrink: 0 }]} onPress={() => dispatch({ type: "EQUIP_DECOR", itemId: item.id })}>
-                        <Text style={s.chipText}>{item.category === "item" ? "Đang đặt · gỡ" : "Đang dùng · gỡ"}</Text>
-                      </TouchableOpacity>
-                    ) : owned ? (
-                      <TouchableOpacity style={[s.btnGhost, { flexShrink: 0 }]} onPress={() => dispatch({ type: "EQUIP_DECOR", itemId: item.id })}>
-                        <Text style={s.btnGhostText}>{item.category === "item" ? (placedFull ? "Đặt thay khe cuối" : "Đặt vào vườn") : "Dùng"}</Text>
-                      </TouchableOpacity>
-                    ) : (
-                      <TouchableOpacity style={[s.btnGhost, { flexShrink: 0 }, state.coins < item.price && { opacity: 0.5 }]} disabled={state.coins < item.price} onPress={() => dispatch({ type: "BUY_DECOR", itemId: item.id, actor: meName })}>
-                        <Ionicons name="diamond" size={13} color={C.pinkDark} /><Text style={s.btnGhostText}>{item.price} Xu</Text>
-                      </TouchableOpacity>
-                    )}
+          <View>
+            {decorItems.map((item, idx) => {
+              const owned = state.decor.owned.includes(item.id);
+              const equipped = decorEquipped(item.id, item.category);
+              const placedFull = item.category === "item" && state.decor.placed.length >= 3 && !equipped;
+              return (
+                <View key={item.id} style={[{ flexDirection: "row", alignItems: "center", gap: 11, paddingVertical: 12 }, rowDivider(idx)]}>
+                  <View style={{ width: 46, height: 46, borderRadius: 12, overflow: "hidden", backgroundColor: "#fff", borderWidth: 1, borderColor: COLOR.border }}>
+                    <Image source={DECOR_ART[item.id]} style={{ width: "100%", height: "100%" }} contentFit={item.category === "scene" ? "cover" : "contain"} accessibilityLabel={item.name} />
                   </View>
-                );
-              })}
-            </View>
+                  <View style={{ flex: 1, minWidth: 0 }}>
+                    <Text style={{ fontFamily: FONT.bold, color: COLOR.text, fontSize: 13.5 }}>{item.name}</Text>
+                    <Text style={s.small}>{item.desc}</Text>
+                  </View>
+                  {equipped ? (
+                    <ChipButton label={item.category === "item" ? "Đang đặt · gỡ" : "Đang dùng · gỡ"} variant="accent" onPress={() => dispatch({ type: "EQUIP_DECOR", itemId: item.id })} />
+                  ) : owned ? (
+                    <ChipButton label={item.category === "item" ? (placedFull ? "Đặt thay khe cuối" : "Đặt vào vườn") : "Dùng"} variant="info" onPress={() => dispatch({ type: "EQUIP_DECOR", itemId: item.id })} />
+                  ) : (
+                    <ChipButton label={`${item.price} Xu`} icon="diamond" variant="price" disabled={state.coins < item.price} onPress={() => dispatch({ type: "BUY_DECOR", itemId: item.id, actor: meName })} />
+                  )}
+                </View>
+              );
+            })}
           </View>
         )}
         <Text style={[s.small, { textAlign: "center" }]}>
@@ -131,6 +140,8 @@ export default function ShopScreen() {
               : "Cảnh mùa, hàng rào và lối đi trang trí cho cả khu vườn chung — mua xong áp dụng ngay ở tab Vườn."
             : "Đồ mua xong áp dụng ngay ở tab Vườn — mua trùng không trừ tiền hai lần."}
         </Text>
+        <View style={{ flex: 1 }} />
+        <ClosingBand art={<MascotArt size={72} />} line="Mỗi món đồ là một góc nhỏ hai đứa tự tay chọn cho khu vườn chung — mua xong qua tab Vườn ngắm thành quả nhé." />
       </ScrollView>
     </View>
   );

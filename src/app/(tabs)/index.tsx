@@ -14,7 +14,7 @@ import { MoodFace } from "../../components/FaceIcon";
 import { EmptyPlotScene, HeartGameImage, HeroBand, PetImage, PlantScene } from "../../components/Art";
 import { partnerOf, selfOf } from "../../components/PersonChip";
 import { COLOR, FONT, RADIUS, ROLE, SHADOW, SHADOW_FLOAT, SPACE, TYPE } from "../../components/theme";
-import { ProgressBar, SkeletonCard, s } from "../../components/ui";
+import { ProgressBar, SkeletonCard, StatusChip, s, tabBarPad } from "../../components/ui";
 
 /**
  * Trang chủ — hệ "Vườn giấy ấm" (mockup vòng 2, user duyệt 2026-10-23).
@@ -136,20 +136,22 @@ export default function HomeScreen() {
         ? { label: "Chọn mood hôm nay", route: "/utilities/mood" }
         : { label: "Xem đáp án của hai đứa", route: "/utilities/daily-question" };
 
-  // Hàng trạng thái trả lời: chip nền MÀU CỦA NGƯỜI ĐÓ + chữ đậm của người đó (mockup).
+  // Hàng trạng thái trả lời: danh tính người qua avatar + vòng màu vai; CHIP
+  // trạng thái theo HỆ CHIP THỐNG NHẤT — cùng trạng thái ("Đang chờ"/"Đã trả
+  // lời") luôn cùng một màu ở mọi nơi, không nhuộm theo người nữa.
   const answerRow = (p: typeof me, answered: boolean, isFirst: boolean) => (
     <View style={{ flexDirection: "row", alignItems: "center", gap: 11, paddingVertical: 10, borderTopWidth: isFirst ? 0 : 1, borderTopColor: COLOR.border }}>
       <Avatar id={p.avatar} size={36} ring={p.main} />
-      <Text style={{ flex: 1, fontFamily: FONT.semibold, fontSize: 15, color: COLOR.text }} numberOfLines={1}>{p.name}</Text>
-      <View style={{ backgroundColor: p.bg, borderRadius: RADIUS.pill, paddingVertical: 5, paddingHorizontal: 10 }}>
-        <Text style={{ fontFamily: FONT.bold, fontSize: 12, color: p.color }}>{answered ? "Đã trả lời" : "Đang chờ"}</Text>
-      </View>
+      <Text style={{ flex: 1, fontFamily: FONT.semibold, fontSize: 15, color: COLOR.text }} numberOfLines={2}>{p.name}</Text>
+      <StatusChip label={answered ? "Đã trả lời" : "Đang chờ"} variant={answered ? "done" : "waiting"} />
     </View>
   );
 
-  // Nửa mood: nền soft của chính người đó, mặt mood 38px hoà nền (không hộp trắng).
+  // Nửa mood: hai nửa nằm trong MỘT dải tint giấy duy nhất (không còn hai
+  // mini-card lồng trong card Hôm nay), ngăn nhau bằng hairline dọc; mặt mood
+  // 38px hoà nền (không hộp trắng); nhãn mood được 2 dòng để không bị cắt chữ.
   const moodHalf = (p: typeof me, moodId: string) => (
-    <View style={{ flex: 1, flexDirection: "row", alignItems: "center", gap: 9, backgroundColor: p.bg, borderRadius: RADIUS.tile, paddingVertical: 9, paddingHorizontal: 12 }}>
+    <View style={{ flex: 1, flexDirection: "row", alignItems: "center", gap: 9, paddingVertical: 10, paddingHorizontal: 12 }}>
       {moodId ? (
         <MoodFace mood={moodId} size={38} />
       ) : (
@@ -158,8 +160,8 @@ export default function HomeScreen() {
         </View>
       )}
       <View style={{ flex: 1, minWidth: 0 }}>
-        <Text style={{ ...TYPE.caption, color: COLOR.textSoft }} numberOfLines={1}>{firstName(p.name)} hôm nay</Text>
-        <Text style={{ fontFamily: FONT.bold, fontSize: 14, color: COLOR.text }} numberOfLines={1}>
+        <Text style={{ ...TYPE.caption, color: p.color }} numberOfLines={1}>{firstName(p.name)} hôm nay</Text>
+        <Text style={{ fontFamily: FONT.bold, fontSize: 14, lineHeight: 19, color: COLOR.text }} numberOfLines={2}>
           {moodId ? MOODS.find((m) => m.id === moodId)?.label : "Chưa chọn mood"}
         </Text>
       </View>
@@ -181,7 +183,7 @@ export default function HomeScreen() {
 
   return (
     <View style={{ flex: 1, backgroundColor: COLOR.bg }}>
-    <ScrollView style={s.screen} contentContainerStyle={[s.scroll, { paddingTop: insets.top + 14, gap: SPACE.sectionGap }]}>
+    <ScrollView style={s.screen} contentContainerStyle={[s.scroll, { paddingTop: insets.top + 14, gap: SPACE.sectionGap, paddingBottom: tabBarPad(insets.bottom) }]}>
       {/* (0) DÒNG CHÀO */}
       <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
         <View style={{ flexDirection: "row", alignItems: "center" }}>
@@ -217,7 +219,7 @@ export default function HomeScreen() {
                 <Avatar id={state.avatarB} size={32} ring={ROLE.partner} />
               </View>
             </View>
-            <Text style={{ flex: 1, fontFamily: FONT.bold, fontSize: 15, color: COLOR.text }} numberOfLines={1} ellipsizeMode="tail">
+            <Text style={{ flex: 1, fontFamily: FONT.bold, fontSize: 15, lineHeight: 20, color: COLOR.text }} numberOfLines={2}>
               {state.personA} & {state.personB}
             </Text>
           </View>
@@ -228,7 +230,7 @@ export default function HomeScreen() {
               {presenceLine && (
                 <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
                   <Ionicons name="location" size={13} color={ROLE.partnerDark} />
-                  <Text style={{ flex: 1, ...TYPE.caption, color: COLOR.textSoft }} numberOfLines={1}>{presenceLine}</Text>
+                  <Text style={{ flex: 1, ...TYPE.caption, color: COLOR.textSoft }} numberOfLines={2}>{presenceLine}</Text>
                 </View>
               )}
               {cycleLine && (
@@ -240,7 +242,7 @@ export default function HomeScreen() {
               {eventLine && (
                 <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
                   <Ionicons name="calendar" size={13} color={ROLE.shared} />
-                  <Text style={{ flex: 1, ...TYPE.caption, color: COLOR.textSoft }} numberOfLines={1}>{eventLine}</Text>
+                  <Text style={{ flex: 1, ...TYPE.caption, color: COLOR.textSoft }} numberOfLines={2}>{eventLine}</Text>
                 </View>
               )}
             </View>
@@ -280,8 +282,9 @@ export default function HomeScreen() {
           {answerRow(me, myAnswered, true)}
           {answerRow(partner, partnerAnswered, false)}
         </View>
-        <View style={{ flexDirection: "row", gap: 10, marginTop: 4 }}>
+        <View style={{ flexDirection: "row", backgroundColor: COLOR.bg, borderRadius: RADIUS.tile, marginTop: 10, overflow: "hidden" }}>
           {moodHalf(me, moodsToday[me.slot])}
+          <View style={{ width: 1, backgroundColor: COLOR.border, marginVertical: 10 }} />
           {moodHalf(partner, moodsToday[partner.slot])}
         </View>
         <TouchableOpacity style={[s.btn, { marginTop: 16 }]} onPress={() => router.push(todayCta.route as never)} accessibilityLabel={todayCta.label}>
@@ -301,11 +304,11 @@ export default function HomeScreen() {
         accessibilityLabel="Vào vườn"
         style={{ backgroundColor: DECOR_SEASON_TINT[state.decor.sceneBg] ?? COLOR.gardenWash, borderRadius: RADIUS.card, padding: 16, flexDirection: "row", gap: 14, alignItems: "center" }}
       >
-        <View style={{ width: 96 }}>
+        <View style={{ width: 108 }}>
           {firstPlant && firstInfo ? (
-            <PlantScene speciesId={firstPlant.speciesId} stageIndex={firstInfo.index} status={firstHealth ?? undefined} height={104} imgHeight={96} soilRatio={0.15} />
+            <PlantScene speciesId={firstPlant.speciesId} stageIndex={firstInfo.index} status={firstHealth ?? undefined} height={116} imgHeight={108} soilRatio={0.15} />
           ) : (
-            <EmptyPlotScene height={104} imgHeight={92} />
+            <EmptyPlotScene height={116} imgHeight={104} />
           )}
         </View>
         <View style={{ flex: 1, minWidth: 0, gap: 7 }}>
@@ -314,18 +317,18 @@ export default function HomeScreen() {
           {lastAct && actPerson && actTime ? (
             <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
               <Avatar id={actPerson.avatar} size={20} ring={actPerson.main} />
-              <Text style={{ flex: 1, ...TYPE.caption, color: COLOR.textSoft }} numberOfLines={1}>
+              <Text style={{ flex: 1, ...TYPE.caption, color: COLOR.textSoft }} numberOfLines={2}>
                 {lastAct.actor} {lastAct.text} · {pad2(actTime.getHours())}:{pad2(actTime.getMinutes())}
               </Text>
             </View>
           ) : (
-            <Text style={{ ...TYPE.caption, color: COLOR.textSoft }} numberOfLines={1}>
+            <Text style={{ ...TYPE.caption, color: COLOR.textSoft }} numberOfLines={2}>
               {firstPlant ? "Hôm nay chưa ai ghé vườn" : "Vườn đang trống — vào gieo hạt nhé"}
             </Text>
           )}
           <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
             <PetImage stage={petStageIndex(state.pet)} size={26} />
-            <Text style={{ flex: 1, ...TYPE.caption, color: COLOR.textSoft }} numberOfLines={1}>{petStatusLine(state.pet)}</Text>
+            <Text style={{ flex: 1, ...TYPE.caption, color: COLOR.textSoft }} numberOfLines={2}>{petStatusLine(state.pet)}</Text>
           </View>
           <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
             <Text style={{ fontFamily: FONT.bold, fontSize: 13.5, color: ROLE.partnerDark }}>Vào vườn</Text>

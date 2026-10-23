@@ -4,7 +4,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { useLove, myName } from "../../lib/store";
 import { today } from "../../lib/types";
 import { PersonChip } from "../../components/PersonChip";
-import { C, ScreenHeader, s } from "../../components/ui";
+import { C, ScreenHeader, StatusChip, s } from "../../components/ui";
 import FaceIcon from "../../components/FaceIcon";
 import { HeartGameImage } from "../../components/Art";
 
@@ -89,8 +89,8 @@ export default function MemoryMatchScreen() {
           <View style={{ flexDirection: "row", alignItems: "center", gap: 9 }}>
             <PersonChip state={state} slot={me} />
             <View style={{ flex: 1 }} />
-            <View style={s.chip}><Ionicons name="swap-horizontal" size={13} color={C.pinkDark} /><Text style={s.chipText}>{moves} lượt lật</Text></View>
-            <View style={s.chip}><Ionicons name="timer" size={13} color={C.pinkDark} /><Text style={s.chipText}>{elapsed}s</Text></View>
+            <StatusChip icon="swap-horizontal" label={`${moves} lượt lật`} variant="neutral" />
+            <StatusChip icon="timer" label={`${elapsed}s`} variant="neutral" />
           </View>
           <Text style={[s.small, { marginTop: 7 }]}>
             Thưởng hôm nay của bạn: {claimedToday ? "đã nhận rồi (+20 Xu, +10 XP)" : "chưa nhận — thắng một ván để nhận +20 Xu, +10 XP"}.

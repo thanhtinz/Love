@@ -6,7 +6,7 @@ import { ACHIEVEMENTS, QUESTS } from "../../lib/data";
 import { daysTogether, effectiveStreak, freshDailyState, nextMilestone, today, MILESTONES } from "../../lib/types";
 import Avatar from "../../components/Avatar";
 import { PersonChip, partnerOf, selfOf } from "../../components/PersonChip";
-import { C, ScreenHeader, Segmented, s } from "../../components/ui";
+import { C, ScreenHeader, Segmented, StatusChip, s } from "../../components/ui";
 import { MascotArt } from "../../components/Art";
 
 export default function QuestsScreen() {
@@ -69,10 +69,7 @@ export default function QuestsScreen() {
           </View>
           <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 5 }}>
             {MILESTONES.map((m) => (
-              <View key={m} style={[s.chip, { backgroundColor: days >= m ? "#dcfce7" : "#fff", minHeight: 24, paddingVertical: 2 }]}>
-                <Ionicons name={days >= m ? "checkmark-circle" : "ellipse-outline"} size={11} color={days >= m ? "#16a34a" : C.textFaint} />
-                <Text style={[s.chipText, { color: days >= m ? "#15803d" : C.textFaint, fontSize: 11 }]}>{m}</Text>
-              </View>
+              <StatusChip key={m} icon={days >= m ? "checkmark-circle" : "ellipse-outline"} label={`${m}`} variant={days >= m ? "done" : "neutral"} />
             ))}
           </View>
         </View>
@@ -100,7 +97,7 @@ export default function QuestsScreen() {
                   <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
                     <Ionicons name={q.icon as never} size={19} color={myDone ? C.green : C.textFaint} />
                     <Text style={{ flex: 1, fontSize: 13.5, fontFamily: "BeVietnamPro_800ExtraBold", color: C.text }}>{q.label}</Text>
-                    {myClaimed ? (<View style={s.chip}><Text style={s.chipText}>Bạn đã nhận</Text></View>) : myDone ? (
+                    {myClaimed ? (<StatusChip label="Bạn đã nhận" variant="done" />) : myDone ? (
                       <TouchableOpacity style={[s.btnGhost, { paddingVertical: 7 }]} onPress={() => claimQuest(q)}><Text style={s.btnGhostText}>Nhận +{q.rewardXp} XP, +{q.rewardCoins} Xu</Text></TouchableOpacity>
                     ) : null}
                   </View>
@@ -134,7 +131,7 @@ export default function QuestsScreen() {
           <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6, marginTop: 9 }}>
             {ACHIEVEMENTS.map((a) => {
               const has = state.achievements.includes(a.id);
-              return (<View key={a.id} style={[s.chip, { backgroundColor: has ? "#fef3c7" : "#f1f5f9", opacity: has ? 1 : 0.55 }]}><Ionicons name={a.icon as never} size={13} color={has ? "#b45309" : C.textFaint} /><Text style={[s.chipText, { color: has ? "#92400e" : C.textFaint }]}>{a.label}</Text></View>);
+              return (<StatusChip key={a.id} icon={a.icon} label={a.label} variant={has ? "waiting" : "neutral"} style={{ opacity: has ? 1 : 0.55 }} />);
             })}
           </View>
         </View>

@@ -9,8 +9,8 @@ import { countdownLabel, distanceKmBetween, distanceLabel, nextEvent, relativeTi
 import { daysTogether, effectiveStreak, nextMilestone, today } from "../../lib/types";
 import Avatar from "../../components/Avatar";
 import { partnerOf, selfOf } from "../../components/PersonChip";
-import { COLOR, FONT, RADIUS, ROLE, SHADOW, SPACE, TYPE } from "../../components/theme";
-import { Medallion, s } from "../../components/ui";
+import { COLOR, FONT, RADIUS, ROLE, SHADOW, SPACE, TILE, TYPE } from "../../components/theme";
+import { Medallion, s, tabBarPad } from "../../components/ui";
 
 /**
  * Tab "Hai đứa" — hub của hai người, hệ "Vườn giấy ấm" (mockup vòng 2).
@@ -29,8 +29,8 @@ import { Medallion, s } from "../../components/ui";
 
 const firstName = (name: string) => name.trim().split(/\s+/).pop() || name;
 
-function NavRow({ icon, color, bg, size = 48, title, desc, route, divider }: {
-  icon: string; color: string; bg: string; size?: number; title: string; desc: string; route: string; divider?: boolean;
+function NavRow({ icon, color = TILE.icon, bg = TILE.bg, size = 48, title, desc, route, divider }: {
+  icon: string; color?: string; bg?: string; size?: number; title: string; desc: string; route: string; divider?: boolean;
 }) {
   return (
     <TouchableOpacity
@@ -75,7 +75,7 @@ export default function CoupleHubScreen() {
       : "Khoảng cách và pin của hai đứa — chỉ chụp khi mở app";
 
   return (
-    <ScrollView style={s.screen} contentContainerStyle={[s.scroll, { paddingTop: insets.top + 14, gap: SPACE.sectionGap }]}>
+    <ScrollView style={s.screen} contentContainerStyle={[s.scroll, { paddingTop: insets.top + 14, gap: SPACE.sectionGap, paddingBottom: tabBarPad(insets.bottom) }]}>
       {/* HỒ SƠ CHUNG — navy "Chúng mình" */}
       <View style={{ backgroundColor: ROLE.shared, borderRadius: RADIUS.scene, padding: 20, ...SHADOW }}>
         <View style={{ flexDirection: "row", alignItems: "center", gap: 13 }}>
@@ -86,10 +86,10 @@ export default function CoupleHubScreen() {
             </View>
           </View>
           <View style={{ flex: 1, minWidth: 0 }}>
-            <Text style={{ fontFamily: FONT.extrabold, fontSize: 20, lineHeight: 25, color: "#fff" }} numberOfLines={1} ellipsizeMode="tail">
+            <Text style={{ fontFamily: FONT.extrabold, fontSize: 20, lineHeight: 25, color: "#fff" }} numberOfLines={2}>
               {state.personA} & {state.personB}
             </Text>
-            <Text style={{ fontFamily: FONT.medium, fontSize: 12.5, color: COLOR.onNavySoft, marginTop: 2 }} numberOfLines={1}>{state.gardenName}</Text>
+            <Text style={{ fontFamily: FONT.medium, fontSize: 12.5, color: COLOR.onNavySoft, marginTop: 2 }} numberOfLines={2}>{state.gardenName}</Text>
           </View>
         </View>
         <View style={{ flexDirection: "row", gap: 7, marginTop: 14, flexWrap: "wrap" }}>
@@ -119,7 +119,7 @@ export default function CoupleHubScreen() {
       <View>
         <Text style={{ fontFamily: FONT.extrabold, fontSize: 16, color: COLOR.text, marginBottom: 9 }}>Chơi cùng nhau</Text>
         <View style={{ backgroundColor: "#fff", borderRadius: RADIUS.card, borderWidth: 1, borderColor: COLOR.border, overflow: "hidden" }}>
-          <NavRow icon="game-controller" color={ROLE.selfDark} bg={ROLE.selfSoft} size={52} title="Trò chơi" desc={gamesStatus} route="/games" />
+          <NavRow icon="game-controller" size={52} title="Trò chơi" desc={gamesStatus} route="/games" />
         </View>
       </View>
 
@@ -127,12 +127,12 @@ export default function CoupleHubScreen() {
       <View>
         <Text style={{ fontFamily: FONT.extrabold, fontSize: 16, color: COLOR.text, marginBottom: 9 }}>Không gian của hai đứa</Text>
         <View style={{ backgroundColor: "#fff", borderRadius: RADIUS.card, borderWidth: 1, borderColor: COLOR.border, overflow: "hidden" }}>
-          <NavRow icon="heart-circle" color={ROLE.partnerDark} bg={ROLE.partnerSoft} title="Tiện ích đôi mình" desc="Nhật ký, kỷ niệm và những việc nhỏ của hai đứa" route="/utilities" />
-          <NavRow icon="location" color={ROLE.partnerDark} bg={ROLE.partnerSoft} title="Hiện diện" desc={presenceDesc} route="/presence" divider />
-          <NavRow icon="flower" color={ROLE.selfDark} bg={ROLE.selfSoft} title="Chu kỳ & quan tâm" desc="Chia sẻ giai đoạn chu kỳ để quan tâm nhau đúng lúc" route="/cycle" divider />
-          <NavRow icon="image" color={ROLE.shared} bg={ROLE.sharedSoft} title="Khung màn hình" desc="Khung đếm ngày và cột mốc của hai đứa" route="/frames" divider />
-          <NavRow icon="person" color={ROLE.selfDark} bg={ROLE.selfSoft} title="Tài khoản" desc={`Hồ sơ của ${firstName(me.name)}, mã mời và đăng xuất`} route="/account" divider />
-          <NavRow icon="mail" color={COLOR.primary} bg={ROLE.selfSoft} title="Thư đã lưu" desc={state.letters.length > 0 ? `Đang lưu ${state.letters.length} lá thư — mở ra đọc lại khi nhớ nhau` : "Thư rơi khi hai đứa chăm cây, sẽ lưu ở đây"} route="/letters" divider />
+          <NavRow icon="heart-circle" title="Tiện ích đôi mình" desc="Nhật ký, kỷ niệm và những việc nhỏ của hai đứa" route="/utilities" />
+          <NavRow icon="location" title="Hiện diện" desc={presenceDesc} route="/presence" divider />
+          <NavRow icon="flower" title="Chu kỳ & quan tâm" desc="Chia sẻ giai đoạn chu kỳ để quan tâm nhau đúng lúc" route="/cycle" divider />
+          <NavRow icon="image" title="Khung màn hình" desc="Khung đếm ngày và cột mốc của hai đứa" route="/frames" divider />
+          <NavRow icon="person" title="Tài khoản" desc={`Hồ sơ của ${firstName(me.name)}, mã mời và đăng xuất`} route="/account" divider />
+          <NavRow icon="mail" title="Thư đã lưu" desc={state.letters.length > 0 ? `Đang lưu ${state.letters.length} lá thư — mở ra đọc lại khi nhớ nhau` : "Thư rơi khi hai đứa chăm cây, sẽ lưu ở đây"} route="/letters" divider />
         </View>
       </View>
 

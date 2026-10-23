@@ -5,7 +5,7 @@ import { useLove, myName } from "../../lib/store";
 import { NOTE_COLORS } from "../../lib/data";
 import { CONTENT_ADD_MIN_INTERVAL_MS, CONTENT_LIMITS, today, uid } from "../../lib/types";
 import { PersonChip, partnerOf, selfOf } from "../../components/PersonChip";
-import { C, LoadMoreRow, ScreenHeader, s, useNow } from "../../components/ui";
+import { C, LoadMoreRow, ScreenHeader, StatusChip, s, useNow } from "../../components/ui";
 
 const PAGE = 10;
 
@@ -65,11 +65,11 @@ export default function LoveNotesScreen() {
         </View>
 
         {/* Lời nhắn của ĐỐI PHƯƠNG — chỉ xem */}
-        <View style={[s.card, { borderColor: "#BDEAE4", borderWidth: 2, backgroundColor: "#F4FBF9" }]}>
+        <View style={s.card}>
           <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
             <PersonChip state={state} slot={partner.slot} showYouTag={false} />
             <Text style={{ fontFamily: "BeVietnamPro_900Black", color: C.text, flex: 1 }}>Lời nhắn của {partner.name}</Text>
-            <View style={[s.chip, { backgroundColor: "#D9F4F0" }]}><Ionicons name="eye" size={12} color="#0B7A6E" /><Text style={[s.chipText, { color: "#0B7A6E" }]}>Chỉ xem</Text></View>
+            <StatusChip icon="eye" label="Chỉ xem" variant="partner" />
           </View>
           <Text style={{ color: C.text, fontSize: 14.5, lineHeight: 21, marginTop: 9, fontStyle: state.loveNotes[partner.slot] ? "normal" : "italic" }}>
             {state.loveNotes[partner.slot] || `${partner.name} chưa ghim lời nhắn nào.`}

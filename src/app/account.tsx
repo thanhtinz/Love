@@ -6,7 +6,8 @@ import { useAuth } from "../lib/auth";
 import { useLove } from "../lib/store";
 import { AVATARS, parseDateKey, today } from "../lib/types";
 import Avatar from "../components/Avatar";
-import { C, ScreenHeader, s } from "../components/ui";
+import { COLOR, RADIUS, ROLE } from "../components/theme";
+import { C, ScreenHeader, StatusChip, s } from "../components/ui";
 
 export default function AccountScreen() {
   const { user, couple, signOut, leaveCouple, updateMyProfile, refreshCouple } = useAuth();
@@ -67,7 +68,7 @@ export default function AccountScreen() {
         <Avatar id={user.avatar} size={76} />
         <Text style={{ fontSize: 18, fontFamily: "BeVietnamPro_900Black", color: C.text }}>{user.displayName}</Text>
         <Text style={s.sub}>{user.email}</Text>
-        <View style={s.chip}><Ionicons name={connected ? "wifi" : "cloud-offline"} size={13} color={C.pinkDark} /><Text style={s.chipText}>{connected ? "Realtime đang bật" : "Đang ngoại tuyến — sẽ đồng bộ khi có mạng"}</Text></View>
+        <StatusChip icon={connected ? "wifi" : "cloud-offline"} label={connected ? "Realtime đang bật" : "Đang ngoại tuyến — sẽ đồng bộ khi có mạng"} variant={connected ? "partner" : "neutral"} />
       </View>
 
       <View style={s.card}>
@@ -97,10 +98,10 @@ export default function AccountScreen() {
             {couple.members.map((m) => {
               const isMe = m.userId === user.id;
               return (
-                <View key={m.userId} style={[s.row, { backgroundColor: isMe ? C.pinkSoft : "#D9F4F0", borderRadius: 999, paddingLeft: 2, paddingRight: 10, paddingVertical: 2, alignSelf: "flex-start" }]}>
+                <View key={m.userId} style={[s.row, { backgroundColor: isMe ? C.pinkSoft : ROLE.partnerSoft, borderRadius: 999, paddingLeft: 2, paddingRight: 10, paddingVertical: 2, alignSelf: "flex-start" }]}>
                   <Avatar id={m.avatar} size={26} />
-                  <Text style={{ color: isMe ? C.pinkDark : "#0B7A6E", fontFamily: "BeVietnamPro_800ExtraBold" }}>{m.displayName}</Text>
-                  {isMe ? (<View style={{ backgroundColor: C.pink, borderRadius: 999, paddingHorizontal: 6, paddingVertical: 1 }}><Text style={{ fontSize: 9.5, fontFamily: "BeVietnamPro_900Black", color: "#fff" }}>Bạn</Text></View>) : (<Text style={{ fontSize: 11, color: "#0B7A6E", fontFamily: "BeVietnamPro_700Bold" }}>Người ấy</Text>)}
+                  <Text style={{ color: isMe ? C.pinkDark : ROLE.partnerDark, fontFamily: "BeVietnamPro_800ExtraBold" }}>{m.displayName}</Text>
+                  {isMe ? (<View style={{ backgroundColor: C.pink, borderRadius: 999, paddingHorizontal: 6, paddingVertical: 1 }}><Text style={{ fontSize: 9.5, fontFamily: "BeVietnamPro_900Black", color: "#fff" }}>Bạn</Text></View>) : (<Text style={{ fontSize: 11, color: ROLE.partnerDark, fontFamily: "BeVietnamPro_700Bold" }}>Người ấy</Text>)}
                   <Text style={s.small}>· vị trí {m.slot}</Text>
                 </View>
               );
@@ -110,21 +111,30 @@ export default function AccountScreen() {
           <TextInput style={s.input} value={gardenName} onChangeText={(t) => { setGardenName(t); setGardenDirty(true); }} maxLength={40} placeholder="Tên khu vườn" placeholderTextColor={C.textFaint} />
           <Text style={styles.label}>Ngày bắt đầu yêu (năm-tháng-ngày)</Text>
           <TextInput style={s.input} value={startDate} onChangeText={(t) => { setStartDate(t); setDateDirty(true); }} maxLength={10} placeholder="VD: 2024-02-14" placeholderTextColor={C.textFaint} />
-          <View style={{ flexDirection: "row", gap: 8 }}>
-            <TouchableOpacity style={[s.btnGhost, { flex: 1 }]} onPress={saveGarden}><Ionicons name="save" size={15} color={C.pinkDark} /><Text style={s.btnGhostText}>Lưu vườn</Text></TouchableOpacity>
-            <TouchableOpacity style={[s.btnGhost, { flex: 1 }]} onPress={refreshCouple}><Ionicons name="refresh" size={15} color={C.pinkDark} /><Text style={s.btnGhostText}>Tải lại thông tin</Text></TouchableOpacity>
+          {/* Hai nút xếp DỌC full-width — bản cũ ép ngang khiến nhãn quấn giữa chữ */}
+          <View style={{ gap: 8 }}>
+            <TouchableOpacity style={s.btnGhost} onPress={saveGarden}><Ionicons name="save" size={15} color={C.pinkDark} /><Text style={s.btnGhostText}>Lưu vườn</Text></TouchableOpacity>
+            <TouchableOpacity style={s.btnGhost} onPress={refreshCouple}><Ionicons name="refresh" size={15} color={C.pinkDark} /><Text style={s.btnGhostText}>Tải lại thông tin</Text></TouchableOpacity>
           </View>
-          <TouchableOpacity style={[styles.dangerBtn]} onPress={confirmLeave}>
-            <Ionicons name="exit-outline" size={16} color="#b91c1c" /><Text style={styles.dangerText}>Rời khu vườn này</Text>
-          </TouchableOpacity>
         </View>
       )}
 
       {msg ? <Text style={{ color: C.pinkDark, fontFamily: "BeVietnamPro_700Bold", fontSize: 13 }}>{msg}</Text> : null}
 
-      <TouchableOpacity style={styles.dangerBtn} onPress={confirmSignOut}>
-        <Ionicons name="log-out-outline" size={17} color="#b91c1c" /><Text style={styles.dangerText}>Đăng xuất</Text>
-      </TouchableOpacity>
+      {/* NHÓM HÀNH ĐỘNG NGUY HIỂM — MỘT kiểu hàng danger lặng thống nhất (nền
+          dangerSoft, chữ danger của theme, radius control) và MỘT vị trí: cuối
+          màn, cạnh nhau. "Rời vườn" không còn nằm trong card, "Đăng xuất" không
+          còn đứng một mình ngoài card với kiểu khác nữa. */}
+      <View style={{ gap: 9 }}>
+        {couple && (
+          <TouchableOpacity style={styles.dangerRow} onPress={confirmLeave}>
+            <Ionicons name="exit-outline" size={16} color={COLOR.danger} /><Text style={styles.dangerText}>Rời khu vườn này</Text>
+          </TouchableOpacity>
+        )}
+        <TouchableOpacity style={styles.dangerRow} onPress={confirmSignOut}>
+          <Ionicons name="log-out-outline" size={17} color={COLOR.danger} /><Text style={styles.dangerText}>Đăng xuất</Text>
+        </TouchableOpacity>
+      </View>
 
       <Text style={[s.small, { textAlign: "center" }]}>Khu Vườn Tình Yêu · phiên bản 1.0.0 · Dữ liệu vườn lưu trên Supabase và đồng bộ realtime giữa hai máy.</Text>
       </ScrollView>
@@ -136,6 +146,6 @@ const styles = StyleSheet.create({
   label: { fontSize: 12.5, fontFamily: "BeVietnamPro_700Bold", color: C.textSoft, marginTop: 10, marginBottom: 5 },
   avatarBtn: { width: "22%", alignItems: "center", paddingVertical: 7, borderRadius: 13, borderWidth: 1.5, borderColor: "transparent", backgroundColor: "#fff7f8" },
   avatarOn: { borderColor: C.pink, backgroundColor: C.pinkSoft },
-  dangerBtn: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 7, backgroundColor: "#fee2e2", borderRadius: 999, paddingVertical: 13, minHeight: 44 },
-  dangerText: { color: "#b91c1c", fontFamily: "BeVietnamPro_800ExtraBold", fontSize: 14 },
+  dangerRow: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 7, backgroundColor: COLOR.dangerSoft, borderRadius: RADIUS.control, paddingVertical: 13, minHeight: 50 },
+  dangerText: { color: COLOR.danger, fontFamily: "BeVietnamPro_800ExtraBold", fontSize: 14 },
 });

@@ -1,13 +1,12 @@
 import React from "react";
 import { ScrollView, Text, TouchableOpacity, View, StyleSheet } from "react-native";
-import { Ionicons } from "@expo/vector-icons";
 import { useLove } from "../../lib/store";
 import { MOODS } from "../../lib/data";
 import { today } from "../../lib/types";
 import Avatar from "../../components/Avatar";
 import FaceIcon, { MoodFace } from "../../components/FaceIcon";
 import { PersonChip, partnerOf, selfOf } from "../../components/PersonChip";
-import { C, ScreenHeader, s } from "../../components/ui";
+import { C, ScreenHeader, StatusChip, s } from "../../components/ui";
 
 export default function MoodScreen() {
   const { state, dispatch } = useLove();
@@ -43,11 +42,11 @@ export default function MoodScreen() {
         </View>
 
         {/* Thẻ của ĐỐI PHƯƠNG — chỉ xem */}
-        <View style={[s.card, { borderColor: "#BDEAE4", borderWidth: 2, backgroundColor: "#F4FBF9" }]}>
+        <View style={s.card}>
           <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
             <PersonChip state={state} slot={partner.slot} showYouTag={false} />
             <Text style={{ fontFamily: "BeVietnamPro_900Black", color: C.text, flex: 1 }}>Mood của {partner.name}</Text>
-            <View style={[s.chip, { backgroundColor: "#D9F4F0" }]}><Ionicons name="eye" size={12} color="#0B7A6E" /><Text style={[s.chipText, { color: "#0B7A6E" }]}>Chỉ xem</Text></View>
+            <StatusChip icon="eye" label="Chỉ xem" variant="partner" />
           </View>
           <View style={{ alignItems: "center", gap: 5, marginTop: 8 }}>
             <Avatar id={partner.avatar} size={40} />

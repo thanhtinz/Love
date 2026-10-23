@@ -7,7 +7,7 @@ import { LetterEnvelopeImage, MailboxArt } from "../components/Art";
 import Avatar from "../components/Avatar";
 import { partnerOf, selfOf } from "../components/PersonChip";
 import { COLOR, FONT, RADIUS, ROLE, SPACE, TYPE } from "../components/theme";
-import { LoadMoreRow, ScreenHeader, SkeletonCard, Stamp, s } from "../components/ui";
+import { ClosingBand, LoadMoreRow, ScreenHeader, SkeletonCard, Stamp, s } from "../components/ui";
 
 /**
  * Trang Thư đã lưu — route Stack gốc /letters (KHÔNG còn là tab: user chốt thư chỉ
@@ -121,13 +121,18 @@ export default function LettersScreen() {
         );
       case "empty-unopened":
         return (
-          <View style={{ alignItems: "center", gap: 2, paddingVertical: 6 }}>
-            <MailboxArt size={76} />
-            <Text style={s.sub}>Chưa có thư mới — chăm cây để thư rơi nhé.</Text>
+          <View style={{ alignItems: "center", gap: 4, backgroundColor: COLOR.letterPaper, borderWidth: 1, borderColor: COLOR.letterLineSoft, borderRadius: RADIUS.inner, paddingVertical: 18, paddingHorizontal: 16 }}>
+            <MailboxArt size={84} />
+            <Text style={{ fontFamily: FONT.bold, fontSize: 14.5, color: COLOR.text }}>Hộp thư đang trống</Text>
+            <Text style={[s.sub, { textAlign: "center" }]}>Chưa có thư mới — chăm cây để thư rơi nhé.</Text>
           </View>
         );
       case "empty-opened":
-        return <Text style={s.sub}>Chưa mở lá thư nào.</Text>;
+        return (
+          <View style={{ alignItems: "center", backgroundColor: "#fff", borderWidth: 1, borderColor: COLOR.border, borderRadius: RADIUS.inner, paddingVertical: 14, paddingHorizontal: 16 }}>
+            <Text style={s.sub}>Chưa mở lá thư nào.</Text>
+          </View>
+        );
       case "loadmore-unopened":
         return <LoadMoreRow onPress={() => setUnopenedLimit((v) => v + UNOPENED_STEP)} label={`Xem thêm thư chưa mở (${item.remaining} còn lại)`} />;
       case "loadmore-opened":
@@ -211,7 +216,12 @@ export default function LettersScreen() {
         data={rows}
         keyExtractor={(item, i) => item.kind + ("letter" in item ? item.letter.id : i)}
         renderItem={renderRow}
-        contentContainerStyle={{ gap: 9, paddingBottom: 28, paddingHorizontal: SPACE.screenX }}
+        contentContainerStyle={{ gap: 9, paddingBottom: 28, paddingHorizontal: SPACE.screenX, flexGrow: 1 }}
+        ListFooterComponent={
+          <View style={{ flex: 1, justifyContent: "flex-end", paddingTop: 18 }}>
+            <ClosingBand art={<MailboxArt size={72} />} line="Thư chỉ rơi khi hai đứa chăm cây — mỗi lá thư là một lần hai đứa nhớ nhau." />
+          </View>
+        }
         initialNumToRender={12}
         windowSize={7}
       />

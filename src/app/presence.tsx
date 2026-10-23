@@ -6,8 +6,9 @@ import { PRESENCE_REFRESH_COOLDOWN_MS, PRESENCE_STALE_MS, distanceKmBetween, dis
 import type { PresenceSlotState } from "../lib/types";
 import Avatar from "../components/Avatar";
 import { partnerOf, selfOf } from "../components/PersonChip";
-import { COLOR, FONT, RADIUS, ROLE, SPACE, TYPE } from "../components/theme";
-import { ScreenHeader, SkeletonCard, s, useNow } from "../components/ui";
+import { MascotArt } from "../components/Art";
+import { COLOR, FONT, ROLE, SPACE, TYPE } from "../components/theme";
+import { ClosingBand, ScreenHeader, SkeletonCard, StatusChip, s, useNow } from "../components/ui";
 import { captureLocationFix, getBatteryPct, requestForegroundPermission } from "../components/presenceService";
 
 /**
@@ -112,13 +113,13 @@ export default function PresenceScreen() {
   return (
     <View style={s.screen}>
       <ScreenHeader title="Hiện diện" subtitle="Ảnh chụp khi mở app — không theo dõi nền" fallback="/(tabs)/couple" />
-      <ScrollView contentContainerStyle={s.scroll}>
+      <ScrollView contentContainerStyle={[s.scroll, { flexGrow: 1 }]}>
         {/* NGƯỜI ẤY */}
         <View style={s.card}>
           <View style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
             <Avatar id={partner.avatar} size={52} ring={partner.main} />
             <View style={{ flex: 1, minWidth: 0 }}>
-              <Text style={{ fontFamily: FONT.extrabold, fontSize: 17, color: COLOR.text }} numberOfLines={1}>{partner.name}</Text>
+              <Text style={{ fontFamily: FONT.extrabold, fontSize: 17, lineHeight: 22, color: COLOR.text }} numberOfLines={2}>{partner.name}</Text>
               <Text style={s.sub}>{partnerP.at ? `Cập nhật ${relativeTimeVi(partnerP.at, now)} · ${clockOf(partnerP.at)}` : "Chưa có ảnh chụp nào"}</Text>
             </View>
           </View>
@@ -131,16 +132,10 @@ export default function PresenceScreen() {
               ) : null}
               <View style={{ flexDirection: "row", gap: 8, flexWrap: "wrap" }}>
                 {partnerP.shareBattery && partnerP.battery != null ? (
-                  <View style={{ flexDirection: "row", alignItems: "center", gap: 5, backgroundColor: ROLE.partnerSoft, borderRadius: RADIUS.pill, paddingVertical: 6, paddingHorizontal: 11 }}>
-                    <Ionicons name="battery-half" size={14} color={ROLE.partnerDark} />
-                    <Text style={{ fontFamily: FONT.bold, fontSize: 12.5, color: ROLE.partnerDark }}>Pin {partnerP.battery}%</Text>
-                  </View>
+                  <StatusChip icon="battery-half" label={`Pin ${partnerP.battery}%`} variant="partner" />
                 ) : null}
                 {partnerStale ? (
-                  <View style={{ flexDirection: "row", alignItems: "center", gap: 5, backgroundColor: COLOR.warningSoft, borderRadius: RADIUS.pill, paddingVertical: 6, paddingHorizontal: 11 }}>
-                    <Ionicons name="time" size={14} color={COLOR.warningText} />
-                    <Text style={{ fontFamily: FONT.bold, fontSize: 12.5, color: COLOR.warningText }}>Ảnh chụp đã cũ</Text>
-                  </View>
+                  <StatusChip icon="time" label="Ảnh chụp đã cũ" variant="waiting" />
                 ) : null}
               </View>
             </View>
@@ -158,20 +153,25 @@ export default function PresenceScreen() {
             {myP.at ? `Lần chụp gần nhất: ${relativeTimeVi(myP.at, now)} · ${clockOf(myP.at)}${myP.battery != null ? ` · Pin ${myP.battery}%` : ""}${myP.lat != null ? " · Đã có vị trí" : ""}` : "Chưa chụp lần nào — bấm Cập nhật để chụp ngay."}
           </Text>
 
-          <View style={{ flexDirection: "row", alignItems: "center", gap: 12, marginTop: 16 }}>
+          {/* Công tắc canh theo DÒNG ĐẦU của khối nhãn (nhãn + mô tả 2-3 dòng) */}
+          <View style={{ flexDirection: "row", alignItems: "flex-start", gap: 12, marginTop: 16 }}>
             <View style={{ flex: 1, minWidth: 0 }}>
               <Text style={{ fontFamily: FONT.bold, fontSize: 15, color: COLOR.text }}>Chia sẻ pin</Text>
               <Text style={s.sub}>Cho người ấy thấy % pin của máy bạn trong ảnh chụp</Text>
             </View>
-            <Switch value={myP.shareBattery} onValueChange={onToggleBattery} trackColor={{ true: ROLE.partner, false: COLOR.track }} thumbColor="#fff" accessibilityLabel="Chia sẻ pin" />
+            <View style={{ paddingTop: 2 }}>
+              <Switch value={myP.shareBattery} onValueChange={onToggleBattery} trackColor={{ true: ROLE.partner, false: COLOR.track }} thumbColor="#fff" accessibilityLabel="Chia sẻ pin" />
+            </View>
           </View>
 
-          <View style={{ flexDirection: "row", alignItems: "center", gap: 12, marginTop: 14 }}>
+          <View style={{ flexDirection: "row", alignItems: "flex-start", gap: 12, marginTop: 14 }}>
             <View style={{ flex: 1, minWidth: 0 }}>
               <Text style={{ fontFamily: FONT.bold, fontSize: 15, color: COLOR.text }}>Chia sẻ vị trí khi mở app</Text>
               <Text style={s.sub}>Chỉ chụp 1 điểm khi mở app hoặc bấm Cập nhật — app không theo dõi khi bạn di chuyển</Text>
             </View>
-            <Switch value={myP.shareLocation} onValueChange={onToggleLocation} disabled={busy} trackColor={{ true: ROLE.partner, false: COLOR.track }} thumbColor="#fff" accessibilityLabel="Chia sẻ vị trí khi mở app" />
+            <View style={{ paddingTop: 2 }}>
+              <Switch value={myP.shareLocation} onValueChange={onToggleLocation} disabled={busy} trackColor={{ true: ROLE.partner, false: COLOR.track }} thumbColor="#fff" accessibilityLabel="Chia sẻ vị trí khi mở app" />
+            </View>
           </View>
 
           {note ? <Text style={{ fontFamily: FONT.semibold, fontSize: 13, lineHeight: 19, color: COLOR.warningText, marginTop: 12 }}>{note}</Text> : null}
@@ -186,6 +186,8 @@ export default function PresenceScreen() {
           Cách tính năng này hoạt động: vị trí chỉ được chụp khi bạn mở app hoặc tự bấm Cập nhật, và chỉ khi bạn đã bật chia sẻ + cấp quyền cho hệ điều hành. App không chạy nền, không lưu lịch sử di chuyển — ảnh chụp mới ghi đè ảnh chụp cũ. Tắt chia sẻ là người ấy không còn thấy dữ kiện đó nữa.
           {Platform.OS === "web" ? " Trên bản web, vị trí lấy từ trình duyệt (trình duyệt sẽ hỏi quyền riêng) và % pin có thể không đọc được tuỳ trình duyệt." : ""}
         </Text>
+        <View style={{ flex: 1 }} />
+        <ClosingBand art={<MascotArt size={72} />} line="Chỉ cần mở app là hai đứa lại thấy nhau gần hơn một chút — xa nhau vẫn biết nhau đang ổn." />
       </ScrollView>
     </View>
   );

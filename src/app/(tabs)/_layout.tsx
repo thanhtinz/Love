@@ -66,7 +66,7 @@ export default function TabsLayout() {
                 onPress={() => setQuickOpen(true)}
                 accessibilityLabel="Thêm nhanh"
                 accessibilityRole="button"
-                style={{ alignItems: "center", justifyContent: "center", width: 56, height: 56, borderRadius: 28, backgroundColor: COLOR.primary, marginTop: -20, borderWidth: 5, borderColor: COLOR.bg, ...SHADOW_FLOAT, shadowColor: COLOR.primary, shadowOpacity: 0.35, shadowRadius: 12, shadowOffset: { width: 0, height: 6 } }}
+                style={{ alignItems: "center", justifyContent: "center", width: 56, height: 56, borderRadius: 28, backgroundColor: COLOR.primary, marginTop: -20, borderWidth: 5, borderColor: COLOR.bg, ...SHADOW_FLOAT, shadowColor: COLOR.primary, shadowOpacity: 0.28, shadowRadius: 10, shadowOffset: { width: 0, height: 6 } }}
               >
                 <Ionicons name="add" size={28} color="#fff" />
               </TouchableOpacity>

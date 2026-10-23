@@ -5,8 +5,9 @@ import { useLove, myName } from "../../lib/store";
 import { countdownLabel, upcomingEvents } from "../../lib/features";
 import { EVENT_TITLE_MAX, EVENTS_MAX, isValidDateKey, parseDateKey, today, uid, type SpecialEvent } from "../../lib/types";
 import { PersonChip } from "../../components/PersonChip";
-import { COLOR, FONT, RADIUS, ROLE } from "../../components/theme";
-import { ScreenHeader, Segmented, s } from "../../components/ui";
+import { MascotArt, MemoriesEmptyArt } from "../../components/Art";
+import { COLOR, FONT, RADIUS } from "../../components/theme";
+import { ClosingBand, ScreenHeader, Segmented, StatusChip, s } from "../../components/ui";
 
 /**
  * Màn Ngày đặc biệt (hub Tiện ích) — kế hoạch Hạng 5: danh sách sự kiện chung
@@ -61,16 +62,14 @@ export default function EventsScreen() {
   const row = (ev: SpecialEvent, daysUntil: number | null) => (
     <View key={ev.id} style={{ flexDirection: "row", alignItems: "center", gap: 11, backgroundColor: "#fff", borderRadius: RADIUS.inner, borderWidth: 1, borderColor: COLOR.border, paddingVertical: 11, paddingHorizontal: 13 }}>
       <View style={{ flex: 1, minWidth: 0, gap: 3 }}>
-        <Text style={{ fontFamily: FONT.bold, fontSize: 15, color: COLOR.text }} numberOfLines={1}>{ev.title}</Text>
+        <Text style={{ fontFamily: FONT.bold, fontSize: 15, lineHeight: 20, color: COLOR.text }} numberOfLines={2}>{ev.title}</Text>
         <View style={{ flexDirection: "row", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
           <Text style={s.sub}>{fmtDate(ev.date)}{ev.repeat === "yearly" ? " · lặp hằng năm" : ""}</Text>
           <PersonChip state={state} slot={ev.createdBy} size={18} showYouTag={false} />
         </View>
       </View>
       {daysUntil !== null && (
-        <View style={{ backgroundColor: daysUntil <= 7 ? ROLE.selfSoft : ROLE.sharedSoft, borderRadius: RADIUS.pill, paddingVertical: 6, paddingHorizontal: 10, flexShrink: 0 }}>
-          <Text style={{ fontFamily: FONT.bold, fontSize: 12, color: daysUntil <= 7 ? ROLE.selfDark : ROLE.shared }}>{countdownLabel(daysUntil)}</Text>
-        </View>
+        <StatusChip label={countdownLabel(daysUntil)} variant={daysUntil <= 7 ? "accent" : "info"} />
       )}
       {confirmDel === ev.id ? (
         <View style={{ flexDirection: "row", gap: 6, flexShrink: 0 }}>
@@ -97,7 +96,7 @@ export default function EventsScreen() {
   return (
     <View style={s.screen}>
       <ScreenHeader fallback="/utilities" title="Ngày đặc biệt" subtitle="Đếm ngược những ngày quan trọng của hai đứa" />
-      <ScrollView contentContainerStyle={s.scroll}>
+      <ScrollView contentContainerStyle={[s.scroll, { flexGrow: 1 }]}>
         {formOpen ? (
           <View style={s.card}>
             <Text style={s.cardTitle}>{editingId ? "Sửa ngày đặc biệt" : "Thêm ngày đặc biệt"}</Text>
@@ -123,11 +122,21 @@ export default function EventsScreen() {
           </TouchableOpacity>
         )}
 
-        <View style={{ gap: 9 }}>
-          <Text style={{ fontFamily: FONT.extrabold, fontSize: 16, color: COLOR.text }}>Sắp tới</Text>
-          {upcoming.length === 0 && <Text style={s.sub}>Chưa có ngày đặc biệt nào sắp tới — thêm kỷ niệm, sinh nhật hay chuyến đi sắp tới nhé.</Text>}
-          {upcoming.map((u) => row(u.event, u.daysUntil))}
-        </View>
+        {state.events.length === 0 && !formOpen ? (
+          /* Trạng thái trống CÓ KHUNG: tranh + tiêu đề + một câu + nút thêm ở
+             trên là CTA thật của màn — không còn hụt hơi ở góc trên nữa. */
+          <View style={{ alignItems: "center", backgroundColor: COLOR.surfaceSoft, borderRadius: RADIUS.card, borderWidth: 1, borderColor: COLOR.border, paddingVertical: 24, paddingHorizontal: 20, gap: 6 }}>
+            <MemoriesEmptyArt size={110} />
+            <Text style={{ fontFamily: FONT.extrabold, fontSize: 16.5, color: COLOR.text, textAlign: "center" }}>Chưa có ngày đặc biệt nào</Text>
+            <Text style={[s.sub, { textAlign: "center", lineHeight: 19 }]}>Thêm kỷ niệm, sinh nhật hay chuyến đi sắp tới — app sẽ đếm ngược cùng hai đứa.</Text>
+          </View>
+        ) : (
+          <View style={{ gap: 9 }}>
+            <Text style={{ fontFamily: FONT.extrabold, fontSize: 16, color: COLOR.text }}>Sắp tới</Text>
+            {upcoming.length === 0 && <Text style={s.sub}>Chưa có ngày đặc biệt nào sắp tới — thêm kỷ niệm, sinh nhật hay chuyến đi sắp tới nhé.</Text>}
+            {upcoming.map((u) => row(u.event, u.daysUntil))}
+          </View>
+        )}
 
         {past.length > 0 && (
           <View style={{ gap: 9 }}>
@@ -137,6 +146,8 @@ export default function EventsScreen() {
         )}
 
         <Text style={[s.small, { textAlign: "center" }]}>Đang có {state.events.length}/{EVENTS_MAX} ngày đặc biệt · Người tạo: {myName(state)} · Sự kiện gần nhất sẽ hiện đếm ngược ở hub Hai đứa và Trang chủ.</Text>
+        <View style={{ flex: 1 }} />
+        <ClosingBand art={<MascotArt size={72} />} line="Ngày đặc biệt gần nhất luôn có một dòng đếm ngược ở hub Hai đứa và Trang chủ — để hai đứa không lỡ dịp nào của nhau." />
       </ScrollView>
     </View>
   );
