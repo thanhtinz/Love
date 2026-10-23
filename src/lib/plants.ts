@@ -419,7 +419,9 @@ export function normalizeStateV5(rawInput: Partial<AppState> & { createdAt?: str
   );
   let plants: PlantState[];
   if (Array.isArray(rawPlants) && rawPlants.length > 0) {
-    plants = rawPlants.slice(0, MAX_PLOTS).map((p, i) => normalizePlant(p, i));
+    // Khử trùng theo id: 2 cây trùng id làm vỡ key danh sách + SELECT_PLANT/merge.
+    const seenIds = new Set<string>();
+    plants = rawPlants.slice(0, MAX_PLOTS).map((p, i) => normalizePlant(p, i)).filter((p) => (seenIds.has(p.id) ? false : (seenIds.add(p.id), true)));
   } else if (Array.isArray(rawPlants) && hasMobileMarkers) {
     // BUG cũ: state mobile có plants rỗng (đã thu cây cuối cùng vào kỷ niệm) bị rơi xuống
     // nhánh migration legacy và HỒI SINH cây từ state.tree cũ mỗi lần tải/đồng bộ.
@@ -430,9 +432,6 @@ export function normalizeStateV5(rawInput: Partial<AppState> & { createdAt?: str
     const fresh = createPlant("love-tree");
     plants = [{ ...fresh, water: s.tree?.water ?? 60, sun: s.tree?.sun ?? 60, love: s.tree?.love ?? 60 }];
   }
-  const selectedPlantId = plants.length > 0 && plants.some((p) => p.id === raw.selectedPlantId)
-    ? (raw.selectedPlantId as string)
-    : (plants[0]?.id || "");
   const treeCollection: CollectedTree[] = Array.isArray(raw.treeCollection)
     ? raw.treeCollection.filter((c) => isPlainObject(c) && typeof c.speciesId === "string").map((c) => ({
         id: typeof c.id === "string" ? c.id : uid(),
@@ -443,6 +442,13 @@ export function normalizeStateV5(rawInput: Partial<AppState> & { createdAt?: str
         careCount: Math.max(0, Math.floor(finiteNum(c.careCount, 0))),
       }))
     : [];
+  // Cây đã thu vào kỷ niệm KHÔNG được đồng thời nằm trong vườn (id cây giữ nguyên khi
+  // thu nên treeCollection chính là tombstone cho plants — xem thêm merge.ts).
+  const collectedIds = new Set(treeCollection.map((c) => c.id));
+  plants = plants.filter((p) => !collectedIds.has(p.id));
+  const selectedPlantId = plants.length > 0 && plants.some((p) => p.id === raw.selectedPlantId)
+    ? (raw.selectedPlantId as string)
+    : (plants[0]?.id || "");
   return { ...s, plants, selectedPlantId, treeCollection };
 }
 

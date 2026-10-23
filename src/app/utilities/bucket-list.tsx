@@ -19,7 +19,10 @@ export default function BucketListScreen() {
   const lastAdd = state.contentLog[me.slot];
   const addWaitMs = lastAdd ? Math.max(0, CONTENT_ADD_MIN_INTERVAL_MS - (now - new Date(lastAdd).getTime())) : 0;
   const doneCount = state.bucket.filter((b) => b.done).length;
-  const visible = state.bucket.slice(0, limit);
+  // Hiện MỚI NHẤT trước: bucket được thêm ở CUỐI mảng (merge cũng xếp createdAt tăng
+  // dần) nên slice(0, limit) cũ chỉ hiện các mục CŨ NHẤT — từ mục thứ 11 trở đi, mục
+  // vừa thêm "biến mất" khỏi màn hình khiến người dùng tưởng thêm thất bại.
+  const visible = [...state.bucket].reverse().slice(0, limit);
 
   function addBucket() {
     if (!bucketText.trim() || addWaitMs > 0) return;
@@ -35,21 +38,21 @@ export default function BucketListScreen() {
           <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
             <Text style={[s.cardTitle, { flex: 1 }]}>Danh sách chung ({state.bucket.length} mục)</Text>
             <View style={s.chip}><Ionicons name="checkmark-circle" size={13} color={C.pinkDark} /><Text style={s.chipText}>Đã xong {doneCount}</Text></View>
-            <TouchableOpacity style={[s.btn, { paddingHorizontal: 12, minHeight: 40 }]} onPress={() => setFormOpen(true)} accessibilityLabel="Thêm mục bucket list">
+            <TouchableOpacity style={[s.btn, { paddingHorizontal: 12, minHeight: 44 }]} onPress={() => setFormOpen(true)} accessibilityLabel="Thêm mục bucket list">
               <Ionicons name="add" size={18} color="#fff" /><Text style={s.btnText}>Thêm</Text>
             </TouchableOpacity>
           </View>
           <View style={{ gap: 9, marginTop: 10 }}>
             {visible.map((b) => (
               <View key={b.id} style={{ flexDirection: "row", alignItems: "center", gap: 9, backgroundColor: "#fff7f8", borderRadius: 13, padding: 9, borderWidth: 1.5, borderColor: C.pinkBorder }}>
-                <TouchableOpacity onPress={() => dispatch({ type: "TOGGLE_BUCKET", id: b.id })}>
+                <TouchableOpacity onPress={() => dispatch({ type: "TOGGLE_BUCKET", id: b.id })} hitSlop={8} accessibilityLabel={b.done ? "Bỏ đánh dấu đã xong" : "Đánh dấu đã xong"}>
                   <Ionicons name={b.done ? "checkbox" : "square-outline"} size={22} color={b.done ? C.green : C.textFaint} />
                 </TouchableOpacity>
                 <View style={{ flex: 1, gap: 3 }}>
                   <Text style={{ fontSize: 13.5, color: b.done ? C.textFaint : C.text, textDecorationLine: b.done ? "line-through" : "none" }}>{b.text}</Text>
                   {b.authorSlot ? <PersonChip state={state} slot={b.authorSlot} size={16} /> : <Text style={s.small}>Người thêm: chưa rõ (mục cũ)</Text>}
                 </View>
-                <TouchableOpacity onPress={() => dispatch({ type: "DEL_BUCKET", id: b.id })}><Ionicons name="trash-outline" size={17} color={C.textFaint} /></TouchableOpacity>
+                <TouchableOpacity onPress={() => dispatch({ type: "DEL_BUCKET", id: b.id })} hitSlop={10} accessibilityLabel="Xoá mục này"><Ionicons name="trash-outline" size={17} color={C.textFaint} /></TouchableOpacity>
               </View>
             ))}
             {state.bucket.length === 0 && (
@@ -69,7 +72,7 @@ export default function BucketListScreen() {
           <View style={styles.modalCard}>
             <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
               <Text style={s.cardTitle}>Thêm điều muốn làm</Text>
-              <TouchableOpacity onPress={() => setFormOpen(false)}><Ionicons name="close-circle" size={26} color={C.textFaint} /></TouchableOpacity>
+              <TouchableOpacity onPress={() => setFormOpen(false)} hitSlop={10} accessibilityLabel="Đóng"><Ionicons name="close-circle" size={26} color={C.textFaint} /></TouchableOpacity>
             </View>
             <TextInput style={s.input} placeholder="VD: Cùng ngắm hoàng hôn ở biển" placeholderTextColor={C.textFaint} value={bucketText} onChangeText={setBucketText} maxLength={CONTENT_LIMITS.bucket} />
             {addWaitMs > 0 && <Text style={s.small}>Chờ {Math.ceil(addWaitMs / 1000)} giây nữa để thêm mục tiếp (chống thêm trùng).</Text>}
@@ -85,5 +88,5 @@ export default function BucketListScreen() {
 
 const styles = StyleSheet.create({
   modalWrap: { flex: 1, backgroundColor: "rgba(15,23,42,0.45)", justifyContent: "flex-end" },
-  modalCard: { backgroundColor: "#fff", borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 18, gap: 9 },
+  modalCard: { backgroundColor: "#fff", borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 18, gap: 9, maxHeight: "88%" },
 });

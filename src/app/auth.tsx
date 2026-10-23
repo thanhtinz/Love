@@ -9,7 +9,7 @@ import { LetterArtImage } from "../components/Art";
 import { C, s } from "../components/ui";
 
 export default function AuthScreen() {
-  const { user, couple, signIn, signUp } = useAuth();
+  const { user, couple, coupleReady, signIn, signUp } = useAuth();
   const [mode, setMode] = useState<"in" | "up">("in");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -20,8 +20,10 @@ export default function AuthScreen() {
   const [ok, setOk] = useState("");
 
   useEffect(() => {
-    if (user) router.replace(couple ? "/(tabs)" : "/pair");
-  }, [user, couple]);
+    // Chờ coupleReady: vừa đăng nhập xong mà couple còn đang tải thì chưa quyết
+    // đi Ghép cặp hay vào vườn (tránh chớp màn Ghép cặp với người đã có vườn).
+    if (user && coupleReady) router.replace(couple ? "/(tabs)" : "/pair");
+  }, [user, couple, coupleReady]);
 
   async function submit() {
     setErr(""); setOk("");
@@ -29,10 +31,17 @@ export default function AuthScreen() {
     if (password.length < 6) { setErr("Mật khẩu cần ít nhất 6 ký tự."); return; }
     if (mode === "up" && !name.trim()) { setErr("Hãy nhập tên hiển thị của bạn."); return; }
     setBusy(true);
-    const res = mode === "in" ? await signIn(email.trim(), password) : await signUp(email.trim(), password, name.trim(), avatarId);
-    setBusy(false);
-    if (res.error) { setErr(res.error); return; }
-    setOk(mode === "up" ? "Tạo tài khoản thành công! Đang vào vườn..." : "Đăng nhập thành công!");
+    try {
+      const res = mode === "in" ? await signIn(email.trim(), password) : await signUp(email.trim(), password, name.trim(), avatarId);
+      if (res.error) { setErr(res.error); return; }
+      setOk(mode === "up" ? "Tạo tài khoản thành công! Đang vào vườn..." : "Đăng nhập thành công!");
+    } catch {
+      // Lỗi bất ngờ (mạng chập chờn khiến Supabase ném exception): không để nút kẹt ở
+      // trạng thái "Đang xử lý..." mãi — bản cũ không có try/finally quanh await này.
+      setErr("Có lỗi mạng bất ngờ — bạn kiểm tra kết nối rồi thử lại nhé.");
+    } finally {
+      setBusy(false);
+    }
   }
 
   return (
@@ -89,7 +98,7 @@ const styles = StyleSheet.create({
   h1: { fontSize: 26, fontFamily: "BeVietnamPro_900Black", color: C.text },
   heroSub: { textAlign: "center", color: C.textSoft, fontSize: 13.5, lineHeight: 19, paddingHorizontal: 8 },
   tabs: { flexDirection: "row", backgroundColor: C.pinkSoft, borderRadius: 999, padding: 4 },
-  tab: { flex: 1, paddingVertical: 9, borderRadius: 999, alignItems: "center" },
+  tab: { flex: 1, paddingVertical: 12, minHeight: 44, justifyContent: "center", borderRadius: 999, alignItems: "center" },
   tabOn: { backgroundColor: "#fff" },
   tabText: { fontFamily: "BeVietnamPro_700Bold", color: C.textSoft },
   tabTextOn: { color: C.pinkDark },

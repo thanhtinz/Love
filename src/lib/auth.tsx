@@ -13,6 +13,10 @@ export interface AuthResult { error?: string }
 
 interface AuthCtxValue {
   ready: boolean;
+  /** Đã tải xong thông tin vườn cho user hiện tại (kể cả kết quả "không có vườn").
+   *  Cổng điều hướng phải chờ cờ này — trước đây user được set trước, couple set sau
+   *  một vòng mạng nên cổng thấy "có user, chưa có vườn" và chớp qua màn Ghép cặp. */
+  coupleReady: boolean;
   user: Profile | null;
   couple: CoupleInfo | null;
   signUp: (email: string, password: string, displayName: string, avatar: string) => Promise<AuthResult>;
@@ -20,7 +24,7 @@ interface AuthCtxValue {
   signOut: () => Promise<void>;
   createCouple: () => Promise<AuthResult>;
   joinCouple: (code: string) => Promise<AuthResult>;
-  leaveCouple: () => Promise<void>;
+  leaveCouple: () => Promise<AuthResult>;
   updateMyProfile: (displayName: string, avatar: string) => Promise<AuthResult>;
   refreshCouple: () => Promise<void>;
 }
@@ -48,11 +52,18 @@ async function sbEnsureProfile(sb: any, user: any): Promise<Profile | null> {
   return { id: user.id, email: user.email || "", displayName, avatar };
 }
 async function sbLoadCouple(sb: any, userId: string): Promise<CoupleInfo | null> {
-  const { data: mem } = await sb.from("couple_members").select("couple_id, slot").eq("user_id", userId).limit(1).maybeSingle();
+  // Phân biệt rõ "KHÔNG có vườn" (data null, không lỗi) với "TẢI LỖI" ({error}):
+  // bản cũ nuốt {error} của cả 3 truy vấn nên lỗi mạng bị hiểu thành "chưa có vườn" —
+  // người dùng bị đẩy về màn Ghép cặp dù đang ở trong vườn, rồi Tạo vườn lại văng
+  // ALREADY_IN_COUPLE. Nay: có lỗi là THROW để nơi gọi quyết định giữ nguyên trạng thái.
+  const { data: mem, error: memErr } = await sb.from("couple_members").select("couple_id, slot").eq("user_id", userId).limit(1).maybeSingle();
+  if (memErr) throw memErr;
   if (!mem) return null;
-  const { data: coupleRow } = await sb.from("couples").select("id, code, created_by").eq("id", mem.couple_id).maybeSingle();
+  const { data: coupleRow, error: coupleErr } = await sb.from("couples").select("id, code, created_by").eq("id", mem.couple_id).maybeSingle();
+  if (coupleErr) throw coupleErr;
   if (!coupleRow) return null;
-  const { data: rows } = await sb.from("couple_members").select("user_id, slot, profiles(display_name, avatar)").eq("couple_id", mem.couple_id);
+  const { data: rows, error: rowsErr } = await sb.from("couple_members").select("user_id, slot, profiles(display_name, avatar)").eq("couple_id", mem.couple_id);
+  if (rowsErr) throw rowsErr;
   const members: CoupleMemberInfo[] = (rows || []).map((r: any) => ({ userId: r.user_id, slot: (r.slot as "A" | "B"), displayName: r.profiles?.display_name || "Người thương", avatar: r.profiles?.avatar || "svg-a" }));
   return { id: coupleRow.id, code: coupleRow.code, createdBy: coupleRow.created_by, mySlot: mem.slot as "A" | "B", members };
 }
@@ -62,14 +73,48 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [ready, setReady] = useState(false);
   const [user, setUser] = useState<Profile | null>(null);
   const [couple, setCouple] = useState<CoupleInfo | null>(null);
+  const [coupleReady, setCoupleReady] = useState(true);
   const appliedUserId = useRef<string | null>(null);
+  /** Số thứ tự lời gọi applyUser — kết quả tải vườn của lời gọi CŨ đến muộn không được
+   *  ghi đè trạng thái của lời gọi mới (vd refreshCouple chậm về sau khi vừa tạo vườn). */
+  const applySeq = useRef(0);
 
   const applyUser = useCallback(async (profile: Profile | null) => {
-    setUser(profile);
-    if (!profile) { appliedUserId.current = null; setCouple(null); return; }
+    const seq = ++applySeq.current;
+    if (!profile) {
+      appliedUserId.current = null;
+      setUser(null);
+      setCouple(null);
+      setCoupleReady(true);
+      return;
+    }
+    const sameUser = appliedUserId.current === profile.id;
     appliedUserId.current = profile.id;
+    setUser(profile);
+    if (!sameUser) {
+      // Đổi tài khoản: xoá couple của tài khoản TRƯỚC ngay (tránh lẫn định danh) và
+      // báo "chưa sẵn sàng" để cổng điều hướng chờ thay vì chớp qua màn Ghép cặp.
+      setCouple(null);
+      setCoupleReady(false);
+    }
     const sb = getSupabase();
-    setCouple(await sbLoadCouple(sb, profile.id));
+    for (let attempt = 0; attempt < 2; attempt++) {
+      try {
+        const c = await sbLoadCouple(sb, profile.id);
+        if (seq !== applySeq.current) return; // đã có lời gọi mới hơn — bỏ kết quả này
+        setCouple(c);
+        setCoupleReady(true);
+        return;
+      } catch {
+        if (seq !== applySeq.current) return;
+        if (attempt === 0) { await new Promise((r) => setTimeout(r, 1500)); continue; }
+        // Tải lỗi cả 2 lần: refresh cho CHÍNH user hiện tại thì GIỮ couple đang có;
+        // user mới thì đành coi như chưa có vườn (màn Ghép cặp/Tạo vườn sẽ báo rõ
+        // ALREADY_IN_COUPLE nếu thực tế đã có vườn, không mất dữ liệu).
+        if (!sameUser) setCouple(null);
+        setCoupleReady(true);
+      }
+    }
   }, []);
 
   useEffect(() => {
@@ -118,7 +163,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (/already|registered|exists/i.test(error.message)) return { error: "Email này đã có tài khoản rồi — bạn đăng nhập nhé" };
       return { error: `Đăng ký chưa thành công: ${error.message}` };
     }
-    if (data.user) {
+    // Không có user trong kết quả (edge case phía Supabase): KHÔNG được trả thành công
+    // rỗng — màn hình tưởng đăng ký xong nhưng phiên không tồn tại, đứng yên không đi đâu.
+    if (!data.user) return { error: "Đăng ký chưa hoàn tất — bạn thử lại nhé" };
+    {
       const p = await sbEnsureProfile(sb, data.user);
       if (!p) return { error: "Tài khoản đã tạo nhưng hồ sơ chưa sẵn sàng — bạn thử đăng nhập lại nhé" };
       await applyUser(p);
@@ -132,7 +180,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const sb = getSupabase();
     const { data, error } = await sb.auth.signInWithPassword({ email, password });
     if (error) return { error: "Sai email hoặc mật khẩu rồi — thử lại nhẹ nhàng nhé" };
-    if (data.user) {
+    if (!data.user) return { error: "Đăng nhập chưa hoàn tất — bạn thử lại nhé" };
+    {
       const p = await sbEnsureProfile(sb, data.user);
       if (!p) return { error: "Đăng nhập được nhưng chưa tải được hồ sơ — kiểm tra mạng rồi thử lại nhé" };
       await applyUser(p);
@@ -196,10 +245,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   }, [user, couple, applyUser]);
 
-  const leaveCouple = useCallback(async () => {
-    if (!user || !couple) return;
-    try { await getSupabase().from("couple_members").delete().eq("couple_id", couple.id).eq("user_id", user.id); } catch { /* bỏ qua */ }
+  const leaveCouple = useCallback(async (): Promise<AuthResult> => {
+    if (!user || !couple) return {};
+    // Supabase trả lỗi qua { error } chứ KHÔNG throw — bản cũ bọc try/catch nên lỗi xoá
+    // trên server bị nuốt mất: app vẫn xoá couple ở máy này, lần mở app sau lại "vào lại"
+    // vườn cũ vì dòng couple_members vẫn còn. Nay: chỉ rời hẳn khi server đã xoá xong.
+    const { error } = await getSupabase().from("couple_members").delete().eq("couple_id", couple.id).eq("user_id", user.id);
+    if (error) return { error: `Rời vườn chưa thành công: ${error.message} — kiểm tra mạng rồi thử lại nhé` };
     setCouple(null);
+    return {};
   }, [user, couple]);
 
   const updateMyProfile = useCallback(async (displayName: string, avatar: string): Promise<AuthResult> => {
@@ -212,6 +266,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return {};
   }, [user, applyUser]);
 
-  const value: AuthCtxValue = { ready, user, couple, signUp, signIn, signOut, createCouple, joinCouple, leaveCouple, updateMyProfile, refreshCouple };
+  const value: AuthCtxValue = { ready, coupleReady, user, couple, signUp, signIn, signOut, createCouple, joinCouple, leaveCouple, updateMyProfile, refreshCouple };
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }

@@ -1,6 +1,7 @@
 import React, { memo, useEffect, useState } from "react";
 import { Animated, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { router } from "expo-router";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { COLOR, FONT, RADIUS, ROLE, SPACE, TYPE } from "./theme";
 
@@ -92,9 +93,14 @@ export function useNow(intervalMs = 1000): number {
 
 /** Header chuẩn cho màn hình con (stack): nút quay lại (kèm nhãn) + tiêu đề tiếng Việt. */
 export function ScreenHeader({ title, subtitle }: { title: string; subtitle?: string }) {
+  const insets = useSafeAreaInsets();
   return (
-    <View style={{ flexDirection: "row", alignItems: "center", gap: 10, paddingTop: 44, paddingHorizontal: SPACE.screenX, paddingBottom: SPACE.sm }}>
-      <TouchableOpacity onPress={() => router.back()} style={{ width: 44, height: 44, borderRadius: 22, backgroundColor: "#fff", borderWidth: 1, borderColor: COLOR.border, alignItems: "center", justifyContent: "center" }} accessibilityLabel="Quay lại" accessibilityRole="button">
+    <View style={{ flexDirection: "row", alignItems: "center", gap: 10, paddingTop: insets.top + 10, paddingHorizontal: SPACE.screenX, paddingBottom: SPACE.sm }}>
+      {/* Chạm vùng an toàn thật của máy thay vì 44 cứng: máy tai thỏ/Dynamic Island
+          không bị che, Android thanh trạng thái thấp không thừa khoảng trống.
+          Nút back: mở trực tiếp màn chi tiết (deep link/web refresh) thì stack chỉ có
+          1 màn — router.back() im lặng không làm gì; rơi về tab chính khi không back được. */}
+      <TouchableOpacity onPress={() => { if (router.canGoBack()) router.back(); else router.replace("/(tabs)"); }} style={{ width: 44, height: 44, borderRadius: 22, backgroundColor: "#fff", borderWidth: 1, borderColor: COLOR.border, alignItems: "center", justifyContent: "center" }} accessibilityLabel="Quay lại" accessibilityRole="button">
         <Ionicons name="chevron-back" size={22} color={ROLE.selfDark} />
       </TouchableOpacity>
       <View style={{ flex: 1 }}>
@@ -112,16 +118,16 @@ export const FeatureCard = memo(function FeatureCard({ icon, title, desc, color 
       <View style={{ width: 46, height: 46, borderRadius: RADIUS.inner, backgroundColor: bg, alignItems: "center", justifyContent: "center" }}>
         <Ionicons name={icon as never} size={23} color={color} />
       </View>
-      <View style={{ flex: 1, gap: 2 }}>
+      <View style={{ flex: 1, minWidth: 0, gap: 2 }}>
         <Text style={{ fontFamily: FONT.semibold, fontSize: 15, color: COLOR.text }}>{title}</Text>
         <Text style={s.sub}>{desc}</Text>
       </View>
       {badge ? (
-        <View style={{ backgroundColor: COLOR.primary, borderRadius: RADIUS.pill, paddingHorizontal: 8, paddingVertical: 3 }}>
-          <Text style={{ color: "#fff", fontSize: 10.5, fontFamily: FONT.bold }}>{badge}</Text>
+        <View style={{ backgroundColor: COLOR.primary, borderRadius: RADIUS.pill, paddingHorizontal: 8, paddingVertical: 3, flexShrink: 0, maxWidth: "38%" }}>
+          <Text style={{ color: "#fff", fontSize: 10.5, fontFamily: FONT.bold }} numberOfLines={1}>{badge}</Text>
         </View>
       ) : null}
-      <Ionicons name="chevron-forward" size={18} color={COLOR.textFaint} />
+      <Ionicons name="chevron-forward" size={18} color={COLOR.textFaint} style={{ flexShrink: 0 }} />
     </TouchableOpacity>
   );
 });
@@ -153,7 +159,7 @@ export function Segmented<T extends string>({ options, value, onChange }: { opti
       {options.map((o) => {
         const on = o.id === value;
         return (
-          <TouchableOpacity key={o.id} onPress={() => onChange(o.id)} style={{ flex: 1, minHeight: 40, borderRadius: RADIUS.pill, alignItems: "center", justifyContent: "center", backgroundColor: on ? "#fff" : "transparent", paddingHorizontal: 8 }}>
+          <TouchableOpacity key={o.id} onPress={() => onChange(o.id)} style={{ flex: 1, minHeight: 44, borderRadius: RADIUS.pill, alignItems: "center", justifyContent: "center", backgroundColor: on ? "#fff" : "transparent", paddingHorizontal: 8 }}>
             <Text style={{ fontFamily: FONT.bold, fontSize: 13.5, color: on ? ROLE.selfDark : COLOR.textSoft }} numberOfLines={1}>{o.label}</Text>
           </TouchableOpacity>
         );
@@ -179,7 +185,7 @@ export function SkeletonCard({ height = 92, radius = RADIUS.card }: { height?: n
 /** Nút "Tải thêm" dùng cho các danh sách dài (hiện từng đợt ~10 mục). */
 export function LoadMoreRow({ onPress, label = "Tải thêm" }: { onPress: () => void; label?: string }) {
   return (
-    <TouchableOpacity onPress={onPress} style={{ alignSelf: "center", flexDirection: "row", alignItems: "center", gap: 5, backgroundColor: ROLE.selfSoft, borderRadius: RADIUS.pill, paddingHorizontal: 16, minHeight: 40, paddingVertical: 8 }}>
+    <TouchableOpacity onPress={onPress} style={{ alignSelf: "center", flexDirection: "row", alignItems: "center", gap: 5, backgroundColor: ROLE.selfSoft, borderRadius: RADIUS.pill, paddingHorizontal: 16, minHeight: 44, paddingVertical: 8 }}>
       <Ionicons name="chevron-down" size={15} color={ROLE.selfDark} />
       <Text style={{ fontFamily: FONT.bold, fontSize: 13, color: ROLE.selfDark }}>{label}</Text>
     </TouchableOpacity>

@@ -1,11 +1,11 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { ScrollView, Text, TextInput, TouchableOpacity, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useLove } from "../../lib/store";
 import { questionOfDay } from "../../lib/data";
-import { today } from "../../lib/types";
+import { dayKeyLocal, today } from "../../lib/types";
 import { PersonChip, partnerOf, selfOf } from "../../components/PersonChip";
-import { C, ScreenHeader, s } from "../../components/ui";
+import { C, ScreenHeader, s, useNow } from "../../components/ui";
 
 export default function DailyQuestionScreen() {
   const { state, dispatch } = useLove();
@@ -18,6 +18,13 @@ export default function DailyQuestionScreen() {
   const theirAnswer = answersToday[partner.slot];
   const bothAnswered = Boolean(myAnswer && theirAnswer);
   const [answerText, setAnswerText] = useState("");
+  // Bản nháp đang gõ thuộc về CÂU HỎI của ngày hôm đó: qua nửa đêm mà màn hình còn mở,
+  // câu hỏi đã đổi — giữ nguyên nháp là người dùng có thể niêm phong nháp của câu cũ
+  // cho câu mới. Xoá nháp khi ngày đổi.
+  const nowTick = useNow(15000);
+  const dayNow = dayKeyLocal(new Date(nowTick));
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- xoá nháp khi ngày đổi lúc màn hình đang mở
+  useEffect(() => { setAnswerText(""); }, [dayNow]);
 
   return (
     <View style={s.screen}>

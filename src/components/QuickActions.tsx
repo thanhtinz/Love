@@ -15,7 +15,10 @@ import { COLOR, FONT, RADIUS, ROLE, SPACE } from "./theme";
 export function QuickActions({ visible, onClose }: { visible: boolean; onClose: () => void }) {
   const { state, dispatch } = useLove();
   const me = state.currentUser;
-  const plant = state.plants.find((p) => p.id === state.selectedPlantId) || state.plants[0];
+  // Chỉ tưới cây ĐANG CHỌN thật: bản cũ fallback sang plants[0] khi selectedPlantId
+  // lỗi thời nhưng vẫn ghi nhãn "đang chọn" — người dùng tưới nhầm cây khác hẳn ý định.
+  const selectedPlant = state.plants.find((p) => p.id === state.selectedPlantId);
+  const plant = selectedPlant || state.plants[0];
 
   function go(route: string) {
     onClose();
@@ -39,7 +42,7 @@ export function QuickActions({ visible, onClose }: { visible: boolean; onClose: 
     {
       icon: "water",
       label: "Tưới nước cho cây",
-      desc: plant ? `${speciesById(plant.speciesId).name} đang chọn trong vườn` : "Vườn chưa có cây — qua tab Vườn gieo hạt nhé",
+      desc: plant ? (selectedPlant ? `${speciesById(plant.speciesId).name} đang chọn trong vườn` : `Cây đầu tiên trong vườn: ${speciesById(plant.speciesId).name}`) : "Vườn chưa có cây — qua tab Vườn gieo hạt nhé",
       color: COLOR.water,
       bg: "#E3F2FB",
       onPress: waterNow,

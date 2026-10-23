@@ -3,7 +3,7 @@ import { ScrollView, Text, TouchableOpacity, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useLove } from "../../lib/store";
 import { DATE_IDEAS, moodLabel } from "../../lib/data";
-import { CONTENT_ADD_MIN_INTERVAL_MS, today, uid } from "../../lib/types";
+import { CONTENT_ADD_MIN_INTERVAL_MS, localDayNumber, today, uid } from "../../lib/types";
 import { selfOf } from "../../components/PersonChip";
 import { C, ScreenHeader, Segmented, s, useNow } from "../../components/ui";
 
@@ -19,15 +19,21 @@ export default function DateIdeasScreen() {
   const { state, dispatch } = useLove();
   const me = selfOf(state);
   const now = useNow(500);
-  const [ideaIdx, setIdeaIdx] = useState(() => Math.floor(Date.now() / 86400000) % DATE_IDEAS.length);
+  // Số ngày theo GIỜ ĐỊA PHƯƠNG: bản cũ Date.now()/86400000 là số ngày UTC — ý tưởng
+  // "của hôm nay" đổi sớm từ 07:00 sáng giờ VN thay vì từ nửa đêm.
+  const [ideaIdx, setIdeaIdx] = useState(() => localDayNumber() % DATE_IDEAS.length);
   const [savedMsg, setSavedMsg] = useState("");
+  /** Các nội dung đã lưu trong phiên mở màn hình này — chống lưu trùng cùng một ý
+   *  tưởng/kế hoạch nhiều lần vào Bucket List (cổng 5 giây chỉ chặn lưu NHANH). */
+  const [savedKeys, setSavedKeys] = useState<string[]>([]);
   const idea = DATE_IDEAS[ideaIdx % DATE_IDEAS.length];
   const lastAdd = state.contentLog[me.slot];
   const addWaitMs = lastAdd ? Math.max(0, CONTENT_ADD_MIN_INTERVAL_MS - (now - new Date(lastAdd).getTime())) : 0;
 
   function saveIdea() {
-    if (addWaitMs > 0) return;
+    if (addWaitMs > 0 || savedKeys.includes(idea.text)) return;
     dispatch({ type: "ADD_BUCKET", item: { id: uid(), text: idea.text, done: false, createdAt: new Date().toISOString(), authorSlot: me.slot } });
+    setSavedKeys((v) => [...v, idea.text]);
     setSavedMsg("Đã lưu ý tưởng này vào Bucket List.");
     setTimeout(() => setSavedMsg(""), 2500);
   }
@@ -38,11 +44,14 @@ export default function DateIdeasScreen() {
   const [savedPlanMsg, setSavedPlanMsg] = useState("");
   const moodsToday = state.moods.date === today() ? state.moods : { A: "", B: "" };
   const planIdea = DATE_IDEAS[planIdx % DATE_IDEAS.length];
+  // LƯU Ý trung thực: kho ý tưởng chưa có thẻ mood/ngân sách nên hoạt động được chọn
+  // NGẪU NHIÊN — mood chỉ hiện làm ngữ cảnh, câu chữ KHÔNG khẳng định "hợp với mood"
+  // (bản cũ khẳng định như vậy trong khi mã chọn hoàn toàn ngẫu nhiên).
   const moodLine = moodsToday.A && moodsToday.B
-    ? `Mood hôm nay: ${state.personA} đang "${moodLabel(moodsToday.A)}", ${state.personB} đang "${moodLabel(moodsToday.B)}" — hoạt động dưới đây hợp với cả hai mood này.`
+    ? `Mood hôm nay: ${state.personA} đang "${moodLabel(moodsToday.A)}", ${state.personB} đang "${moodLabel(moodsToday.B)}". Gợi ý dưới đây là ngẫu nhiên — bấm đổi tới khi gặp ý tưởng hợp mood của hai đứa nhé.`
     : moodsToday.A || moodsToday.B
-      ? `Mới có một người chọn mood hôm nay (${moodLabel(moodsToday.A || moodsToday.B)}) — kế hoạch cân bằng để người còn lại cũng dễ hoà nhịp.`
-      : "Hai đứa chưa chọn mood hôm nay — kế hoạch cân bằng, nhẹ nhàng cho cả hai.";
+      ? `Mới có một người chọn mood hôm nay (${moodLabel(moodsToday.A || moodsToday.B)}). Gợi ý dưới đây là ngẫu nhiên — bấm đổi nếu chưa hợp mood.`
+      : "Hai đứa chưa chọn mood hôm nay — gợi ý ngẫu nhiên nhẹ nhàng cho cả hai.";
   const planText = `Hẹn tối nay: ${planIdea.text} · ${BUDGET_LABEL[budget]}`;
 
   function reshufflePlan() {
@@ -53,8 +62,9 @@ export default function DateIdeasScreen() {
     });
   }
   function savePlan() {
-    if (addWaitMs > 0) return;
+    if (addWaitMs > 0 || savedKeys.includes(planText)) return;
     dispatch({ type: "ADD_BUCKET", item: { id: uid(), text: planText, done: false, createdAt: new Date().toISOString(), authorSlot: me.slot } });
+    setSavedKeys((v) => [...v, planText]);
     setSavedPlanMsg("Đã lưu kế hoạch tối nay vào Bucket List.");
     setTimeout(() => setSavedPlanMsg(""), 2500);
   }
@@ -83,8 +93,8 @@ export default function DateIdeasScreen() {
           <TouchableOpacity style={s.btn} onPress={reshufflePlan}>
             <Ionicons name="shuffle" size={16} color="#fff" /><Text style={s.btnText}>Tạo kế hoạch khác</Text>
           </TouchableOpacity>
-          <TouchableOpacity style={[s.btnGhost, addWaitMs > 0 && { opacity: 0.5 }]} disabled={addWaitMs > 0} onPress={savePlan}>
-            <Ionicons name="bookmark" size={15} color={C.pinkDark} /><Text style={s.btnGhostText}>{addWaitMs > 0 ? `Chờ ${Math.ceil(addWaitMs / 1000)}s để lưu tiếp` : "Lưu kế hoạch vào Bucket List"}</Text>
+          <TouchableOpacity style={[s.btnGhost, (addWaitMs > 0 || savedKeys.includes(planText)) && { opacity: 0.5 }]} disabled={addWaitMs > 0 || savedKeys.includes(planText)} onPress={savePlan}>
+            <Ionicons name="bookmark" size={15} color={C.pinkDark} /><Text style={s.btnGhostText}>{savedKeys.includes(planText) ? "Đã lưu kế hoạch này" : addWaitMs > 0 ? `Chờ ${Math.ceil(addWaitMs / 1000)}s để lưu tiếp` : "Lưu kế hoạch vào Bucket List"}</Text>
           </TouchableOpacity>
           {savedPlanMsg ? <Text style={{ textAlign: "center", color: C.pinkDark, fontFamily: "BeVietnamPro_700Bold" }}>{savedPlanMsg}</Text> : null}
         </View>
@@ -98,8 +108,8 @@ export default function DateIdeasScreen() {
         <TouchableOpacity style={s.btn} onPress={() => setIdeaIdx((v) => v + 1)}>
           <Ionicons name="shuffle" size={16} color="#fff" /><Text style={s.btnText}>Đổi ý tưởng khác</Text>
         </TouchableOpacity>
-        <TouchableOpacity style={[s.btnGhost, addWaitMs > 0 && { opacity: 0.5 }]} disabled={addWaitMs > 0} onPress={saveIdea}>
-          <Ionicons name="bookmark" size={15} color={C.pinkDark} /><Text style={s.btnGhostText}>{addWaitMs > 0 ? `Chờ ${Math.ceil(addWaitMs / 1000)}s để lưu tiếp` : "Lưu ý tưởng này vào Bucket List"}</Text>
+        <TouchableOpacity style={[s.btnGhost, (addWaitMs > 0 || savedKeys.includes(idea.text)) && { opacity: 0.5 }]} disabled={addWaitMs > 0 || savedKeys.includes(idea.text)} onPress={saveIdea}>
+          <Ionicons name="bookmark" size={15} color={C.pinkDark} /><Text style={s.btnGhostText}>{savedKeys.includes(idea.text) ? "Đã lưu ý tưởng này" : addWaitMs > 0 ? `Chờ ${Math.ceil(addWaitMs / 1000)}s để lưu tiếp` : "Lưu ý tưởng này vào Bucket List"}</Text>
         </TouchableOpacity>
         {savedMsg ? <Text style={{ textAlign: "center", color: C.pinkDark, fontFamily: "BeVietnamPro_700Bold" }}>{savedMsg}</Text> : null}
       </ScrollView>

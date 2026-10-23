@@ -6,14 +6,17 @@ import { useAuth } from "../lib/auth";
 import { C } from "../components/ui";
 
 export default function GateScreen() {
-  const { user, couple, ready } = useAuth();
+  const { user, couple, ready, coupleReady } = useAuth();
 
   useEffect(() => {
     if (!ready) return;
     if (!user) router.replace("/auth");
+    // Chờ tải xong thông tin vườn: trước đây cổng quyết ngay khi user có mặt nhưng
+    // couple còn đang tải -> người đã có vườn bị chớp qua màn Ghép cặp.
+    else if (!coupleReady) return;
     else if (!couple) router.replace("/pair");
     else router.replace("/(tabs)");
-  }, [user, couple, ready]);
+  }, [user, couple, ready, coupleReady]);
 
   return (
     <View style={styles.wrap}>

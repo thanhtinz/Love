@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { Modal, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useLove, myName } from "../../lib/store";
@@ -16,7 +16,17 @@ export default function LoveNotesScreen() {
   const meName = myName(state);
   const now = useNow(500);
   const [myNote, setMyNote] = useState(state.loveNotes[me.slot]);
+  // Ô nhập chỉ khởi tạo 1 lần từ state: nếu bản đồng bộ MỚI hơn về trong lúc đang mở
+  // màn hình (mình sửa trên máy khác / bản sao mới hơn), ô vẫn giữ bản CŨ và bấm Lưu là
+  // ghi đè mất bản mới. Theo dõi "đã sửa tay chưa": chưa sửa thì luôn đồng bộ theo state.
+  const [noteDirty, setNoteDirty] = useState(false);
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- đồng bộ ô nhập theo state khi người dùng chưa tự sửa
+    if (!noteDirty) setMyNote(state.loveNotes[me.slot]);
+  }, [state.loveNotes, me.slot, noteDirty]);
   const [savedMsg, setSavedMsg] = useState("");
+  const savedTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => () => { if (savedTimer.current) clearTimeout(savedTimer.current); }, []);
   const [noteText, setNoteText] = useState("");
   const [noteOpen, setNoteOpen] = useState(false);
   const [notesLimit, setNotesLimit] = useState(PAGE);
@@ -26,8 +36,10 @@ export default function LoveNotesScreen() {
 
   function saveMyNote() {
     dispatch({ type: "SET_LOVE_NOTE", user: me.slot, text: myNote.trim() });
+    setNoteDirty(false);
     setSavedMsg("Đã lưu lời nhắn của bạn.");
-    setTimeout(() => setSavedMsg(""), 2500);
+    if (savedTimer.current) clearTimeout(savedTimer.current);
+    savedTimer.current = setTimeout(() => setSavedMsg(""), 2500);
   }
   function addNote() {
     if (!noteText.trim() || addWaitMs > 0) return; // chống double-submit: đang trong 5 giây chờ thì không tạo thêm
@@ -45,8 +57,8 @@ export default function LoveNotesScreen() {
             <PersonChip state={state} slot={me.slot} />
             <Text style={{ fontFamily: "BeVietnamPro_900Black", color: C.text, flex: 1 }}>Lời nhắn của bạn</Text>
           </View>
-          <TextInput style={[s.input, { minHeight: 58, textAlignVertical: "top", marginTop: 10 }]} placeholder="Lời nhắn bạn muốn ghim cho người ấy đọc mỗi ngày..." placeholderTextColor={C.textFaint} value={myNote} onChangeText={setMyNote} multiline maxLength={200} />
-          <TouchableOpacity style={[s.btn, { marginTop: 9 }]} onPress={saveMyNote}>
+          <TextInput style={[s.input, { minHeight: 58, textAlignVertical: "top", marginTop: 10 }]} placeholder="Lời nhắn bạn muốn ghim cho người ấy đọc mỗi ngày..." placeholderTextColor={C.textFaint} value={myNote} onChangeText={(t) => { setMyNote(t); setNoteDirty(true); }} multiline maxLength={200} />
+          <TouchableOpacity style={[s.btn, { marginTop: 9 }, myNote.trim() === (state.loveNotes[me.slot] || "").trim() && { opacity: 0.5 }]} disabled={myNote.trim() === (state.loveNotes[me.slot] || "").trim()} onPress={saveMyNote}>
             <Ionicons name="save" size={15} color="#fff" /><Text style={s.btnText}>Lưu lời nhắn của bạn</Text>
           </TouchableOpacity>
           {savedMsg ? <Text style={{ color: C.pinkDark, fontFamily: "BeVietnamPro_700Bold", fontSize: 12.5, marginTop: 6 }}>{savedMsg}</Text> : null}
@@ -69,7 +81,7 @@ export default function LoveNotesScreen() {
         <View style={s.card}>
           <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
             <Text style={[s.cardTitle, { flex: 1 }]}>Ghi chú nhanh ({state.notes.length})</Text>
-            <TouchableOpacity style={[s.btn, { paddingHorizontal: 12, minHeight: 40 }]} onPress={() => setNoteOpen(true)} accessibilityLabel="Dán ghi chú mới">
+            <TouchableOpacity style={[s.btn, { paddingHorizontal: 12, minHeight: 44 }]} onPress={() => setNoteOpen(true)} accessibilityLabel="Dán ghi chú mới">
               <Ionicons name="add" size={18} color="#fff" /><Text style={s.btnText}>Dán mới</Text>
             </TouchableOpacity>
           </View>
@@ -79,7 +91,7 @@ export default function LoveNotesScreen() {
                 <Text style={{ fontSize: 13, color: "#7f1d1d", lineHeight: 18 }}>{n.text}</Text>
                 <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginTop: 6 }}>
                   {n.authorSlot ? <PersonChip state={state} slot={n.authorSlot} size={16} /> : <Text style={{ fontSize: 10.5, color: "#9f1239", fontFamily: "BeVietnamPro_700Bold" }}>{n.author}</Text>}
-                  <TouchableOpacity onPress={() => dispatch({ type: "DEL_NOTE", id: n.id })}><Ionicons name="trash-outline" size={14} color="#9f1239" /></TouchableOpacity>
+                  <TouchableOpacity onPress={() => dispatch({ type: "DEL_NOTE", id: n.id })} hitSlop={10} accessibilityLabel="Xoá ghi chú"><Ionicons name="trash-outline" size={14} color="#9f1239" /></TouchableOpacity>
                 </View>
               </View>
             ))}
@@ -96,7 +108,7 @@ export default function LoveNotesScreen() {
           <View style={styles.modalCard}>
             <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
               <Text style={s.cardTitle}>Dán ghi chú mới</Text>
-              <TouchableOpacity onPress={() => setNoteOpen(false)}><Ionicons name="close-circle" size={26} color={C.textFaint} /></TouchableOpacity>
+              <TouchableOpacity onPress={() => setNoteOpen(false)} hitSlop={10} accessibilityLabel="Đóng"><Ionicons name="close-circle" size={26} color={C.textFaint} /></TouchableOpacity>
             </View>
             <Text style={s.sub}>Tối đa {CONTENT_LIMITS.note} ký tự · nghỉ {CONTENT_ADD_MIN_INTERVAL_MS / 1000} giây giữa 2 lần dán.</Text>
             <TextInput style={[s.input, { minHeight: 64, textAlignVertical: "top" }]} placeholder="Viết ghi chú..." placeholderTextColor={C.textFaint} value={noteText} onChangeText={setNoteText} maxLength={CONTENT_LIMITS.note} multiline />
@@ -113,5 +125,5 @@ export default function LoveNotesScreen() {
 
 const styles = StyleSheet.create({
   modalWrap: { flex: 1, backgroundColor: "rgba(15,23,42,0.45)", justifyContent: "flex-end" },
-  modalCard: { backgroundColor: "#fff", borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 18, gap: 9 },
+  modalCard: { backgroundColor: "#fff", borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 18, gap: 9, maxHeight: "88%" },
 });

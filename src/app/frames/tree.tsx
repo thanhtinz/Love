@@ -6,7 +6,7 @@ import { treeHealth } from "../../lib/types";
 import { PlantImage } from "../../components/Art";
 import { FrameExport } from "../../components/FrameExport";
 import { COLOR } from "../../components/theme";
-import { C, ProgressBar, ScreenHeader, s } from "../../components/ui";
+import { C, ProgressBar, ScreenHeader, s, useNow } from "../../components/ui";
 
 /**
  * Khung Cây hôm nay — quy tắc widget: khung chỉ nêu MỘT thông tin chính:
@@ -15,16 +15,20 @@ import { C, ProgressBar, ScreenHeader, s } from "../../components/ui";
  */
 export default function FrameTreeScreen() {
   const { state } = useLove();
+  // Tick 60 giây: stageInfo/decayedPlantStats tính THEO THỜI GIAN tại lúc tính — memo
+  // chỉ theo [plant] khiến khung đứng yên nhiều giờ vẫn hiện giai đoạn/sức khoẻ cũ
+  // (vật thể plant không đổi reference khi thời gian trôi mà chưa có thao tác nào).
+  const now = useNow(60000);
   const plant = state.plants.find((p) => p.id === state.selectedPlantId) || state.plants[0];
-  const info = useMemo(() => (plant ? stageInfo(plant) : null), [plant]);
-  const stats = useMemo(() => (plant ? decayedPlantStats(plant) : null), [plant]);
+  const info = useMemo(() => (plant ? stageInfo(plant, now) : null), [plant, now]);
+  const stats = useMemo(() => (plant ? decayedPlantStats(plant, now) : null), [plant, now]);
   const health = stats ? treeHealth(stats) : null;
 
   return (
     <View style={s.screen}>
       <ScreenHeader title="Khung Cây hôm nay" subtitle="Một thông tin chính: cây đang lớn tới đâu" />
       <ScrollView contentContainerStyle={s.scroll}>
-        <FrameExport kind="tree">
+        <FrameExport kind="tree" hasContent={!!plant}>
           <Text style={{ fontSize: 15, fontFamily: "BeVietnamPro_700Bold", color: C.pinkDark }}>Cây hôm nay</Text>
           {plant && info && health ? (
             <>

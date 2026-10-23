@@ -31,10 +31,11 @@ import { speciesById, totalGrowthMs } from "./plants";
  *    XP luôn lấy max (XP chỉ tăng).
  *
  * GIỚI HẠN CÒN LẠI (nói thẳng):
- * - Xoá (ghi chú/kỷ niệm/bucket) có thể bị "hồi sinh" nếu máy kia còn giữ bản cũ
- *   và đồng bộ sau — chưa có cơ chế tombstone.
- * - Coins khi 2 máy cùng mua 2 món KHÁC nhau trong lúc mất đồng bộ: lấy số nhỏ
- *   hơn (không bao giờ tạo thêm tiền từ hư không, nhưng có thể trừ trùng một lần).
+ * - Coins: khi cả 2 phía cùng neo coinsBase (điểm đồng bộ chung gần nhất), merge cộng
+ *   ĐÚNG delta của cả hai (thu nhập đồng thời không mất, mua ở 2 máy trừ đúng 2 lần).
+ *   Chỉ khi hai phía lệch neo (một phía chưa từng nhận bản đã neo) mới rơi về heuristic
+ *   kho đồ cũ: cùng mua 2 món khác nhau thì lấy số nhỏ hơn (không tạo tiền từ hư không,
+ *   nhưng có thể trừ trùng một lần).
  * - Thư rơi do 2 máy cùng phát hiện "lên giai đoạn" được chống trùng bằng id xác
  *   định (stageup-<plantId>-<stage>) ở màn hình Vườn; thư rơi ngẫu nhiên khi chăm
  *   chỉ do máy người chăm tạo nên không trùng.
@@ -204,7 +205,7 @@ export function mergeStates(local: AppState, remote: AppState, mySlot: PersonId)
     for (const slot of SLOTS) {
       const a = local.games.quiz[slot];
       const b = remote.games.quiz[slot];
-      if (a.length !== b.length) quiz[slot] = a.length > b.length ? a : b;
+      if (a.length !== b.length) { quiz[slot] = a.length > b.length ? a : b; stampFrom(`games.quiz:${slot}`, a.length > b.length ? local : remote); }
       else if (a.length > 0 && a.join(",") !== b.join(",")) {
         const w = slotWinner(local, remote, "games.quiz", slot, remoteNewer);
         quiz[slot] = w === "local" ? a : b;
@@ -256,6 +257,13 @@ export function mergeStates(local: AppState, remote: AppState, mySlot: PersonId)
     const ll = letterMap.get(rl.id);
     if (!ll) letterMap.set(rl.id, rl);
     else if (rl.opened && !ll.opened) letterMap.set(rl.id, rl);
+    // Cả hai bản đều đã mở (2 máy mở gần như đồng thời): ưu tiên bản ghi được SLOT người
+    // mở — bản chỉ có tên hiển thị có thể gán nhầm người khi trùng tên/đổi tên.
+    else if (rl.opened && ll.opened && rl.openedBySlot && !ll.openedBySlot) letterMap.set(rl.id, rl);
+    // Cùng id nhưng KHÁC nội dung (lệch dữ liệu lịch sử): chọn XÁC ĐỊNH để 2 chiều
+    // merge hội tụ về cùng một bản — bản đã mở thắng; ngang nhau thì messageId nhỏ
+    // hơn thắng. Bản cũ giữ bản cục bộ theo updatedAt nên 2 máy giữ 2 nội dung mãi mãi.
+    else if (Number(ll.messageId) !== Number(rl.messageId) && ll.opened === rl.opened && Number(rl.messageId) < Number(ll.messageId)) letterMap.set(rl.id, rl);
     else if (rl.opened === ll.opened && remoteNewer) letterMap.set(rl.id, rl);
   }
   const letters = [...letterMap.values()].sort((a, b) => (b.droppedAt || "").localeCompare(a.droppedAt || "")).slice(0, 100);
@@ -273,22 +281,40 @@ export function mergeStates(local: AppState, remote: AppState, mySlot: PersonId)
     for (const x of b) if (!m.has(x.id)) m.set(x.id, x);
     return [...m.values()];
   };
-  const notes = unionById(local.notes, remote.notes).sort((a, b) => (b.createdAt || "").localeCompare(a.createdAt || ""));
+  // TOMBSTONE: hợp nhất danh sách id đã xoá của 2 phía (tối đa 500 id gần nhất mỗi loại)
+  // rồi lọc cả 3 danh sách — mục đã xoá ở BẤT KỲ máy nào cũng không bị union hồi sinh.
+  const unionDeleted = (a?: string[], b?: string[]): string[] => [...new Set([...(a ?? []), ...(b ?? [])])].slice(-500);
+  const deletedIds = {
+    notes: unionDeleted(local.deletedIds?.notes, remote.deletedIds?.notes),
+    bucket: unionDeleted(local.deletedIds?.bucket, remote.deletedIds?.bucket),
+    memories: unionDeleted(local.deletedIds?.memories, remote.deletedIds?.memories),
+  };
+  const notes = unionById(local.notes, remote.notes).filter((n) => !deletedIds.notes.includes(n.id)).sort((a, b) => (b.createdAt || "").localeCompare(a.createdAt || ""));
   const bucketMap = new Map(local.bucket.map((x) => [x.id, x]));
   for (const rb of remote.bucket) {
     const lb = bucketMap.get(rb.id);
     if (!lb) bucketMap.set(rb.id, rb);
+    // Có doneAt (mốc bật/tắt gần nhất): bản doneAt MỚI HƠN thắng toàn bộ — nhờ vậy BỎ
+    // đánh dấu "đã xong" cũng có hiệu lực. Dữ liệu cũ chưa có doneAt: giữ luật cũ
+    // "done=true thắng" (một lần bật không bị bản cũ chưa bật ghi đè mất).
+    else if (lb.doneAt || rb.doneAt) {
+      if ((rb.doneAt || "") > (lb.doneAt || "")) bucketMap.set(rb.id, rb);
+    }
     else if (rb.done && !lb.done) bucketMap.set(rb.id, { ...lb, done: true });
   }
-  const bucket = [...bucketMap.values()].sort((a, b) => (a.createdAt || "").localeCompare(b.createdAt || ""));
-  const memories = unionById(local.memories, remote.memories).sort((a, b) => (b.createdAt || "").localeCompare(a.createdAt || ""));
+  const bucket = [...bucketMap.values()].filter((b) => !deletedIds.bucket.includes(b.id)).sort((a, b) => (a.createdAt || "").localeCompare(b.createdAt || ""));
+  const memories = unionById(local.memories, remote.memories).filter((m) => !deletedIds.memories.includes(m.id)).sort((a, b) => (b.createdAt || "").localeCompare(a.createdAt || ""));
   const activities = unionById(local.activities, remote.activities).sort((a, b) => (b.time || "").localeCompare(a.time || "")).slice(0, 40);
   const achievements = [...new Set([...local.achievements, ...remote.achievements])];
   const inventory = [...new Set([...local.inventory, ...remote.inventory])];
   const treeCollection = unionById(local.treeCollection, remote.treeCollection).sort((a, b) => (b.collectedAt || "").localeCompare(a.collectedAt || ""));
 
   /* --- cây --- */
-  const plants = mergePlants(local.plants, remote.plants);
+  // treeCollection đóng vai trò TOMBSTONE cho plants: cây đã thu ở BẤT KỲ máy nào
+  // cũng không được hồi sinh từ bản sao cũ của máy kia (bản cũ union theo id vô điều
+  // kiện -> thu cây xong nó mọc lại, thu lần 2 ăn thưởng trưởng thành + XP lần nữa).
+  const collectedIds = new Set(treeCollection.map((c) => c.id));
+  const plants = mergePlants(local.plants, remote.plants).filter((p) => !collectedIds.has(p.id));
 
   /* --- ví chung: suy luận theo kho đồ để không mất/không nhân tiền khi 2 máy cùng thao tác --- */
   const invL = new Set(local.inventory);
@@ -296,7 +322,14 @@ export function mergeStates(local: AppState, remote: AppState, mySlot: PersonId)
   const lGrew = local.inventory.some((i) => !invR.has(i));
   const rGrew = remote.inventory.some((i) => !invL.has(i));
   let coins: number;
-  if (lGrew && !rGrew) coins = local.coins;
+  const baseL = typeof local.coinsBase === "number" && Number.isFinite(local.coinsBase) ? local.coinsBase : undefined;
+  const baseR = typeof remote.coinsBase === "number" && Number.isFinite(remote.coinsBase) ? remote.coinsBase : undefined;
+  if (baseL != null && baseL === baseR) {
+    // Cùng neo: cộng delta của CẢ HAI phía so với neo chung — thu nhập đồng thời không
+    // bị mất (max cũ nuốt phần nhỏ hơn) và 2 lần mua ở 2 máy trừ đúng 2 lần.
+    coins = Math.max(0, baseL + (local.coins - baseL) + (remote.coins - baseL));
+  }
+  else if (lGrew && !rGrew) coins = local.coins;
   else if (rGrew && !lGrew) coins = remote.coins;
   else if (!lGrew && !rGrew) coins = Math.max(local.coins, remote.coins);
   else coins = Math.min(local.coins, remote.coins);
@@ -310,7 +343,12 @@ export function mergeStates(local: AppState, remote: AppState, mySlot: PersonId)
     ? { lastDate: local.streak.lastDate, count: Math.max(local.streak.count, remote.streak.count) }
     : (local.streak.lastDate > remote.streak.lastDate ? local.streak : remote.streak);
 
-  const equipped = { ...newer.equipped };
+  // equipped quyết theo DẤU MỤC "equipped" thay vì updatedAt toàn cục: trang bị lại ở
+  // máy cũ-hơn-toàn-cục (nhưng vừa trang bị) không bị bản chung mới hơn nuốt mất.
+  const eqStampL = stampOf(local, "equipped");
+  const eqStampR = stampOf(remote, "equipped");
+  const eqSide = eqStampL && eqStampR ? (eqStampL.t >= eqStampR.t ? local : remote) : (eqStampL ? local : eqStampR ? remote : newer);
+  const equipped = { ...eqSide.equipped };
   for (const cat of ["pot", "scene", "accessory"] as const) {
     if (!inventory.includes(equipped[cat])) {
       const alt = older.equipped[cat];
@@ -337,9 +375,9 @@ export function mergeStates(local: AppState, remote: AppState, mySlot: PersonId)
     gardenName: newer.gardenName, startDate: newer.startDate,
     onboarded: local.onboarded || remote.onboarded,
     everOnboarded: local.everOnboarded || remote.everOnboarded,
-    tree, coins, streak, equipped, inventory, achievements,
+    tree, coins, coinsBase: coins, streak, equipped, inventory, achievements,
     moods, answers, daily, games, loveNotes, loveLimits, contentLog, frameRewards,
-    letters, letterCollection, notes, bucket, memories, activities, treeCollection,
+    letters, letterCollection, notes, bucket, memories, activities, treeCollection, deletedIds,
     plants, selectedPlantId, lastLoveAction,
     updatedAt: lt >= rt ? lt : rt,
     secTs,
@@ -357,12 +395,15 @@ const SLOT_SPECS: SlotSpec[] = [
   { key: "games.quiz", get: (s, slot) => s.games.quiz[slot] },
   { key: "games.heartBest", get: (s, slot) => s.games.heartBest[slot] },
   { key: "games.heartPlays", get: (s, slot) => s.games.heartPlays[slot] },
+  { key: "games.dailyWins", get: (s, slot) => ({ m: s.games.dailyWins.memory[slot], d: s.games.dailyWins.dice[slot] }) },
   { key: "loveNotes", get: (s, slot) => s.loveNotes[slot] },
   { key: "loveLimits", get: (s, slot) => ({ c: s.loveLimits.counts[slot], at: s.loveLimits.lastAt[slot] }) },
   { key: "contentLog", get: (s, slot) => s.contentLog[slot] },
 ];
 const SHARED_SPECS: { key: string; get: (s: AppState) => unknown }[] = [
   { key: "letters", get: (s) => s.letters },
+  { key: "letterCollection", get: (s) => s.letterCollection },
+  { key: "deletedIds", get: (s) => s.deletedIds },
   { key: "notes", get: (s) => s.notes },
   { key: "bucket", get: (s) => s.bucket },
   { key: "memories", get: (s) => s.memories },

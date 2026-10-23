@@ -1,11 +1,11 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { ScrollView, Text, TouchableOpacity, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useLove, myName } from "../../lib/store";
 import { quizOfDay } from "../../lib/data";
-import { today } from "../../lib/types";
+import { dayKeyLocal, today } from "../../lib/types";
 import { PersonChip, partnerOf } from "../../components/PersonChip";
-import { C, ProgressBar, ScreenHeader, s } from "../../components/ui";
+import { C, ProgressBar, ScreenHeader, s, useNow } from "../../components/ui";
 
 export default function QuizScreen() {
   const { state, dispatch } = useLove();
@@ -20,6 +20,13 @@ export default function QuizScreen() {
   const mine = qz[me];
   const theirs = qz[partner.slot];
   const [picks, setPicks] = useState<number[]>([]);
+  // Qua nửa đêm trong lúc màn hình đang mở: bộ câu hỏi đã đổi theo ngày mới (questions
+  // tính lại mỗi render) nhưng `picks` là chỉ số chọn cho câu hỏi HÔM QUA — không xoá
+  // thì người dùng có thể niêm phong các lựa chọn "lệch câu" cho ngày hôm nay.
+  const nowTick = useNow(15000);
+  const dayNow = dayKeyLocal(new Date(nowTick));
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- xoá lựa chọn khi ngày đổi lúc màn hình đang mở
+  useEffect(() => { setPicks([]); }, [dayNow]);
   const myDone = mine.length === questions.length;
   const theirDone = theirs.length === questions.length;
   const bothDone = myDone && theirDone;
@@ -46,7 +53,7 @@ export default function QuizScreen() {
                   const myPick = myDone ? mine[qi] : picks[qi];
                   const picked = myPick === oi;
                   return (
-                    <TouchableOpacity key={oi} disabled={myDone} style={{ flexDirection: "row", alignItems: "center", gap: 7, borderWidth: 1.5, borderColor: picked ? C.pink : "#e2e8f0", borderRadius: 12, paddingHorizontal: 11, paddingVertical: 9, backgroundColor: picked ? C.pinkSoft : "#fff", opacity: myDone && !picked ? 0.6 : 1 }} onPress={() => { const n = [...picks]; n[qi] = oi; setPicks(n); }}>
+                    <TouchableOpacity key={oi} disabled={myDone} style={{ flexDirection: "row", alignItems: "center", gap: 7, borderWidth: 1.5, borderColor: picked ? C.pink : "#e2e8f0", borderRadius: 12, paddingHorizontal: 11, paddingVertical: 12, minHeight: 44, backgroundColor: picked ? C.pinkSoft : "#fff", opacity: myDone && !picked ? 0.6 : 1 }} onPress={() => { const n = [...picks]; n[qi] = oi; setPicks(n); }}>
                       <Text style={{ flex: 1, fontSize: 13.5, color: picked ? C.pinkDark : C.text, fontFamily: picked ? "BeVietnamPro_800ExtraBold" : "BeVietnamPro_500Medium" }}>{opt}</Text>
                       {picked && <Ionicons name="checkmark-circle" size={17} color={C.pink} />}
                     </TouchableOpacity>

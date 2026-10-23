@@ -1,5 +1,5 @@
 import React, { memo, useCallback, useMemo, useState } from "react";
-import { FlatList, Modal, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import { FlatList, Modal, ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useLove, myName } from "../../lib/store";
 import { LOVE_MESSAGES, type LoveMessage } from "../../lib/data";
@@ -7,13 +7,16 @@ import { RARITY_STYLE, type LoveLetter, type Rarity } from "../../lib/types";
 import { LetterEnvelopeImage, MailboxArt } from "../../components/Art";
 import { PersonChip } from "../../components/PersonChip";
 import { COLOR, FONT, ROLE } from "../../components/theme";
-import { C, LoadMoreRow, SectionTitle, Segmented, s } from "../../components/ui";
+import { C, LoadMoreRow, SectionTitle, Segmented, SkeletonCard, s } from "../../components/ui";
 
 /** Hộp thư rút gọn: thư chưa mở hiện 3 lá đầu (mỗi lần +5), thư đã mở hiện 5 (mỗi lần +10). */
 const UNOPENED_FIRST = 3;
 const UNOPENED_STEP = 5;
 const OPENED_FIRST = 5;
 const OPENED_STEP = 10;
+/** Tổng số mẫu thư — luôn lấy từ dữ liệu thật, không hardcode 36 (thêm/bớt mẫu thư
+ *  trong data.ts là các chỗ "x/36" cũ lệch ngay). */
+const TOTAL_MSGS = LOVE_MESSAGES.length;
 
 /**
  * Màu accent ô thư theo độ hiếm — ĐÚNG spec mockup tham chiếu:
@@ -65,7 +68,7 @@ const CollectionCell = memo(function CollectionCell({ msg, has, onPress }: { msg
 interface Reading { letter: LoveLetter | null; msg: LoveMessage }
 
 export default function LettersScreen() {
-  const { state, dispatch } = useLove();
+  const { state, dispatch, hydrated } = useLove();
   const [tab, setTab] = useState<"mail" | "collection">("mail");
   const [reading, setReading] = useState<Reading | null>(null);
   const [unopenedLimit, setUnopenedLimit] = useState(UNOPENED_FIRST);
@@ -90,11 +93,15 @@ export default function LettersScreen() {
   );
 
   const openLetter = useCallback((l: LoveLetter) => {
-    const msg = LOVE_MESSAGES.find((m) => m.id === Number(l.messageId));
-    if (!msg) return;
-    if (!l.opened) dispatch({ type: "OPEN_LETTER", id: l.id, opener: meName });
+    const found = LOVE_MESSAGES.find((m) => m.id === Number(l.messageId));
+    // Thư có messageId không còn tồn tại trong dữ liệu mẫu (dữ liệu cũ/hỏng): bản cũ
+    // return lặng lẽ — lá thư thành HÀNG CHẾT, bấm không mở được, không nhận thưởng
+    // được, kẹt "chưa mở" mãi. Nay vẫn cho mở với nội dung dự phòng + vẫn nhận thưởng.
+    const msg: LoveMessage = found ?? { id: 0, rarity: l.rarity, text: "Lá thư này đến từ những ngày đầu của khu vườn — nội dung gốc không còn nữa, nhưng tình cảm trong đó thì vẫn nguyên vẹn." };
+    // Gửi kèm SLOT người mở: openedBy là TÊN hiển thị (có thể trùng/đổi) — UI ưu tiên slot.
+    if (!l.opened) dispatch({ type: "OPEN_LETTER", id: l.id, opener: meName, openerSlot: state.currentUser });
     setReading({ letter: { ...l, opened: true }, msg });
-  }, [dispatch, meName]);
+  }, [dispatch, meName, state.currentUser]);
 
   // Đọc lại từ bộ sưu tập: tìm bản thư tương ứng (nếu còn trong hộp) để hiện nguồn/ngày rơi.
   const openCollected = useCallback((msg: LoveMessage) => {
@@ -164,7 +171,7 @@ export default function LettersScreen() {
               <Text style={{ fontSize: 13, color: C.text }} numberOfLines={2}>{msg?.text}</Text>
               <Text style={s.small}>{rs.label} · {l.source}</Text>
               <View style={{ marginTop: 4 }}>
-                {l.openedBy === state.personA ? <PersonChip state={state} slot="A" size={16} /> : l.openedBy === state.personB ? <PersonChip state={state} slot="B" size={16} /> : <Text style={s.small}>Người mở: {l.openedBy || "..."}</Text>}
+                {l.openedBySlot ? <PersonChip state={state} slot={l.openedBySlot} size={16} /> : l.openedBy === state.personA ? <PersonChip state={state} slot="A" size={16} /> : l.openedBy === state.personB ? <PersonChip state={state} slot="B" size={16} /> : <Text style={s.small}>Người mở: {l.openedBy || "..."}</Text>}
               </View>
             </View>
           </TouchableOpacity>
@@ -181,7 +188,7 @@ export default function LettersScreen() {
           <TouchableOpacity
             key={id}
             onPress={() => setRarityFilter(id)}
-            style={{ paddingHorizontal: 11, paddingVertical: 6, borderRadius: 999, borderWidth: 1.5, borderColor: active ? C.pink : "#E9E2E6", backgroundColor: active ? C.pink : "#fff" }}
+            style={{ paddingHorizontal: 11, paddingVertical: 10, minHeight: 44, justifyContent: "center", borderRadius: 999, borderWidth: 1.5, borderColor: active ? C.pink : "#E9E2E6", backgroundColor: active ? C.pink : "#fff" }}
           >
             <Text style={{ fontSize: 12, fontFamily: FONT.bold, color: active ? "#fff" : C.textSoft }}>{label}</Text>
           </TouchableOpacity>
@@ -190,12 +197,25 @@ export default function LettersScreen() {
     </View>
   );
 
+  // Chưa nạp xong dữ liệu: hiện khung chờ thay vì "0 thư mới / 0 lá sưu tập" giả —
+  // bản cũ không có cổng hydrated nên mỗi lần mở lạnh đều chớp trạng thái trống sai.
+  if (!hydrated) {
+    return (
+      <View style={[s.screen, { paddingTop: 44, paddingHorizontal: 16, gap: 12 }]}>
+        <SectionTitle icon="mail">Hộp thư tình yêu</SectionTitle>
+        <SkeletonCard height={180} />
+        <SkeletonCard height={180} />
+        <Text style={[s.sub, { textAlign: "center" }]}>Đang tải hộp thư...</Text>
+      </View>
+    );
+  }
+
   return (
     <View style={[s.screen, { paddingTop: 44, paddingHorizontal: 16 }]}>
       <SectionTitle icon="mail">Hộp thư tình yêu</SectionTitle>
       <View style={{ height: 10 }} />
       <Segmented
-        options={[{ id: "mail" as const, label: `Hộp thư (${unopened.length} mới)` }, { id: "collection" as const, label: `Bộ sưu tập ${ownedIds.size}/36` }]}
+        options={[{ id: "mail" as const, label: `Hộp thư (${unopened.length} mới)` }, { id: "collection" as const, label: `Bộ sưu tập ${ownedIds.size}/${TOTAL_MSGS}` }]}
         value={tab}
         onChange={setTab}
       />
@@ -224,11 +244,11 @@ export default function LettersScreen() {
           ListHeaderComponent={
             <View style={{ marginBottom: 8 }}>
               <View style={{ flexDirection: "row", alignItems: "baseline", justifyContent: "space-between" }}>
-                <Text style={s.cardTitle}>Đã sưu tập {ownedIds.size}/36 lá</Text>
-                <Text style={s.small}>{Math.round((ownedIds.size / 36) * 100)}%</Text>
+                <Text style={s.cardTitle}>Đã sưu tập {ownedIds.size}/{TOTAL_MSGS} lá</Text>
+                <Text style={s.small}>{Math.round((ownedIds.size / TOTAL_MSGS) * 100)}%</Text>
               </View>
               <View style={{ height: 8, borderRadius: 99, backgroundColor: "#f1f5f9", marginTop: 7, overflow: "hidden" }}>
-                <View style={{ height: "100%", width: `${(ownedIds.size / 36) * 100}%`, backgroundColor: C.pink, borderRadius: 99 }} />
+                <View style={{ height: "100%", width: `${(ownedIds.size / TOTAL_MSGS) * 100}%`, backgroundColor: C.pink, borderRadius: 99 }} />
               </View>
               {filterChips}
               {ownedIds.size === 0 && (
@@ -249,7 +269,11 @@ export default function LettersScreen() {
           <View style={styles.modalCard}>
             {reading && <LetterEnvelopeImage size={76} />}
             {reading && <Text style={[s.chip, { color: TILE_STYLE[reading.msg.rarity].text, backgroundColor: TILE_STYLE[reading.msg.rarity].soft, paddingHorizontal: 10, paddingVertical: 4, fontFamily: FONT.extrabold, fontSize: 12 }]}>Thư {RARITY_STYLE[reading.msg.rarity].label}</Text>}
-            <Text style={styles.letterText}>{reading?.msg.text}</Text>
+            {/* Nội dung thư nằm trong ScrollView + thẻ có maxHeight: thư dài + cỡ chữ
+                hệ thống lớn không còn tràn khỏi màn hình che mất nút Đóng. */}
+            <ScrollView style={{ maxHeight: 300 }} contentContainerStyle={{ alignItems: "center" }}>
+              <Text style={styles.letterText}>{reading?.msg.text}</Text>
+            </ScrollView>
             <Text style={s.small}>{reading?.letter ? `${reading.letter.source} · ${new Date(reading.letter.droppedAt).toLocaleString("vi-VN")}` : "Từ Bộ sưu tập của hai đứa"}</Text>
             <TouchableOpacity style={s.btn} onPress={() => setReading(null)}><Text style={s.btnText}>Đóng thư</Text></TouchableOpacity>
           </View>
@@ -262,6 +286,6 @@ export default function LettersScreen() {
 const styles = StyleSheet.create({
   letterRow: { flexDirection: "row", alignItems: "center", gap: 10, borderWidth: 1.5, borderColor: "#E9E2E6", backgroundColor: "#fff", borderRadius: 13, padding: 11 },
   modalWrap: { flex: 1, backgroundColor: "rgba(15,23,42,0.5)", alignItems: "center", justifyContent: "center", padding: 22 },
-  modalCard: { backgroundColor: "#fff", borderRadius: 22, borderWidth: 1.5, borderColor: COLOR.border, padding: 22, alignItems: "center", gap: 10, width: "100%" },
+  modalCard: { backgroundColor: "#fff", borderRadius: 22, borderWidth: 1.5, borderColor: COLOR.border, padding: 22, alignItems: "center", gap: 10, width: "100%", maxHeight: "88%" },
   letterText: { fontSize: 16.5, lineHeight: 25, color: "#7f1d1d", textAlign: "center", fontFamily: FONT.semibold },
 });

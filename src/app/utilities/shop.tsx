@@ -39,7 +39,7 @@ export default function ShopScreen() {
           {SHOP_CATS.map((c) => {
             const on = cat === c.id;
             return (
-              <TouchableOpacity key={c.id} onPress={() => setCat(c.id)} style={{ flex: 1, minHeight: 42, borderRadius: 999, alignItems: "center", justifyContent: "center", paddingHorizontal: 6, backgroundColor: on ? C.pink : "#fff", borderWidth: 1.5, borderColor: on ? C.pink : C.pinkBorder }}>
+              <TouchableOpacity key={c.id} onPress={() => setCat(c.id)} style={{ flex: 1, minHeight: 44, borderRadius: 999, alignItems: "center", justifyContent: "center", paddingHorizontal: 6, backgroundColor: on ? C.pink : "#fff", borderWidth: 1.5, borderColor: on ? C.pink : C.pinkBorder }}>
                 <Text style={{ fontFamily: "BeVietnamPro_700Bold", fontSize: 12.5, color: on ? "#fff" : C.textSoft }} numberOfLines={1}>{c.label}</Text>
               </TouchableOpacity>
             );
@@ -56,14 +56,14 @@ export default function ShopScreen() {
                   <View style={{ width: 44, height: 44, borderRadius: 12, overflow: "hidden", backgroundColor: "#fff", borderWidth: 1, borderColor: "#f1f5f9" }}>
                     <Image source={SHOP_ART[item.id]} style={{ width: "100%", height: "100%" }} contentFit="cover" accessibilityLabel={item.name} />
                   </View>
-                  <View style={{ flex: 1 }}>
+                  <View style={{ flex: 1, minWidth: 0 }}>
                     <Text style={{ fontFamily: "BeVietnamPro_700Bold", color: C.text, fontSize: 13 }}>{item.name}</Text>
                     <Text style={s.small}>{item.desc}</Text>
                   </View>
-                  {equipped ? (<View style={s.chip}><Text style={s.chipText}>Đang dùng</Text></View>) : owned ? (
-                    <TouchableOpacity style={s.btnGhost} onPress={() => dispatch({ type: "EQUIP_ITEM", category: cat, itemId: item.id })}><Text style={s.btnGhostText}>Dùng</Text></TouchableOpacity>
+                  {equipped ? (<View style={[s.chip, { flexShrink: 0 }]}><Text style={s.chipText}>Đang dùng</Text></View>) : owned ? (
+                    <TouchableOpacity style={[s.btnGhost, { flexShrink: 0 }]} onPress={() => dispatch({ type: "EQUIP_ITEM", category: cat, itemId: item.id })}><Text style={s.btnGhostText}>Dùng</Text></TouchableOpacity>
                   ) : (
-                    <TouchableOpacity style={[s.btnGhost, state.coins < item.price && { opacity: 0.5 }]} disabled={state.coins < item.price} onPress={() => dispatch({ type: "BUY_ITEM", itemId: item.id, actor: meName })}>
+                    <TouchableOpacity style={[s.btnGhost, { flexShrink: 0 }, state.coins < item.price && { opacity: 0.5 }]} disabled={state.coins < item.price} onPress={() => dispatch({ type: "BUY_ITEM", itemId: item.id, actor: meName })}>
                       <Ionicons name="diamond" size={13} color={C.pinkDark} /><Text style={s.btnGhostText}>{item.price} Xu</Text>
                     </TouchableOpacity>
                   )}

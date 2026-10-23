@@ -1,9 +1,9 @@
-import React, { useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { Animated, ScrollView, Text, TouchableOpacity, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
-import { useLove, makeLetter, myName } from "../../lib/store";
+import { useLove, makeLetterDeterministic, myName, ownedMessageIds } from "../../lib/store";
 import { ACHIEVEMENTS, QUESTS } from "../../lib/data";
-import { daysTogether, nextMilestone, today, MILESTONES } from "../../lib/types";
+import { daysTogether, effectiveStreak, freshDailyState, nextMilestone, today, MILESTONES } from "../../lib/types";
 import Avatar from "../../components/Avatar";
 import { PersonChip, partnerOf, selfOf } from "../../components/PersonChip";
 import { C, ScreenHeader, Segmented, s } from "../../components/ui";
@@ -16,30 +16,37 @@ export default function QuestsScreen() {
   const meName = myName(state);
   const [falling, setFalling] = useState(false);
   const [fallAnim] = useState(() => new Animated.Value(0));
+  const fallTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => () => { if (fallTimeout.current) clearTimeout(fallTimeout.current); }, []);
   const [tab, setTab] = useState<"quests" | "badges">("quests");
   const days = daysTogether(state.startDate);
   const nm = nextMilestone(days);
 
-  // Tiến độ nhiệm vụ cá nhân = số lần chăm của CHÍNH người đó hôm nay; nhiệm vụ "both" là tiến độ chung duy nhất
+  // Tiến độ nhiệm vụ cá nhân = số lần chăm của CHÍNH người đó hôm nay; nhiệm vụ "both" là tiến độ chung duy nhất.
+  // Chốt ngày NGAY tại màn hình: state.daily chỉ được roll bởi TICK (~30 giây) nên ngay
+  // sau nửa đêm màn hình có thể hiện tiến độ/đã-nhận của HÔM QUA — dùng bản fresh khi lệch ngày.
+  const daily = state.daily.date === today() ? state.daily : freshDailyState();
   function progressFor(q: (typeof QUESTS)[0], slot: "A" | "B"): number {
-    if (q.key === "water") return state.daily[slot].water;
-    if (q.key === "love") return state.daily[slot].love;
-    return (state.daily.caredA ? 1 : 0) + (state.daily.caredB ? 1 : 0);
+    if (q.key === "water") return daily[slot].water;
+    if (q.key === "love") return daily[slot].love;
+    return (daily.caredA ? 1 : 0) + (daily.caredB ? 1 : 0);
   }
   function claimedFor(slot: "A" | "B", questId: string): boolean {
-    return slot === "A" ? state.daily.claimedA.includes(questId) : state.daily.claimedB.includes(questId);
+    return slot === "A" ? daily.claimedA.includes(questId) : daily.claimedB.includes(questId);
   }
   function claimQuest(q: (typeof QUESTS)[0]) {
     if (claimedFor(me.slot, q.id) || progressFor(q, me.slot) < q.target) return; // idempotent ở cả UI lẫn store
-    // Id xác định theo (ngày, nhiệm vụ, người nhận): mỗi người nhận thưởng 1 lần/ngày —
-    // id giống nhau giữa các lần dispatch/đồng bộ để store + merge chống cộng trùng thư.
-    const drop = q.id === "both" ? { ...makeLetter("rare", "Thưởng nhiệm vụ Song chăm", state.letters.map((l) => l.messageId)), id: `quest-both-${today()}-${me.slot}` } : null;
+    // Id + nội dung XÁC ĐỊNH theo (ngày, nhiệm vụ, người nhận): mỗi người nhận thưởng
+    // 1 lần/ngày — cùng id/nội dung trên mọi máy để store + merge chống trùng thư.
+    // (Bản cũ dùng makeLetter ngẫu nhiên và chỉ tính pool từ hộp thư, quên letterCollection.)
+    const drop = q.id === "both" ? makeLetterDeterministic("rare", "Thưởng nhiệm vụ Song chăm", ownedMessageIds(state), `quest-both-${today()}-${me.slot}`, `quest-both-${today()}-${me.slot}`) : null;
     dispatch({ type: "CLAIM_QUEST", questId: q.id, actor: meName, user: me.slot, rewardXp: q.rewardXp, drop });
     if (drop) {
       setFalling(true);
       fallAnim.setValue(0);
       Animated.timing(fallAnim, { toValue: 1, duration: 1300, useNativeDriver: true }).start();
-      setTimeout(() => setFalling(false), 8000);
+      if (fallTimeout.current) clearTimeout(fallTimeout.current);
+      fallTimeout.current = setTimeout(() => setFalling(false), 8000);
     }
   }
 
@@ -51,7 +58,7 @@ export default function QuestsScreen() {
         <View style={[s.card, { backgroundColor: "#FFE9EE", gap: 7 }]}>
           <View style={{ flexDirection: "row", alignItems: "baseline", gap: 7 }}>
             <Text style={{ fontSize: 30, fontFamily: "BeVietnamPro_900Black", color: C.pinkDark, lineHeight: 36 }}>{days}</Text>
-            <Text style={{ fontFamily: "BeVietnamPro_700Bold", color: C.text, fontSize: 13.5 }}>ngày bên nhau · streak {state.streak.count} ngày</Text>
+            <Text style={{ fontFamily: "BeVietnamPro_700Bold", color: C.text, fontSize: 13.5 }}>ngày bên nhau · streak {effectiveStreak(state.streak)} ngày</Text>
           </View>
           <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
             <Text style={{ fontSize: 12, fontFamily: "BeVietnamPro_700Bold", color: C.text }}>Mốc {nm.target} ngày</Text>

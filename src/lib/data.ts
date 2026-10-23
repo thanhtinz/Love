@@ -114,6 +114,28 @@ export function pickMessage(rarity: "common" | "rare" | "legendary", ownedIds: n
   const src = fresh.length ? fresh : pool;
   return src[Math.floor(Math.random() * src.length)];
 }
+/** Hash chuỗi xác định (FNV-1a) -> số nguyên không dấu. Dùng để 2 máy suy ra CÙNG một kết quả từ cùng một khóa. */
+export function hashString(s: string): number {
+  let h = 0x811c9dc5;
+  for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 0x01000193); }
+  return h >>> 0;
+}
+/** Số [0,1) xác định từ khóa — thay Math.random khi kết quả phải giống nhau trên mọi máy. */
+export function seeded01(seedKey: string): number {
+  return hashString(seedKey) / 4294967296;
+}
+/**
+ * Chọn thông điệp XÁC ĐỊNH theo seedKey: hai máy cùng (rarity, ownedIds, seedKey) luôn
+ * chọn cùng một lá thư. Cần cho thư rơi do SỰ KIỆN mà cả 2 máy cùng phát hiện độc lập
+ * (lên giai đoạn, thưởng nhiệm vụ) — bản ngẫu nhiên khiến cùng một id thư mang 2 nội dung
+ * khác nhau vĩnh viễn trên 2 máy vì merge giữ bản sao cục bộ của mỗi máy.
+ */
+export function pickMessageSeeded(rarity: "common" | "rare" | "legendary", ownedIds: number[], seedKey: string): LoveMessage {
+  const pool = LOVE_MESSAGES.filter((m) => m.rarity === rarity);
+  const fresh = pool.filter((m) => !ownedIds.includes(m.id));
+  const src = fresh.length ? fresh : pool;
+  return src[hashString(seedKey) % src.length];
+}
 
 export const QUESTS: { id: string; label: string; icon: string; target: number; key: "water" | "love" | "both"; rewardXp: number; rewardCoins: number }[] = [
   { id: "water3", label: "Bạn tưới nước 3 lần hôm nay", icon: "water", target: 3, key: "water", rewardXp: 15, rewardCoins: 20 },

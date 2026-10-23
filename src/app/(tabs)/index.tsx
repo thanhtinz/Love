@@ -4,9 +4,9 @@ import { router } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { useLove } from "../../lib/store";
 import { MOODS, QUESTS, questionOfDay } from "../../lib/data";
-import { daysTogether, today } from "../../lib/types";
+import { daysTogether, effectiveStreak, today } from "../../lib/types";
 import Avatar from "../../components/Avatar";
-import FaceIcon from "../../components/FaceIcon";
+import { MoodFace } from "../../components/FaceIcon";
 import { HeroArt } from "../../components/Art";
 import { PersonChip, partnerOf, selfOf } from "../../components/PersonChip";
 import { COLOR, FONT, RADIUS, ROLE, SHADOW, SPACE, TYPE } from "../../components/theme";
@@ -82,7 +82,7 @@ export default function HomeScreen() {
 
   const moodCell = (slot: "A" | "B", moodId: string) => (
     <View style={{ flex: 1, flexDirection: "row", alignItems: "center", gap: 7 }}>
-      <FaceIcon mood={moodId || "joy"} size={30} />
+      <MoodFace mood={moodId} size={30} />
       <View style={{ flex: 1 }}>
         <Text style={{ fontFamily: FONT.semibold, fontSize: 12.5, color: COLOR.text }} numberOfLines={1}>{slot === "A" ? state.personA : state.personB}</Text>
         <Text style={{ fontFamily: FONT.medium, fontSize: 11.5, color: moodId ? COLOR.textSoft : COLOR.textFaint }} numberOfLines={1}>
@@ -100,7 +100,9 @@ export default function HomeScreen() {
           <Ionicons name="heart" size={15} color={COLOR.primary} />
           <Text style={{ fontFamily: FONT.bold, fontSize: 13.5, color: COLOR.text }}>Ngày {days}</Text>
         </View>
-        <Text style={{ fontFamily: FONT.semibold, fontSize: 12.5, color: COLOR.textSoft }}>{state.streak.count} ngày liền</Text>
+        {/* Streak HIỆU DỤNG: state.streak.count không tự giảm khi nghỉ chăm — nghỉ quá
+            1 ngày là chuỗi đã đứt, hiện số cũ sẽ thành "5 ngày liền" sai sự thật. */}
+        <Text style={{ fontFamily: FONT.semibold, fontSize: 12.5, color: COLOR.textSoft }}>{effectiveStreak(state.streak)} ngày liền</Text>
       </View>
 
       {/* (1) HERO — minh hoạ phẳng + phủ chữ */}

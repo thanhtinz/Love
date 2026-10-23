@@ -14,7 +14,10 @@ import { C, s } from "./ui";
  * theo ngày + loại khung ở tầng store) — mở màn hình xem không không cộng XP,
  * xuất đi xuất lại cùng một khung trong ngày cũng không cộng thêm.
  */
-export function FrameExport({ kind, children }: { kind: FrameKind; children: React.ReactNode }) {
+export function FrameExport({ kind, hasContent = true, children }: { kind: FrameKind; /** Khung có nội dung thật không (có cây / có mood). Khung TRỐNG vẫn xuất ảnh
+   *  được nhưng KHÔNG nhận XP — bản cũ chỉ kiểm ngày+loại khung nên khung trống
+   *  ("Chưa có cây nào...", "Chưa chọn mood") vẫn ăn +5 XP/khung/ngày. */
+  hasContent?: boolean; children: React.ReactNode }) {
   const { state, dispatch } = useLove();
   const [busy, setBusy] = useState(false);
   const shotRef = useRef<any>(null);
@@ -26,27 +29,39 @@ export function FrameExport({ kind, children }: { kind: FrameKind; children: Rea
       return uri || null;
     } catch { return null; }
   }
-  function rewardOnce() { dispatch({ type: "CLAIM_FRAME_REWARD", frame: kind }); }
+  function rewardOnce() { if (hasContent) dispatch({ type: "CLAIM_FRAME_REWARD", frame: kind }); }
   async function saveToLibrary() {
     if (busy) return; // chống double-submit khi đang xử lý
     setBusy(true);
-    const uri = await capture();
-    if (!uri) { setBusy(false); Alert.alert("Chưa chụp được khung", "Bạn thử lại nhé."); return; }
-    const perm = await requestPermissionsAsync(true);
-    if (!perm.granted) { setBusy(false); Alert.alert("Chưa có quyền thư viện ảnh", "Hãy cấp quyền lưu ảnh để dùng tính năng này, hoặc dùng nút Chia sẻ."); return; }
-    await Asset.create(uri);
-    rewardOnce();
-    setBusy(false);
-    Alert.alert("Đã lưu ảnh khung", "Mở thư viện ảnh của máy, chọn ảnh này và dùng tính năng ghim ảnh/widget ảnh của máy để đưa ra màn hình chính nhé.");
+    try {
+      const uri = await capture();
+      if (!uri) { Alert.alert("Chưa chụp được khung", "Bạn thử lại nhé."); return; }
+      const perm = await requestPermissionsAsync(true);
+      if (!perm.granted) { Alert.alert("Chưa có quyền thư viện ảnh", "Hãy cấp quyền lưu ảnh để dùng tính năng này, hoặc dùng nút Chia sẻ."); return; }
+      await Asset.create(uri);
+      rewardOnce();
+      Alert.alert("Đã lưu ảnh khung", "Mở thư viện ảnh của máy, chọn ảnh này và dùng tính năng ghim ảnh/widget ảnh của máy để đưa ra màn hình chính nhé.");
+    } catch {
+      // Asset.create/requestPermissions có thể throw (quyền bị thu hồi giữa chừng...) —
+      // bản cũ không bắt nên busy kẹt true và cả hai nút xuất ảnh chết tới khi rời màn hình.
+      Alert.alert("Lưu ảnh chưa thành công", "Có lỗi khi lưu ảnh — bạn thử lại nhé.");
+    } finally {
+      setBusy(false);
+    }
   }
   async function shareImage() {
     if (busy) return;
     setBusy(true);
-    const uri = await capture();
-    setBusy(false);
-    if (!uri) { Alert.alert("Chưa chụp được khung", "Bạn thử lại nhé."); return; }
-    if (await Sharing.isAvailableAsync()) { await Sharing.shareAsync(uri); rewardOnce(); }
-    else Alert.alert("Thiết bị chưa hỗ trợ chia sẻ", "Hãy dùng nút Lưu vào thư viện ảnh.");
+    try {
+      const uri = await capture();
+      if (!uri) { Alert.alert("Chưa chụp được khung", "Bạn thử lại nhé."); return; }
+      if (await Sharing.isAvailableAsync()) { await Sharing.shareAsync(uri); rewardOnce(); }
+      else Alert.alert("Thiết bị chưa hỗ trợ chia sẻ", "Hãy dùng nút Lưu vào thư viện ảnh.");
+    } catch {
+      Alert.alert("Chia sẻ chưa thành công", "Có lỗi khi chia sẻ ảnh — bạn thử lại nhé.");
+    } finally {
+      setBusy(false);
+    }
   }
 
   return (
@@ -69,7 +84,7 @@ export function FrameExport({ kind, children }: { kind: FrameKind; children: Rea
           <Ionicons name="share-social" size={16} color={C.pinkDark} /><Text style={s.btnGhostText}>Chia sẻ ảnh</Text>
         </TouchableOpacity>
       </View>
-      <Text style={[s.small, { textAlign: "center" }]}>{claimedToday ? `Khung này đã nhận +${FRAME_XP_REWARD} XP hôm nay rồi — xuất lại không cộng thêm.` : `Lần đầu lưu/chia sẻ khung này trong ngày: +${FRAME_XP_REWARD} XP vườn.`}</Text>
+      <Text style={[s.small, { textAlign: "center" }]}>{!hasContent ? "Khung này chưa có nội dung — vẫn lưu/chia sẻ ảnh được, nhưng chưa nhận XP. Có nội dung rồi quay lại xuất để nhận nhé." : claimedToday ? `Khung này đã nhận +${FRAME_XP_REWARD} XP hôm nay rồi — xuất lại không cộng thêm.` : `Lần đầu lưu/chia sẻ khung này trong ngày: +${FRAME_XP_REWARD} XP vườn.`}</Text>
     </View>
   );
 }

@@ -33,16 +33,28 @@ export default function LoveDiceScreen() {
   const [actionIdx, setActionIdx] = useState(0);
   const [settingIdx, setSettingIdx] = useState(0);
   const [rolled, setRolled] = useState(false);
+  /** Ngày gieo của kết quả đang hiển thị — gieo lúc 23:5x, qua nửa đêm dailyWins reset
+   *  thì kết quả HÔM QUA không được nhận thưởng của HÔM NAY khi chưa gieo lại. */
+  const [rolledDate, setRolledDate] = useState("");
   const [rolling, setRolling] = useState(false);
   const [savedMsg, setSavedMsg] = useState("");
+  const [savedMission, setSavedMission] = useState("");
   const shuffleRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  /** Timeout chốt gieo + timeout ẩn thông báo: phải lưu ref và huỷ khi rời màn hình —
+   *  bản cũ để setTimeout trần, chúng vẫn chạy setState sau khi component đã unmount. */
+  const rollTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const msgTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const claimedToday = (state.games.dailyWins.date === today() ? state.games.dailyWins.dice[me.slot] : 0) >= 1;
   const mission = `Hẹn hò: ${ACTIONS[actionIdx].charAt(0).toLowerCase() + ACTIONS[actionIdx].slice(1)} ${SETTINGS[settingIdx]}`;
   const lastAdd = state.contentLog[me.slot];
   const addWaitMs = lastAdd ? Math.max(0, CONTENT_ADD_MIN_INTERVAL_MS - (now - new Date(lastAdd).getTime())) : 0;
 
-  useEffect(() => () => { if (shuffleRef.current) clearInterval(shuffleRef.current); }, []);
+  useEffect(() => () => {
+    if (shuffleRef.current) clearInterval(shuffleRef.current);
+    if (rollTimeout.current) clearTimeout(rollTimeout.current);
+    if (msgTimeout.current) clearTimeout(msgTimeout.current);
+  }, []);
 
   function roll() {
     if (rolling) return;
@@ -53,20 +65,25 @@ export default function LoveDiceScreen() {
       setActionIdx(Math.floor(Math.random() * ACTIONS.length));
       setSettingIdx(Math.floor(Math.random() * SETTINGS.length));
     }, 80);
-    setTimeout(() => {
+    rollTimeout.current = setTimeout(() => {
       if (shuffleRef.current) clearInterval(shuffleRef.current);
       setActionIdx(Math.floor(Math.random() * ACTIONS.length));
       setSettingIdx(Math.floor(Math.random() * SETTINGS.length));
       setRolling(false);
       setRolled(true);
+      setRolledDate(today());
     }, 620);
   }
 
   function saveToBucket() {
-    if (!rolled || addWaitMs > 0) return;
+    // Cùng một nhiệm vụ chỉ lưu 1 lần: bản cũ cứ cách 5 giây là lưu thêm một bản sao
+    // giống hệt vào Bucket List, bấm vài lần là danh sách đầy nhiệm vụ trùng.
+    if (!rolled || addWaitMs > 0 || savedMission === mission) return;
     dispatch({ type: "ADD_BUCKET", item: { id: uid(), text: mission, done: false, createdAt: new Date().toISOString(), authorSlot: me.slot } });
+    setSavedMission(mission);
     setSavedMsg("Đã lưu nhiệm vụ hẹn hò vào Bucket List.");
-    setTimeout(() => setSavedMsg(""), 2500);
+    if (msgTimeout.current) clearTimeout(msgTimeout.current);
+    msgTimeout.current = setTimeout(() => setSavedMsg(""), 2500);
   }
 
   return (
@@ -107,11 +124,13 @@ export default function LoveDiceScreen() {
 
         {rolled && (
           <>
-            <TouchableOpacity style={[s.btnGhost, addWaitMs > 0 && { opacity: 0.5 }]} disabled={addWaitMs > 0} onPress={saveToBucket}>
-              <Ionicons name="bookmark" size={15} color={C.pinkDark} /><Text style={s.btnGhostText}>{addWaitMs > 0 ? `Chờ ${Math.ceil(addWaitMs / 1000)}s để lưu tiếp` : "Lưu vào Bucket List"}</Text>
+            <TouchableOpacity style={[s.btnGhost, (addWaitMs > 0 || savedMission === mission) && { opacity: 0.5 }]} disabled={addWaitMs > 0 || savedMission === mission} onPress={saveToBucket}>
+              <Ionicons name="bookmark" size={15} color={C.pinkDark} /><Text style={s.btnGhostText}>{savedMission === mission ? "Đã lưu nhiệm vụ này" : addWaitMs > 0 ? `Chờ ${Math.ceil(addWaitMs / 1000)}s để lưu tiếp` : "Lưu vào Bucket List"}</Text>
             </TouchableOpacity>
             {claimedToday ? (
               <Text style={{ textAlign: "center", color: C.textSoft, fontFamily: "BeVietnamPro_700Bold" }}>Bạn đã nhận thưởng Xúc xắc hẹn hò hôm nay rồi.</Text>
+            ) : rolledDate !== today() ? (
+              <Text style={{ textAlign: "center", color: C.textSoft, fontFamily: "BeVietnamPro_700Bold" }}>Kết quả này là của hôm qua — gieo lại hôm nay để nhận thưởng nhé.</Text>
             ) : (
               <TouchableOpacity style={s.btn} onPress={() => dispatch({ type: "GAME_WIN", game: "dice", user: me.slot, actor: meName })}>
                 <Ionicons name="gift" size={16} color="#fff" /><Text style={s.btnText}>Đã hoàn thành — nhận thưởng +15 Xu, +10 XP</Text>

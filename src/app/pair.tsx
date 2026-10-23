@@ -4,14 +4,14 @@ import { router } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { useAuth } from "../lib/auth";
 import { useLove } from "../lib/store";
-import { today } from "../lib/types";
+import { parseDateKey, today } from "../lib/types";
 import Avatar from "../components/Avatar";
 import { LetterArtImage } from "../components/Art";
 import { C, s } from "../components/ui";
 
 export default function PairScreen() {
   const { user, couple, signOut, createCouple, joinCouple } = useAuth();
-  const { state, dispatch } = useLove();
+  const { state, dispatch, hydrated } = useLove();
   const [code, setCode] = useState("");
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
@@ -20,30 +20,41 @@ export default function PairScreen() {
   const [dateErr, setDateErr] = useState("");
 
   useEffect(() => { if (!user) router.replace("/auth"); }, [user]);
-  // eslint-disable-next-line react-hooks/set-state-in-effect -- đồng bộ form đặt tên vườn từ state đã tải
-  useEffect(() => { if (state.gardenName) setGardenName(state.gardenName); if (state.startDate) setStartDate(state.startDate); }, [state.gardenName, state.startDate]);
+  // Chỉ nạp từ state khi người dùng CHƯA tự sửa: bản đồng bộ từ máy người thương về
+  // giữa lúc đang gõ sẽ ghi đè mất nội dung đang nhập dở (cờ dirty tách riêng từng ô).
+  const [nameDirty, setNameDirty] = useState(false);
+  const [dateDirty, setDateDirty] = useState(false);
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- đồng bộ form đặt tên vườn từ state đã tải, trừ ô người dùng đang sửa
+  useEffect(() => { if (!nameDirty && state.gardenName) setGardenName(state.gardenName); if (!dateDirty && state.startDate) setStartDate(state.startDate); }, [state.gardenName, state.startDate, nameDirty, dateDirty]);
 
   if (!user) return null;
   const members = couple?.members ?? [];
 
   async function doCreate() {
     setErr(""); setBusy(true);
-    const res = await createCouple();
-    setBusy(false);
-    if (res.error) setErr(res.error);
+    try {
+      const res = await createCouple();
+      if (res.error) setErr(res.error);
+    } catch { setErr("Có lỗi mạng bất ngờ — thử lại nhé."); } finally { setBusy(false); }
   }
   async function doJoin() {
     setErr("");
     if (code.trim().length !== 6) { setErr("Mã mời gồm đúng 6 ký tự."); return; }
     setBusy(true);
-    const res = await joinCouple(code);
-    setBusy(false);
-    if (res.error) setErr(res.error);
+    try {
+      const res = await joinCouple(code);
+      if (res.error) setErr(res.error);
+    } catch { setErr("Có lỗi mạng bất ngờ — thử lại nhé."); } finally { setBusy(false); }
   }
   function saveSetup(go: boolean) {
     setDateErr("");
-    const d = new Date(startDate + "T00:00:00");
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(startDate) || isNaN(d.getTime())) { setDateErr("Ngày bắt đầu yêu chưa đúng định dạng (năm-tháng-ngày)."); return; }
+    // Chưa tải xong dữ liệu vườn THẬT thì không cho lưu: dispatch lúc này ghi lên state
+    // mặc định (và bật cờ cho phép ghi server), khi tải xong bản thật sẽ ĐÈ mất phần
+    // vừa nhập — tên vườn/ngày bắt đầu "lưu rồi mà mất" chính là lỗi này.
+    if (!hydrated) { setDateErr("Đang tải dữ liệu khu vườn — chờ một chút rồi lưu lại nhé."); return; }
+    // parseDateKey chặt: "2025-02-31" không còn lăn sang tháng 3 mà qua mặt kiểm tra nữa.
+    const d = parseDateKey(startDate);
+    if (!d) { setDateErr("Ngày bắt đầu yêu chưa đúng (năm-tháng-ngày, ngày phải tồn tại thật)."); return; }
     if (d.getTime() > Date.now()) { setDateErr("Ngày bắt đầu yêu không thể ở tương lai."); return; }
     dispatch({ type: "SETUP_GARDEN", gardenName: gardenName.trim(), startDate });
     if (go) router.replace("/(tabs)");
@@ -107,11 +118,12 @@ export default function PairScreen() {
           <View style={s.card}>
             <View style={s.row}><Ionicons name="flower" size={19} color={C.pink} /><Text style={s.title}>{state.everOnboarded ? "Thông tin khu vườn" : "Đặt tên vườn & ngày bắt đầu yêu"}</Text></View>
             <Text style={s.sub}>Tên vườn và ngày bắt đầu yêu dùng cho khung đếm ngày và các mốc kỷ niệm.</Text>
-            <TextInput style={s.input} placeholder="Tên khu vườn" placeholderTextColor={C.textFaint} value={gardenName} onChangeText={setGardenName} maxLength={40} />
+            <TextInput style={s.input} placeholder="Tên khu vườn" placeholderTextColor={C.textFaint} value={gardenName} onChangeText={(t) => { setGardenName(t); setNameDirty(true); }} maxLength={40} />
             <Text style={styles.label}>Ngày bắt đầu yêu (năm-tháng-ngày)</Text>
-            <TextInput style={s.input} placeholder="VD: 2024-02-14" placeholderTextColor={C.textFaint} value={startDate} onChangeText={setStartDate} keyboardType="numbers-and-punctuation" maxLength={10} />
+            <TextInput style={s.input} placeholder="VD: 2024-02-14" placeholderTextColor={C.textFaint} value={startDate} onChangeText={(t) => { setStartDate(t); setDateDirty(true); }} keyboardType="numbers-and-punctuation" maxLength={10} />
             {dateErr ? <Text style={styles.err}>{dateErr}</Text> : null}
-            <TouchableOpacity style={s.btnGhost} onPress={() => saveSetup(false)}>
+            {!hydrated && <Text style={s.small}>Đang tải dữ liệu khu vườn — nút lưu sẽ dùng được ngay khi tải xong.</Text>}
+            <TouchableOpacity style={[s.btnGhost, !hydrated && { opacity: 0.5 }]} onPress={() => saveSetup(false)} disabled={!hydrated}>
               <Ionicons name="save" size={16} color={C.pinkDark} /><Text style={s.btnGhostText}>Lưu thông tin</Text>
             </TouchableOpacity>
           </View>
@@ -129,7 +141,7 @@ const styles = StyleSheet.create({
   wrap: { flexGrow: 1, padding: 18, paddingTop: 48, gap: 14, backgroundColor: C.bg },
   head: { flexDirection: "row", alignItems: "center", gap: 12 },
   hi: { fontSize: 19, fontFamily: "BeVietnamPro_900Black", color: C.text },
-  logout: { backgroundColor: C.pinkSoft, borderRadius: 999, padding: 9 },
+  logout: { backgroundColor: C.pinkSoft, borderRadius: 999, padding: 12 },
   err: { color: "#dc2626", fontSize: 13, fontFamily: "BeVietnamPro_600SemiBold" },
   codeInput: { textAlign: "center", fontSize: 20, fontFamily: "BeVietnamPro_800ExtraBold", letterSpacing: 4 },
   bigCode: { fontSize: 30, fontFamily: "BeVietnamPro_900Black", letterSpacing: 6, color: C.pinkDark, backgroundColor: C.pinkSoft, paddingHorizontal: 18, paddingVertical: 8, borderRadius: 14, overflow: "hidden" },

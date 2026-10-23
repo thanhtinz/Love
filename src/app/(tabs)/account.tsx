@@ -4,13 +4,13 @@ import { router } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { useAuth } from "../../lib/auth";
 import { useLove } from "../../lib/store";
-import { AVATARS, today } from "../../lib/types";
+import { AVATARS, parseDateKey, today } from "../../lib/types";
 import Avatar from "../../components/Avatar";
 import { C, SectionTitle, s } from "../../components/ui";
 
 export default function AccountScreen() {
   const { user, couple, signOut, leaveCouple, updateMyProfile, refreshCouple } = useAuth();
-  const { state, dispatch, connected } = useLove();
+  const { state, dispatch, connected, hydrated } = useLove();
   const [name, setName] = useState("");
   const [avatarId, setAvatarId] = useState("svg-a");
   const [gardenName, setGardenName] = useState("");
@@ -20,27 +20,36 @@ export default function AccountScreen() {
 
   // eslint-disable-next-line react-hooks/set-state-in-effect -- đồng bộ form hồ sơ từ tài khoản hiện tại
   useEffect(() => { if (user) { setName(user.displayName); setAvatarId(user.avatar); } }, [user]);
-  // eslint-disable-next-line react-hooks/set-state-in-effect -- đồng bộ form vườn từ state đã tải
-  useEffect(() => { setGardenName(state.gardenName); setStartDate(state.startDate); }, [state.gardenName, state.startDate]);
+  // Cờ dirty cho 2 ô của form vườn: đồng bộ từ xa về giữa lúc đang gõ không được
+  // ghi đè nội dung đang nhập dở (chỉ nạp từ state khi người dùng chưa tự sửa ô đó).
+  const [gardenDirty, setGardenDirty] = useState(false);
+  const [dateDirty, setDateDirty] = useState(false);
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- đồng bộ form vườn từ state đã tải, trừ ô người dùng đang sửa
+  useEffect(() => { if (!gardenDirty) setGardenName(state.gardenName); if (!dateDirty) setStartDate(state.startDate); }, [state.gardenName, state.startDate, gardenDirty, dateDirty]);
 
   if (!user) return null;
 
   async function saveProfile() {
     setMsg(""); setBusy(true);
-    const res = await updateMyProfile(name, avatarId);
-    setBusy(false);
-    setMsg(res.error || "Đã lưu hồ sơ. Tên và avatar mới sẽ hiện cho cả hai sau khi đồng bộ.");
+    try {
+      const res = await updateMyProfile(name, avatarId);
+      setMsg(res.error || "Đã lưu hồ sơ. Tên và avatar mới sẽ hiện cho cả hai sau khi đồng bộ.");
+    } catch { setMsg("Có lỗi mạng bất ngờ — thử lại nhé."); } finally { setBusy(false); }
   }
   function saveGarden() {
-    const d = new Date(startDate + "T00:00:00");
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(startDate) || isNaN(d.getTime())) { setMsg("Ngày bắt đầu yêu chưa đúng định dạng (năm-tháng-ngày)."); return; }
+    if (!hydrated) { setMsg("Đang tải dữ liệu khu vườn — chờ một chút rồi lưu lại nhé."); return; }
+    // Kiểm tra ngày CHẶT như màn Ghép cặp: ngày không tồn tại (31/02) bị loại và ngày
+    // tương lai cũng bị chặn — bản cũ ở màn này thiếu cả hai (chỉ regex + isNaN).
+    const d = parseDateKey(startDate);
+    if (!d) { setMsg("Ngày bắt đầu yêu chưa đúng (năm-tháng-ngày, ngày phải tồn tại thật)."); return; }
+    if (d.getTime() > Date.now()) { setMsg("Ngày bắt đầu yêu không thể ở tương lai."); return; }
     dispatch({ type: "SETUP_GARDEN", gardenName: gardenName.trim(), startDate });
     setMsg("Đã lưu thông tin khu vườn.");
   }
   function confirmLeave() {
     Alert.alert("Rời khu vườn?", "Bạn sẽ rời vườn hiện tại. Toàn bộ cây và dữ liệu chung vẫn ở lại với người kia; tài khoản của bạn sẽ không còn thuộc vườn nào.", [
       { text: "Ở lại", style: "cancel" },
-      { text: "Rời vườn", style: "destructive", onPress: async () => { await leaveCouple(); router.replace("/pair"); } },
+      { text: "Rời vườn", style: "destructive", onPress: async () => { const res = await leaveCouple(); if (res.error) { Alert.alert("Chưa rời được vườn", res.error); return; } router.replace("/pair"); } },
     ]);
   }
   function confirmSignOut() {
@@ -98,9 +107,9 @@ export default function AccountScreen() {
             })}
           </View>
           <Text style={styles.label}>Tên khu vườn</Text>
-          <TextInput style={s.input} value={gardenName} onChangeText={setGardenName} maxLength={40} placeholder="Tên khu vườn" placeholderTextColor={C.textFaint} />
+          <TextInput style={s.input} value={gardenName} onChangeText={(t) => { setGardenName(t); setGardenDirty(true); }} maxLength={40} placeholder="Tên khu vườn" placeholderTextColor={C.textFaint} />
           <Text style={styles.label}>Ngày bắt đầu yêu (năm-tháng-ngày)</Text>
-          <TextInput style={s.input} value={startDate} onChangeText={setStartDate} maxLength={10} placeholder="VD: 2024-02-14" placeholderTextColor={C.textFaint} />
+          <TextInput style={s.input} value={startDate} onChangeText={(t) => { setStartDate(t); setDateDirty(true); }} maxLength={10} placeholder="VD: 2024-02-14" placeholderTextColor={C.textFaint} />
           <View style={{ flexDirection: "row", gap: 8 }}>
             <TouchableOpacity style={[s.btnGhost, { flex: 1 }]} onPress={saveGarden}><Ionicons name="save" size={15} color={C.pinkDark} /><Text style={s.btnGhostText}>Lưu vườn</Text></TouchableOpacity>
             <TouchableOpacity style={[s.btnGhost, { flex: 1 }]} onPress={refreshCouple}><Ionicons name="refresh" size={15} color={C.pinkDark} /><Text style={s.btnGhostText}>Tải lại thông tin</Text></TouchableOpacity>
@@ -126,6 +135,6 @@ const styles = StyleSheet.create({
   label: { fontSize: 12.5, fontFamily: "BeVietnamPro_700Bold", color: C.textSoft, marginTop: 10, marginBottom: 5 },
   avatarBtn: { width: "22%", alignItems: "center", paddingVertical: 7, borderRadius: 13, borderWidth: 1.5, borderColor: "transparent", backgroundColor: "#fff7f8" },
   avatarOn: { borderColor: C.pink, backgroundColor: C.pinkSoft },
-  dangerBtn: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 7, backgroundColor: "#fee2e2", borderRadius: 999, paddingVertical: 11 },
+  dangerBtn: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 7, backgroundColor: "#fee2e2", borderRadius: 999, paddingVertical: 13, minHeight: 44 },
   dangerText: { color: "#b91c1c", fontFamily: "BeVietnamPro_800ExtraBold", fontSize: 14 },
 });

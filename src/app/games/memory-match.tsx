@@ -32,8 +32,20 @@ export default function MemoryMatchScreen() {
   const [started, setStarted] = useState(false);
   const [busy, setBusy] = useState(false);
   const flipTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  /** Bản sao ĐỒNG BỘ của `open`: setOpen là bất đồng bộ — sau khi ghép đúng một cặp,
+   *  `busy` vẫn false và một chạm thứ ba tới TRƯỚC lần render kế tiếp sẽ đọc `open`
+   *  cũ (đang có 2 lá) rồi cộng thành 3 lá mở, kẹt trạng thái. Ref được cập nhật ngay
+   *  trong flip() nên chạm nhanh đến đâu cũng bị chặn đúng. */
+  const openRef = useRef<number[]>([]);
 
   const won = matched.length === deck.length && deck.length > 0;
+  /** Ngày THẮNG ván đang hiển thị: thắng lúc 23:5x rồi để màn hình qua nửa đêm thì
+   *  dailyWins đã reset — nút nhận thưởng của ván HÔM QUA không được ăn thưởng HÔM NAY. */
+  const [wonDate, setWonDate] = useState("");
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- ghi ngày thắng ngay khi ván thắng
+    if (won && !wonDate) setWonDate(today());
+  }, [won, wonDate]);
   const claimedToday = (state.games.dailyWins.date === today() ? state.games.dailyWins.memory[me] : 0) >= 1;
 
   useEffect(() => {
@@ -45,24 +57,27 @@ export default function MemoryMatchScreen() {
 
   function restart() {
     if (flipTimer.current) clearTimeout(flipTimer.current);
+    openRef.current = [];
     setDeck(shuffledDeck());
-    setOpen([]); setMatched([]); setMoves(0); setElapsed(0); setStarted(false); setBusy(false);
+    setOpen([]); setMatched([]); setMoves(0); setElapsed(0); setStarted(false); setBusy(false); setWonDate("");
   }
 
   function flip(i: number) {
-    if (busy || won || open.includes(i) || matched.includes(i)) return;
+    if (busy || won || openRef.current.length >= 2 || openRef.current.includes(i) || matched.includes(i)) return;
     if (!started) setStarted(true);
-    const next = [...open, i];
+    const next = [...openRef.current, i];
+    openRef.current = next;
     setOpen(next);
     if (next.length < 2) return;
     setMoves((m) => m + 1);
     const [a, b] = next;
     if (deck[a] === deck[b]) {
       setMatched((prev) => [...prev, a, b]);
+      openRef.current = [];
       setOpen([]);
     } else {
       setBusy(true);
-      flipTimer.current = setTimeout(() => { setOpen([]); setBusy(false); }, 750);
+      flipTimer.current = setTimeout(() => { openRef.current = []; setOpen([]); setBusy(false); }, 750);
     }
   }
 
@@ -112,6 +127,8 @@ export default function MemoryMatchScreen() {
             <Text style={{ fontSize: 17, fontFamily: "BeVietnamPro_900Black", color: C.pinkDark }}>Thắng rồi! {moves} lượt lật · {elapsed} giây</Text>
             {claimedToday ? (
               <Text style={s.sub}>Bạn đã nhận thưởng Ghép cặp ký ức hôm nay rồi — mai quay lại nhé.</Text>
+            ) : wonDate !== today() ? (
+              <Text style={s.sub}>Ván thắng này là của hôm qua — chơi một ván mới hôm nay để nhận thưởng nhé.</Text>
             ) : (
               <TouchableOpacity style={s.btn} onPress={() => dispatch({ type: "GAME_WIN", game: "memory", user: me, actor: meName })}>
                 <Ionicons name="gift" size={16} color="#fff" /><Text style={s.btnText}>Nhận thưởng +20 Xu, +10 XP</Text>

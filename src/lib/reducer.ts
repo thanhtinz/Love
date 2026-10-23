@@ -1,6 +1,6 @@
-import { AppState, CARE_COINS, CARE_MILESTONES, CONTENT_ADD_MIN_INTERVAL_MS, CONTENT_LIMITS, FRAME_XP_REWARD, LETTER_COINS, LOVE_ACTION_COOLDOWN_MS, LOVE_ACTION_DAILY_MAX, LoveLetter, MemoryItem, PersonId, ShopCategory, dayKeyLocal, defaultState, freshDailyState, today, uid, weekKey, type FrameKind } from "./types";
-import { CARE_BOOST_MS, MAX_PLOTS, careStatus, createPlant, materializePlant, normalizeStateV5, speciesById, stageInfo, totalCareCount, totalMaturedCount } from "./plants";
-import { MAX_DAILY_SPINS, QUESTS, moodLabel, pickMessage, quizOfDay, shopItem } from "./data";
+import { AppState, CARE_COINS, CARE_MILESTONES, CONTENT_ADD_MIN_INTERVAL_MS, CONTENT_LIMITS, FRAME_XP_REWARD, LETTER_COINS, LOVE_ACTION_COOLDOWN_MS, LOVE_ACTION_DAILY_MAX, LoveLetter, MemoryItem, PersonId, ShopCategory, dayKeyLocal, defaultState, freshDailyState, isValidDateKey, today, uid, weekKey, type FrameKind } from "./types";
+import { CARE_BOOST_MS, MAX_PLOTS, careStatus, createPlant, materializePlant, normalizeStateV5, speciesById, stageInfo, totalCareCount, totalMaturedCount, type Species } from "./plants";
+import { MAX_DAILY_SPINS, QUESTS, moodLabel, pickMessage, pickMessageSeeded, quizOfDay, seeded01, shopItem, type SpinKind } from "./data";
 import { mergeStates, stampSections } from "./merge";
 import { nowIso } from "./time";
 
@@ -23,7 +23,7 @@ export type Action =
   | { type: "STAGE_UP"; plantId: string; drop?: LoveLetter | null }
   | { type: "HARVEST_FRUIT"; plantId: string; actor: string }
   | { type: "COLLECT_PLANT"; plantId: string; actor: string }
-  | { type: "OPEN_LETTER"; id: string; opener: string }
+  | { type: "OPEN_LETTER"; id: string; opener: string; openerSlot?: PersonId }
   | { type: "ADD_LETTER"; letter: LoveLetter; actor: string; text: string }
   | { type: "CLAIM_QUEST"; questId: string; actor: string; user: "A" | "B"; rewardXp: number; drop?: LoveLetter | null }
   | { type: "SET_LOVE_NOTE"; user: "A" | "B"; text: string }
@@ -45,9 +45,11 @@ export type Action =
   | { type: "SETUP_GARDEN"; gardenName: string; startDate: string }
   | { type: "SET_IDENTITY"; a: string; b: string; avatarA: string; avatarB: string; user: "A" | "B"; roomCode: string }
   // --- mini-game ---
+  | { type: "HEART_PLAY"; user: "A" | "B" }
   | { type: "HEART_SCORE"; user: "A" | "B"; score: number; actor: string }
   | { type: "GAME_WIN"; game: "memory" | "dice"; user: "A" | "B"; actor: string }
   | { type: "SPIN_USE"; user: "A" | "B" }
+  | { type: "SPIN_RESOLVE"; user: "A" | "B"; actor: string; kind: SpinKind; amount: number; letter?: LoveLetter | null; bucketItem?: AppState["bucket"][0] | null }
   | { type: "QUIZ_ANSWER"; user: "A" | "B"; answers: number[]; actor: string };
 
 function pushAct(s: AppState, actor: string, text: string, icon: string): AppState["activities"] {
@@ -108,6 +110,39 @@ export function makeLetter(rarity: LoveLetter["rarity"], source: string, ownedId
   return { id: uid(), messageId: msg.id, rarity, source, opened: false, droppedAt: new Date().toISOString(), openedAt: "", openedBy: "" };
 }
 
+/** Id các thông điệp đã sở hữu = bộ sưu tập bền vững HỢP hộp thư hiện tại (ép số). */
+export function ownedMessageIds(state: AppState): number[] {
+  return [...new Set([...(state.letterCollection ?? []), ...state.letters.map((l) => Number(l.messageId))])].filter((n) => Number.isFinite(n));
+}
+
+/**
+ * Tạo thư XÁC ĐỊNH theo seedKey (không Math.random): mọi máy cùng seed + cùng pool đã
+ * sở hữu (tới mức pool "chưa sở hữu" còn/không) cho ra cùng thông điệp. Dùng cho thư rơi
+ * từ sự kiện CẢ HAI máy cùng phát hiện độc lập — trước đây mỗi máy rút ngẫu nhiên một
+ * nội dung khác nhau dưới cùng một id xác định, merge giữ bản cục bộ nên nội dung lá thư
+ * đó khác nhau VĨNH VIỄN giữa hai điện thoại.
+ */
+export function makeLetterDeterministic(rarity: LoveLetter["rarity"], source: string, ownedIds: number[], seedKey: string, id?: string): LoveLetter {
+  const msg = pickMessageSeeded(rarity, ownedIds, seedKey);
+  return { id: id ?? uid(), messageId: msg.id, rarity, source, opened: false, droppedAt: new Date().toISOString(), openedAt: "", openedBy: "" };
+}
+
+/**
+ * Thư mừng LÊN GIAI ĐOẠN: id + độ hiếm + nội dung đều xác định theo (cây, giai đoạn) và
+ * tỉ lệ của loài — 2 máy mở app thấy cây lên giai đoạn sẽ tạo ra CÙNG một lá thư.
+ */
+export function makeStageUpDrop(state: AppState, plantId: string, stageIndex: number, mature: boolean): LoveLetter | null {
+  const plant = state.plants.find((p) => p.id === plantId);
+  if (!plant) return null;
+  const sp: Species = speciesById(plant.speciesId);
+  const seed = `stageup-${plantId}-${stageIndex}`;
+  if (seeded01(seed + ":drop") >= 0.7) return null; // 70% có thư — cùng kết quả trên mọi máy
+  const r = seeded01(seed + ":rarity");
+  let rarity: LoveLetter["rarity"] = r < sp.stageLetterLegendary ? "legendary" : r < sp.stageLetterLegendary + sp.stageLetterRare || sp.stageLetterRare >= 1 ? "rare" : "common";
+  if (mature && seeded01(seed + ":mature") < 0.5) rarity = "legendary";
+  return makeLetterDeterministic(rarity, mature ? "Cây trưởng thành" : "Lên giai đoạn mới", ownedMessageIds(state), seed, seed);
+}
+
 /**
  * Quyết định thư rơi khi chăm cây: lên giai đoạn nhờ tăng tốc -> chắc chắn rơi;
  * combo Song chăm (người kia chăm < 90 giây trước) -> Hiếm; mốc tổng lần chăm -> Hiếm; còn lại ~35%.
@@ -141,6 +176,30 @@ export function decideCareDrop(state: AppState, plantId: string, kind: CareKind)
   return { drop: rarity ? makeLetter(rarity, source, ownedIds) : null, combo };
 }
 
+/** Thêm id vào tombstone của một danh sách (khử trùng, tối đa 500 id gần nhất). */
+function withTombstone(s: AppState, key: "notes" | "bucket" | "memories", id: string): AppState["deletedIds"] {
+  const cur = s.deletedIds ?? { notes: [], bucket: [], memories: [] };
+  if (cur[key].includes(id)) return cur;
+  return { ...cur, [key]: [...cur[key], id].slice(-500) };
+}
+
+/**
+ * Chèn một lá thư vào hộp + ghi messageId vào bộ sưu tập BỀN VỮNG — dùng chung cho MỌI
+ * đường thư rơi (chăm cây/lên giai đoạn/nhiệm vụ/vòng quay/thêm tay). Trước đây chỉ
+ * OPEN_LETTER và ADD_LETTER ghi collection; thư rơi từ 3 đường còn lại không được ghi
+ * nên khi hộp thư xoay vòng 100 lá, lá chưa mở bị đẩy ra là MẤT khỏi bộ sưu tập vĩnh viễn.
+ */
+function insertLetter(s: AppState, letter: LoveLetter): { letters: LoveLetter[]; letterCollection: number[] } {
+  const mid = Number(letter.messageId);
+  return {
+    letters: s.letters.some((l) => l.id === letter.id) ? s.letters : [letter, ...s.letters].slice(0, 100),
+    letterCollection: Number.isFinite(mid) ? [...new Set([...(s.letterCollection ?? []), mid])] : (s.letterCollection ?? []),
+  };
+}
+/** Cap cứng số lượng nội dung — trước đây notes/bucket/memories phình vô hạn, mỗi lần
+ *  đồng bộ phải gửi cả state phình theo (letters đã cap 100, activities 40). */
+export const CONTENT_CAPS = { notes: 200, bucket: 200, memories: 300 };
+
 /** Mốc updatedAt mới nhất đã áp dụng (kể cả bản vừa bị guard chặn) — hỗ trợ SET_STATE chống ghi đè ngược. */
 let lastAppliedTs = "";
 
@@ -168,15 +227,19 @@ export function gardenReducer(state: AppState, action: Action): AppState {
       let changed = false;
       const plants = state.plants.map((p) => {
         const m = materializePlant(p);
-        if (Math.abs(m.growthRecordedMs - p.growthRecordedMs) > 1000 || Math.abs(m.water - p.water) + Math.abs(m.sun - p.sun) + Math.abs(m.love - p.love) >= 0.5 || m.matureAt !== p.matureAt || m.fruitReadyAt !== p.fruitReadyAt) changed = true;
-        return changed ? m : p;
+        // Cờ đổi phải tính RIÊNG từng cây: bản cũ dùng một biến `changed` chung cho cả
+        // map — cây đầu tiên đổi là mọi cây phía sau đều bị thay bằng bản materialize
+        // (kể cả cây không đổi), làm state luôn "mới" và kích hoạt lưu/phát đồng bộ thừa.
+        const ownChanged = Math.abs(m.growthRecordedMs - p.growthRecordedMs) > 1000 || Math.abs(m.water - p.water) + Math.abs(m.sun - p.sun) + Math.abs(m.love - p.love) >= 0.5 || m.matureAt !== p.matureAt || m.fruitReadyAt !== p.fruitReadyAt;
+        if (ownChanged) changed = true;
+        return ownChanged ? m : p;
       });
       const rolled = rollDay(state);
       const daily = freshDaily(rolled);
       if (!changed && daily === rolled.daily && rolled === state) return state;
       return { ...rolled, plants: changed ? plants : rolled.plants, daily };
     }
-    case "SET_START": return { ...state, startDate: action.date };
+    case "SET_START": return isValidDateKey(action.date) ? { ...state, startDate: action.date } : state;
     case "TREE_ACTION": {
       const idx = state.plants.findIndex((p) => p.id === action.plantId);
       if (idx < 0) return state;
@@ -210,10 +273,10 @@ export function gardenReducer(state: AppState, action: Action): AppState {
       const spName = speciesById(afterCare.speciesId).name;
       const label = { water: "tưới nước", sun: "tắm nắng", love: "bón tim", bug: "bắt sâu" }[action.kind];
       let acts = pushAct(state, action.actor, `vừa ${label} cho ${spName} (+${CARE_COINS[action.kind]} Xu Tim)`, { water: "water", sun: "sunny", love: "heart", bug: "bug" }[action.kind]);
-      let letters = state.letters; let ach = state.achievements;
+      let letters = state.letters; let letterCollection = state.letterCollection; let ach = state.achievements;
       if (action.combo) { ach = unlock(state, ["combo"]); acts = [{ id: uid(), actor: "Combo", text: `Song chăm! ${action.actor} + người thương cùng chăm cây`, icon: "sparkles", time: new Date().toISOString() }, ...acts].slice(0, 40); }
-      if (action.drop) { letters = [action.drop, ...state.letters].slice(0, 100); acts = [{ id: uid(), actor: spName, text: `vừa rơi ra một lá thư ${action.drop.rarity === "legendary" ? "HUYỀN THOẠI" : action.drop.rarity === "rare" ? "HIẾM" : ""} — mở Hộp thư để đọc nhé!`, icon: "mail", time: new Date().toISOString() }, ...acts].slice(0, 40); }
-      return checkAch({ ...state, tree: t, plants, daily, streak, letters, achievements: ach, activities: acts, coins: state.coins + CARE_COINS[action.kind] });
+      if (action.drop) { const ins = insertLetter(state, action.drop); letters = ins.letters; letterCollection = ins.letterCollection; acts = [{ id: uid(), actor: spName, text: `vừa rơi ra một lá thư ${action.drop.rarity === "legendary" ? "HUYỀN THOẠI" : action.drop.rarity === "rare" ? "HIẾM" : ""} — mở Hộp thư để đọc nhé!`, icon: "mail", time: new Date().toISOString() }, ...acts].slice(0, 40); }
+      return checkAch({ ...state, tree: t, plants, daily, streak, letters, letterCollection, achievements: ach, activities: acts, coins: state.coins + CARE_COINS[action.kind] });
     }
     case "PLANT_SEED": {
       if (state.plants.length >= MAX_PLOTS) return state;
@@ -243,12 +306,12 @@ export function gardenReducer(state: AppState, action: Action): AppState {
       const stagesCrossed = info.index - m.announcedStage;
       const plants = state.plants.map((x, i) => (i === idx ? { ...m, announcedStage: info.index } : x));
       let acts = pushAct(state, sp.name, info.mature ? `đã TRƯỞNG THÀNH — đạt giai đoạn cuối "${info.stage.name}"` : `đã bước sang giai đoạn "${info.stage.name}"`, info.mature ? "gift" : "leaf");
-      let letters = state.letters;
-      if (action.drop) { letters = [action.drop, ...state.letters].slice(0, 100); acts = [{ id: uid(), actor: sp.name, text: "mừng lên giai đoạn rơi ra một lá thư — mở Hộp thư để đọc nhé!", icon: "mail", time: new Date().toISOString() }, ...acts].slice(0, 40); }
+      let letters = state.letters; let letterCollection = state.letterCollection;
+      if (action.drop) { const ins = insertLetter(state, action.drop); letters = ins.letters; letterCollection = ins.letterCollection; acts = [{ id: uid(), actor: sp.name, text: "mừng lên giai đoạn rơi ra một lá thư — mở Hộp thư để đọc nhé!", icon: "mail", time: new Date().toISOString() }, ...acts].slice(0, 40); }
       // XP cộng theo SỐ GIAI ĐOẠN đã vượt: bản cũ chỉ cộng 1 lần stageXp dù cây nhảy
       // nhiều giai đoạn trong thời gian vắng mặt (mở app sau vài ngày -> mất XP các giai đoạn bị nhảy qua).
       const t = { ...state.tree, xp: state.tree.xp + sp.stageXp * stagesCrossed };
-      return checkAch({ ...state, plants, tree: t, letters, activities: acts });
+      return checkAch({ ...state, plants, tree: t, letters, letterCollection, activities: acts });
     }
     case "HARVEST_FRUIT": {
       const idx = state.plants.findIndex((p) => p.id === action.plantId);
@@ -288,7 +351,7 @@ export function gardenReducer(state: AppState, action: Action): AppState {
     case "OPEN_LETTER": {
       const target = state.letters.find((x) => x.id === action.id);
       if (!target || target.opened) return state;
-      const letters = state.letters.map((l) => (l.id === action.id ? { ...l, opened: true, openedAt: new Date().toISOString(), openedBy: action.opener } : l));
+      const letters = state.letters.map((l) => (l.id === action.id ? { ...l, opened: true, openedAt: new Date().toISOString(), openedBy: action.opener, openedBySlot: action.openerSlot ?? l.openedBySlot } : l));
       const gain = LETTER_COINS[target.rarity];
       // Ghi id vào bộ sưu tập BỀN VỮNG (ép số: messageId legacy có thể là chuỗi) — thư bị
       // cắt khỏi hộp khi xoay vòng 100 lá vẫn giữ được trong bộ sưu tập.
@@ -319,9 +382,9 @@ export function gardenReducer(state: AppState, action: Action): AppState {
       const daily = action.user === "A" ? { ...cur, claimedA: [...cur.claimedA, quest.id] } : { ...cur, claimedB: [...cur.claimedB, quest.id] };
       const tree = { ...state.tree, xp: state.tree.xp + quest.rewardXp };
       let acts = pushAct(state, action.actor, `hoàn thành nhiệm vụ ngày, nhận +${quest.rewardXp} XP và +${quest.rewardCoins} Xu Tim`, "gift");
-      let letters = state.letters;
-      if (action.drop && !state.letters.some((l) => l.id === action.drop!.id)) { letters = [action.drop, ...state.letters].slice(0, 100); acts = [{ id: uid(), actor: "Nhiệm vụ", text: "thưởng một lá thư tình yêu!", icon: "mail", time: new Date().toISOString() }, ...acts].slice(0, 40); }
-      return checkAch({ ...state, daily, tree, letters, activities: acts, coins: state.coins + quest.rewardCoins });
+      let letters = state.letters; let letterCollection = state.letterCollection;
+      if (action.drop && !state.letters.some((l) => l.id === action.drop!.id)) { const ins = insertLetter(state, action.drop); letters = ins.letters; letterCollection = ins.letterCollection; acts = [{ id: uid(), actor: "Nhiệm vụ", text: "thưởng một lá thư tình yêu!", icon: "mail", time: new Date().toISOString() }, ...acts].slice(0, 40); }
+      return checkAch({ ...state, daily, tree, letters, letterCollection, activities: acts, coins: state.coins + quest.rewardCoins });
     }
     case "ADD_XP": {
       if (!Number.isFinite(action.xp)) return state;
@@ -332,28 +395,35 @@ export function gardenReducer(state: AppState, action: Action): AppState {
       return { ...state, coins: Math.max(0, state.coins + action.coins), activities: pushAct(state, action.actor, action.text, "gift") };
     }
     case "SET_MOOD": {
+      // No-op khi chọn lại đúng mood hiện tại của hôm nay: bản cũ vẫn ghi activity
+      // "đổi tâm trạng" + phát đồng bộ cho một thao tác không thay đổi gì.
+      if (state.moods.date === today() && state.moods[action.user] === action.mood) return state;
       const name = action.user === "A" ? state.personA : state.personB;
       const base = state.moods.date === today() ? state.moods : { A: "", B: "", date: today() };
       return { ...state, moods: { ...base, [action.user]: action.mood, date: today() }, activities: pushAct(state, name, `đổi tâm trạng: ${moodLabel(action.mood)}`, "happy") };
     }
     case "ADD_NOTE": {
       if (action.note.text.length > CONTENT_LIMITS.note) return state;
+      if ((state.deletedIds?.notes ?? []).includes(action.note.id)) return state; // id đã bị xoá (tombstone) — không cho hồi sinh qua đồng bộ trễ
       if (!contentAddAllowed(state, action.note.authorSlot, Date.now())) return state;
+      if (state.notes.length >= CONTENT_CAPS.notes) return state; // cap cứng — notes thêm mới nhất lên đầu
       const next = action.note.authorSlot ? { ...state, contentLog: { ...state.contentLog, [action.note.authorSlot]: new Date().toISOString() } } : state;
-      return { ...next, notes: [action.note, ...state.notes], activities: pushAct(state, action.note.author, "đã dán một ghi chú mới", "document-text") };
+      return { ...next, notes: [action.note, ...state.notes].slice(0, CONTENT_CAPS.notes), activities: pushAct(state, action.note.author, "đã dán một ghi chú mới", "document-text") };
     }
-    case "DEL_NOTE": return { ...state, notes: state.notes.filter((n) => n.id !== action.id) };
+    case "DEL_NOTE": return { ...state, notes: state.notes.filter((n) => n.id !== action.id), deletedIds: withTombstone(state, "notes", action.id) };
     case "ADD_BUCKET": {
       if (action.item.text.length > CONTENT_LIMITS.bucket) return state;
+      if ((state.deletedIds?.bucket ?? []).includes(action.item.id)) return state; // tombstone
       // force = nội dung do HỆ THỐNG tạo (nhiệm vụ từ Vòng quay): vẫn giới hạn độ dài nhưng
       // không bị cổng 5 giây nuốt mất — bản cũ nhiệm vụ quay trúng có thể biến mất lặng lẽ
       // nếu người dùng vừa thêm bucket thủ công trước đó chưa đầy 5 giây.
       if (!action.force && !contentAddAllowed(state, action.item.authorSlot, Date.now())) return state;
+      if (state.bucket.length >= CONTENT_CAPS.bucket) return state; // cap cứng — bucket thêm ở cuối
       const next = !action.force && action.item.authorSlot ? { ...state, contentLog: { ...state.contentLog, [action.item.authorSlot]: new Date().toISOString() } } : state;
-      return { ...next, bucket: [...state.bucket, action.item] };
+      return { ...next, bucket: [...state.bucket, action.item].slice(-CONTENT_CAPS.bucket) };
     }
-    case "TOGGLE_BUCKET": return { ...state, bucket: state.bucket.map((b) => (b.id === action.id ? { ...b, done: !b.done } : b)) };
-    case "DEL_BUCKET": return { ...state, bucket: state.bucket.filter((b) => b.id !== action.id) };
+    case "TOGGLE_BUCKET": return { ...state, bucket: state.bucket.map((b) => (b.id === action.id ? { ...b, done: !b.done, doneAt: new Date().toISOString() } : b)) };
+    case "DEL_BUCKET": return { ...state, bucket: state.bucket.filter((b) => b.id !== action.id), deletedIds: withTombstone(state, "bucket", action.id) };
     case "ANSWER": {
       // Đáp án RIÊNG từng người + niêm phong; độ dài cũng khóa ở store (UI đã maxLength 300).
       if (action.text.length > 300) return state;
@@ -364,6 +434,8 @@ export function gardenReducer(state: AppState, action: Action): AppState {
     }
     case "SET_LOVE_NOTE": {
       if (action.text.length > CONTENT_LIMITS.note) return state;
+      // No-op khi lưu lại y nguyên: tránh spam nhật ký "đã cập nhật lời nhắn" mỗi lần bấm Lưu.
+      if (state.loveNotes[action.user] === action.text) return state;
       const name = action.user === "A" ? state.personA : state.personB;
       return { ...state, loveNotes: { ...state.loveNotes, [action.user]: action.text }, activities: pushAct(state, name, "đã cập nhật lời nhắn yêu thương", "heart") };
     }
@@ -402,22 +474,27 @@ export function gardenReducer(state: AppState, action: Action): AppState {
         ...state,
         loveLimits: { date: t, counts: { ...lim.counts, [action.user]: lim.counts[action.user] + 1 }, lastAt: { ...lim.lastAt, [action.user]: nowStamp } },
         lastLoveAction: { kind: action.kind, icon: action.icon, label: action.label, by: action.user, actor: action.actor, at: nowStamp, memoAvatar: action.user === "A" ? state.avatarA : state.avatarB },
-        activities: pushAct(state, action.actor, `vừa ${action.label}`, action.icon),
+        // Hoạt động ghi kèm SLOT người gửi: dòng hoạt động ở màn Hành động yêu thương
+        // trước đây suy ngược người gửi từ TÊN hiển thị — trùng tên/đổi tên là gán nhầm người.
+        activities: [{ id: uid(), actor: action.actor, text: `vừa ${action.label}`, icon: action.icon, time: nowStamp, slot: action.user }, ...state.activities].slice(0, 40),
       };
     }
     case "ADD_MEMORY": {
       if (action.memory.title.length > CONTENT_LIMITS.memoryTitle || action.memory.desc.length > CONTENT_LIMITS.memoryDesc) return state;
+      if ((state.deletedIds?.memories ?? []).includes(action.memory.id)) return state; // tombstone
       if (!contentAddAllowed(state, action.memory.authorSlot, Date.now())) return state;
+      if (state.memories.length >= CONTENT_CAPS.memories) return state; // cap cứng — kỷ niệm mới nhất lên đầu
       const next = action.memory.authorSlot ? { ...state, contentLog: { ...state.contentLog, [action.memory.authorSlot]: new Date().toISOString() } } : state;
-      return checkAch({ ...next, memories: [action.memory, ...next.memories], activities: pushAct(next, action.memory.author, `đã thêm kỷ niệm "${action.memory.title}"`, "camera") });
+      return checkAch({ ...next, memories: [action.memory, ...next.memories].slice(0, CONTENT_CAPS.memories), activities: pushAct(next, action.memory.author, `đã thêm kỷ niệm "${action.memory.title}"`, "camera") });
     }
-    case "DEL_MEMORY": return { ...state, memories: state.memories.filter((m) => m.id !== action.id) };
+    case "DEL_MEMORY": return { ...state, memories: state.memories.filter((m) => m.id !== action.id), deletedIds: withTombstone(state, "memories", action.id) };
     case "SETUP_GARDEN": {
       const firstTime = !state.everOnboarded;
       return {
         ...state,
         gardenName: action.gardenName || state.gardenName,
-        startDate: action.startDate || state.startDate,
+        // Ngày không tồn tại (vd 2025-02-31) bị bỏ qua ở tầng store — không phụ thuộc UI validate.
+        startDate: isValidDateKey(action.startDate) ? action.startDate : state.startDate,
         onboarded: true, everOnboarded: true,
         coins: firstTime ? state.coins + 30 : state.coins,
         activities: pushAct(state, "Khu vườn", firstTime ? `chào mừng hai bạn đến với "${action.gardenName || state.gardenName}"! Tặng +30 Xu Tim làm quà` : "đã cập nhật thông tin khu vườn", "gift"),
@@ -427,16 +504,23 @@ export function gardenReducer(state: AppState, action: Action): AppState {
       if (state.personA === action.a && state.personB === action.b && state.avatarA === action.avatarA && state.avatarB === action.avatarB && state.currentUser === action.user && state.roomCode === action.roomCode) return state;
       return { ...state, personA: action.a, personB: action.b, avatarA: action.avatarA, avatarB: action.avatarB, currentUser: action.user, roomCode: action.roomCode };
     }
+    case "HEART_PLAY": {
+      // Lượt chơi ghi nhận ngay khi BẮT ĐẦU vòng: bản cũ chỉ cộng lượt trong HEART_SCORE
+      // (khi vòng kết thúc) nên bỏ ngang giữa vòng = 0 lượt đã ghi — chơi lại thoải mái
+      // tới khi được điểm cao thì mới "tính", qua mặt giới hạn lượt + thưởng lần đầu ngày.
+      const t = today();
+      const hp = state.games.heartPlays.date === t ? { ...state.games.heartPlays } : { date: t, A: 0, B: 0 };
+      hp[action.user] += 1;
+      return { ...state, games: { ...state.games, heartPlays: hp } };
+    }
     case "HEART_SCORE": {
       if (!Number.isFinite(action.score) || action.score < 0) return state;
       const wk = weekKey();
       const hb = state.games.heartBest.week === wk ? { ...state.games.heartBest } : { week: wk, A: 0, B: 0 };
-      const t = today();
-      const hp = state.games.heartPlays.date === t ? { ...state.games.heartPlays } : { date: t, A: 0, B: 0 };
-      hp[action.user] += 1;
+      // Lượt chơi do HEART_PLAY ghi khi bắt đầu vòng — ở đây chỉ còn kỷ lục tuần.
       const isRecord = action.score > hb[action.user];
       if (isRecord) hb[action.user] = action.score;
-      const games = { ...state.games, heartBest: hb, heartPlays: hp };
+      const games = { ...state.games, heartBest: hb };
       if (!isRecord) return { ...state, games };
       return { ...state, games, activities: pushAct(state, action.actor, `vừa lập kỷ lục Bắt tim bay tuần này: ${action.score} điểm`, "heart") };
     }
@@ -464,6 +548,40 @@ export function gardenReducer(state: AppState, action: Action): AppState {
       if (sp[action.user] >= MAX_DAILY_SPINS) return state;
       sp[action.user] += 1;
       return { ...state, games: { ...state.games, spin: sp } };
+    }
+    case "SPIN_RESOLVE": {
+      // Vòng quay NGUYÊN TỬ: trừ lượt + trao thưởng trong MỘT lần chuyển trạng thái.
+      // Bản cũ dispatch SPIN_USE rồi mới dispatch thưởng riêng (ADD_COINS/ADD_XP/
+      // ADD_LETTER/ADD_BUCKET) sau animation — tắt app giữa chừng hoặc một bản đồng bộ
+      // chen vào giữa hai dispatch là lượt quay và phần thưởng lệch nhau vĩnh viễn.
+      const t = today();
+      const sp = state.games.spin.date === t ? { ...state.games.spin } : { date: t, A: 0, B: 0 };
+      const freeSpin = action.kind === "again"; // ô "Thêm lượt": lượt này không bị trừ (giữ ngữ nghĩa cũ)
+      if (!freeSpin) {
+        if (sp[action.user] >= MAX_DAILY_SPINS) return state; // hết lượt: không thưởng gì cả
+        sp[action.user] += 1;
+      }
+      let next: AppState = { ...state, games: { ...state.games, spin: sp } };
+      if (action.kind === "coins") {
+        const amt = Number.isFinite(action.amount) ? Math.max(0, Math.floor(action.amount)) : 0;
+        next = { ...next, coins: next.coins + amt, activities: pushAct(next, action.actor, `quay Vòng quay yêu thương trúng +${amt} Xu Tim`, "gift") };
+      } else if (action.kind === "xp") {
+        const amt = Number.isFinite(action.amount) ? Math.max(0, Math.floor(action.amount)) : 0;
+        next = { ...next, tree: { ...next.tree, xp: next.tree.xp + amt } };
+      } else if (action.kind === "letter-common" || action.kind === "letter-rare") {
+        const letter = action.letter;
+        if (letter && !next.letters.some((l) => l.id === letter.id)) {
+          const mid = Number(letter.messageId);
+          const letterCollection = Number.isFinite(mid) ? [...new Set([...(next.letterCollection ?? []), mid])] : next.letterCollection;
+          next = { ...next, letters: [letter, ...next.letters].slice(0, 100), letterCollection, activities: pushAct(next, action.actor, "vừa quay Vòng quay yêu thương và nhận một lá thư", "mail") };
+        }
+      } else if (action.kind === "mission") {
+        const item = action.bucketItem;
+        if (item && item.text.length <= CONTENT_LIMITS.bucket && !(next.deletedIds?.bucket ?? []).includes(item.id) && !next.bucket.some((b) => b.id === item.id)) {
+          next = { ...next, bucket: [...next.bucket, item] };
+        }
+      }
+      return next;
     }
     case "QUIZ_ANSWER": {
       const qz = state.games.quiz.date === today() ? { ...state.games.quiz } : { date: today(), A: [] as number[], B: [] as number[] };

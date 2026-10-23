@@ -2,7 +2,7 @@ import React from "react";
 import { ScrollView, Text, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useLove } from "../../lib/store";
-import { daysTogether } from "../../lib/types";
+import { daysTogether, effectiveStreak } from "../../lib/types";
 import Avatar from "../../components/Avatar";
 import { partnerOf, selfOf } from "../../components/PersonChip";
 import { COLOR, FONT, RADIUS, ROLE, SHADOW, SPACE } from "../../components/theme";
@@ -31,7 +31,7 @@ export default function CoupleHubScreen() {
               <Avatar id={partner.avatar} size={46} />
             </View>
           </View>
-          <View style={{ flex: 1, gap: 2 }}>
+          <View style={{ flex: 1, minWidth: 0, gap: 2 }}>
             <Text style={{ fontFamily: FONT.bold, fontSize: 16.5, color: "#fff" }} numberOfLines={1}>{me.name} và {partner.name}</Text>
             <Text style={{ fontFamily: FONT.medium, fontSize: 12.5, color: "#C9D6E4" }}>{state.gardenName} · {days} ngày bên nhau</Text>
           </View>
@@ -53,7 +53,7 @@ export default function CoupleHubScreen() {
       <View style={{ alignItems: "center" }}>
         <View style={[s.chip, { backgroundColor: COLOR.track }]}>
           <Ionicons name="leaf" size={13} color={COLOR.success} />
-          <Text style={[s.chipText, { color: COLOR.textSoft }]}>{state.coins} Xu Tim · Streak {state.streak.count} ngày</Text>
+          <Text style={[s.chipText, { color: COLOR.textSoft }]}>{state.coins} Xu Tim · Streak {effectiveStreak(state.streak)} ngày</Text>
         </View>
       </View>
     </ScrollView>

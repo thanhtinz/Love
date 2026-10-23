@@ -2,7 +2,7 @@ import React from "react";
 import { ScrollView, Text, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useLove } from "../../lib/store";
-import { daysTogether, nextMilestone } from "../../lib/types";
+import { MILESTONES, daysTogether, nextMilestone } from "../../lib/types";
 import Avatar from "../../components/Avatar";
 import { PersonChip } from "../../components/PersonChip";
 import { FrameExport } from "../../components/FrameExport";
@@ -41,7 +41,7 @@ export default function FrameDaysScreen() {
             Mốc tiếp theo: <Text style={{ fontFamily: "BeVietnamPro_800ExtraBold", color: C.pinkDark }}>{nm.target} ngày</Text> — còn {nm.remaining} ngày nữa thôi!
           </Text>
           <View style={{ gap: 8, marginTop: 11 }}>
-            {MILESTONE_DAYS.map((m) => {
+            {MILESTONES.map((m) => {
               const reached = days >= m;
               const date = new Date(new Date(state.startDate + "T00:00:00").getTime() + (m - 1) * 86400000);
               return (
@@ -60,4 +60,5 @@ export default function FrameDaysScreen() {
   );
 }
 
-const MILESTONE_DAYS = [100, 200, 300, 365, 500, 730, 1000, 1500, 2000];
+// Danh sách mốc dùng CHUNG MILESTONES từ lib/types (có cả mốc 3000 ngày như nhiệm vụ
+// dùng) — bản sao cục bộ cũ dừng ở 2000 khiến hai nơi lệch nhau.

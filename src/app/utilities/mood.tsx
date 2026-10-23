@@ -5,7 +5,7 @@ import { useLove } from "../../lib/store";
 import { MOODS } from "../../lib/data";
 import { today } from "../../lib/types";
 import Avatar from "../../components/Avatar";
-import FaceIcon from "../../components/FaceIcon";
+import FaceIcon, { MoodFace } from "../../components/FaceIcon";
 import { PersonChip, partnerOf, selfOf } from "../../components/PersonChip";
 import { C, ScreenHeader, s } from "../../components/ui";
 
@@ -26,7 +26,7 @@ export default function MoodScreen() {
           <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
             <PersonChip state={state} slot={me.slot} />
             <Text style={{ fontFamily: "BeVietnamPro_900Black", color: C.text, flex: 1 }}>Mood của bạn</Text>
-            <FaceIcon mood={myMood || "joy"} size={40} />
+            <MoodFace mood={myMood} size={40} />
           </View>
           <Text style={[s.sub, { marginTop: 6 }]}>{myMood ? `Bạn đang cảm thấy: ${MOODS.find((m) => m.id === myMood)?.label}` : "Hôm nay bạn chưa chọn mood. Chọn một cảm xúc bên dưới nhé:"}</Text>
           <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 7, marginTop: 10 }}>
@@ -51,7 +51,7 @@ export default function MoodScreen() {
           </View>
           <View style={{ alignItems: "center", gap: 5, marginTop: 8 }}>
             <Avatar id={partner.avatar} size={40} />
-            <FaceIcon mood={partnerMood || "joy"} size={64} />
+            <MoodFace mood={partnerMood} size={64} />
             <Text style={{ fontFamily: "BeVietnamPro_800ExtraBold", color: C.text }}>{partnerMood ? MOODS.find((m) => m.id === partnerMood)?.label : `${partner.name} chưa chọn mood hôm nay`}</Text>
             <Text style={s.small}>Mood của {partner.name} do chính họ chọn trên máy của họ — bạn không sửa thay được.</Text>
           </View>

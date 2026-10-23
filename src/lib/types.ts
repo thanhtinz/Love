@@ -12,9 +12,13 @@ export interface SecStamp { t: string; by: PersonId }
 export function isPlainObject(v: unknown): v is Record<string, unknown> {
   return typeof v === "object" && v !== null && !Array.isArray(v);
 }
-/** Số hữu hạn hoặc fallback — chặn NaN/Infinity lọt vào state (NaN là "number" nên typeof không đủ). */
+/** Số hữu hạn hoặc fallback — chặn NaN/Infinity lọt vào state (NaN là "number" nên typeof không đủ).
+ *  Chuỗi số hợp lệ ("500") được PARSE thay vì reset về fallback: dữ liệu từ bản web cũ/backend
+ *  có thể ghi số dạng chuỗi — bản cũ reset coins "500" -> 50, điểm game "50" -> 0, mất dữ liệu thật. */
 export function finiteNum(v: unknown, fallback: number): number {
-  return typeof v === "number" && Number.isFinite(v) ? v : fallback;
+  if (typeof v === "number" && Number.isFinite(v)) return v;
+  if (typeof v === "string" && v.trim() !== "" && Number.isFinite(Number(v))) return Number(v);
+  return fallback;
 }
 /** Mảng các plain object; mọi kiểu khác -> []. Chống state hỏng làm crash .map/.filter ở màn hình. */
 export function objArray<T>(v: unknown): T[] {
@@ -65,10 +69,10 @@ export interface PlantState {
 export interface CollectedTree {
   id: string; speciesId: string; plantedAt: string; maturedAt: string; collectedAt: string; careCount: number;
 }
-export interface Activity { id: string; actor: string; text: string; icon: string; time: string; }
+export interface Activity { id: string; actor: string; text: string; icon: string; time: string; /** Slot của người thực hiện (nếu hành động gắn với 1 người) — UI ưu tiên slot này thay vì suy ngược từ TÊN hiển thị (trùng tên/đổi tên sẽ suy sai). */ slot?: PersonId; }
 export interface Note { id: string; author: string; authorSlot?: PersonId; text: string; color: string; createdAt: string; }
-export interface BucketItem { id: string; text: string; done: boolean; createdAt: string; authorSlot?: PersonId; }
-export interface LoveLetter { id: string; messageId: number; rarity: Rarity; source: string; opened: boolean; droppedAt: string; openedAt: string; openedBy: string; }
+export interface BucketItem { id: string; text: string; done: boolean; createdAt: string; authorSlot?: PersonId; /** Mốc lần bật/tắt "đã xong" gần nhất — merge chọn bản có doneAt mới hơn thay vì "done=true luôn thắng" (bỏ đánh dấu không bao giờ có hiệu lực khi merge). */ doneAt?: string; }
+export interface LoveLetter { id: string; messageId: number; rarity: Rarity; source: string; opened: boolean; droppedAt: string; openedAt: string; openedBy: string; /** Slot của người mở — nguồn sự thật cho chip người mở; openedBy (tên) chỉ để hiển thị dự phòng vì tên có thể trùng/đổi. */ openedBySlot?: PersonId; }
 export interface DailyPerson { water: number; love: number; sun: number; bug: number }
 /**
  * Nhiệm vụ ngày — tiến độ RIÊNG theo từng người (trước đây đếm chung cả vườn nên
@@ -167,6 +171,9 @@ export interface AppState {
   streak: { count: number; lastDate: string };
   achievements: string[];
   coins: number;
+  /** Neo số dư tại điểm đồng bộ chung gần nhất của 2 máy — merge cộng DELTA của cả hai
+   *  phía so với neo này thay vì heuristic max/min (vốn làm mất thu nhập đồng thời). */
+  coinsBase?: number;
   inventory: string[];
   equipped: Record<ShopCategory, string>;
   memories: MemoryItem[];
@@ -188,6 +195,12 @@ export interface AppState {
   loveLimits: { date: string; counts: { A: number; B: number }; lastAt: { A: string; B: string } };
   /** Mốc thêm nội dung (ghi chú/bucket/kỷ niệm) gần nhất của từng người — chống spam */
   contentLog: { A: string; B: string };
+  /**
+   * TOMBSTONE: id các mục ĐÃ XOÁ (ghi chú/bucket/kỷ niệm). Merge full-state dạng union
+   * theo id sẽ "hồi sinh" mục đã xoá nếu máy kia còn giữ bản cũ — tombstone hợp nhất
+   * ở cả 2 phía và lọc mọi danh sách trong normalize/merge nên mục đã xoá là xoá hẳn.
+   */
+  deletedIds?: { notes: string[]; bucket: string[]; memories: string[] };
   /** Mốc thời gian (ISO) của lần ghi trạng thái gần nhất — dùng chống ghi đè realtime cũ */
   updatedAt?: string;
   /** Mốc sửa gần nhất theo từng mục trạng thái (khoá "daily:A", "moods:B", "letters"...) — phục vụ merge 2 máy, xem lib/merge.ts */
@@ -209,7 +222,15 @@ export function getStage(xp: number) {
   return { ...STAGES[idx], index: idx, next, progressToNext: next ? Math.min(100, Math.round(((xp - STAGES[idx].minXp) / (next.minXp - STAGES[idx].minXp)) * 100)) : 100 };
 }
 export function uid() { return Math.random().toString(36).slice(2, 9) + Date.now().toString(36); }
-export function genRoomCode() { return Math.random().toString(36).slice(2, 8).toUpperCase(); }
+export function genRoomCode() {
+  // Sinh TỪNG ký tự cho đủ 6: bản cũ Math.random().toString(36).slice(2,8) có thể cho
+  // mã ngắn hơn 6 ký tự (vd 0.5 -> "0.i") — vườn tạo được nhưng đối tác không nhập nổi
+  // vì màn Ghép cặp bắt mã đúng 6 ký tự.
+  const alphabet = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
+  let out = "";
+  for (let i = 0; i < 6; i++) out += alphabet[Math.floor(Math.random() * alphabet.length)];
+  return out;
+}
 /**
  * Khóa ngày theo GIỜ ĐỊA PHƯƠNG của máy (người dùng ở Asia/Saigon).
  * Mọi logic "hôm nay" (nhiệm vụ ngày, mood, quiz, lượt quay, streak) PHẢI dùng khóa này —
@@ -222,6 +243,20 @@ export function dayKeyLocal(d: Date = new Date()): string {
   return `${y}-${m}-${day}`;
 }
 export function today() { return dayKeyLocal(); }
+/**
+ * Phân tích khóa ngày "yyyy-mm-dd" thành Date giờ địa phương — CHẶT: ngày không tồn tại
+ * (vd 2025-02-31) bị loại. Bản cũ chỉ regex + isNaN(Date) nên "2025-02-31" bị JS Date
+ * tự lăn sang 03-03 và QUA được kiểm tra ở màn Ghép cặp/Tài khoản/Kỷ niệm, lưu ngày sai
+ * vào state. Trả về null khi không hợp lệ.
+ */
+export function parseDateKey(s: unknown): Date | null {
+  if (typeof s !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(s)) return null;
+  const [y, m, d] = s.split("-").map(Number);
+  const dt = new Date(y, m - 1, d);
+  if (dt.getFullYear() !== y || dt.getMonth() !== m - 1 || dt.getDate() !== d) return null;
+  return dt;
+}
+export const isValidDateKey = (s: unknown): boolean => parseDateKey(s) !== null;
 /**
  * Số thứ tự ngày theo GIỜ ĐỊA PHƯƠNG (epoch-day của ngày địa phương).
  * questionOfDay/quizOfDay PHẢI dùng số này: bản cũ dùng Math.floor(getTime()/86400000)
@@ -289,7 +324,9 @@ export const defaultGames: GamesState = {
 export const defaultState: AppState = {
   roomCode: "LOVE01", personA: "Bé A", personB: "Bé B", startDate: today(), currentUser: "A",
   tree: { xp: 0, water: 40, sun: 40, love: 40, careCount: 0, lastCareAt: "", lastCareBy: "", statsAt: new Date().toISOString() },
-  moods: { A: "joy", B: "love", date: today() },
+  // Mood mặc định RỖNG (chưa chọn): bản cũ để sẵn "joy"/"love" khiến vườn mới ngày đầu
+  // hiện cả hai người "đã có mood" dù chưa ai chọn, và CTA Trang chủ bỏ qua bước chọn mood.
+  moods: { A: "", B: "", date: today() },
   notes: [{ id: "seed1", author: "Bé A", text: "Chào mừng đến với khu vườn tình yêu của hai đứa mình", color: "#fbcfe8", createdAt: new Date().toISOString() }],
   bucket: [
     { id: "b1", text: "Cùng nhau đi Đà Lạt ngắm hoa", done: false, createdAt: new Date().toISOString() },
@@ -320,6 +357,7 @@ export const defaultState: AppState = {
   frameRewards: { date: today(), claimed: [] },
   loveLimits: { date: today(), counts: { A: 0, B: 0 }, lastAt: { A: "", B: "" } },
   contentLog: { A: "", B: "" },
+  deletedIds: { notes: [], bucket: [], memories: [] },
   updatedAt: "",
 };
 
@@ -345,8 +383,10 @@ function sanitizeSecTs(v: unknown): Record<string, SecStamp> {
 }
 /** Xu Tim: số nguyên hữu hạn >= 0; NaN/chuỗi/số âm vô lý -> về START_COINS (NaN) hoặc 0 (âm). */
 function saneCoins(v: unknown): number {
-  if (typeof v !== "number" || !Number.isFinite(v)) return START_COINS;
-  return Math.max(0, Math.floor(v));
+  // Qua finiteNum để chuỗi số ("500" từ dữ liệu cũ) được parse thay vì reset về 50.
+  const n = finiteNum(v, Number.NaN);
+  if (!Number.isFinite(n)) return START_COINS;
+  return Math.max(0, Math.floor(n));
 }
 
 export function normalizeState(rawInput: Partial<AppState>): AppState {
@@ -354,22 +394,88 @@ export function normalizeState(rawInput: Partial<AppState>): AppState {
   const raw: Partial<AppState> = isPlainObject(rawInput) ? rawInput : {};
   // messageId ép về SỐ: dữ liệu legacy/đồng bộ có thể mang messageId dạng chuỗi ("12") —
   // không ép thì bộ sưu tập so khớp Set<number> sẽ trượt và thư bị tính là chưa sở hữu.
-  const letters = objArray<LoveLetter>(raw.letters).map((l) => ({ ...l, messageId: finiteNum(Number(l.messageId), 0) }));
+  // Làm sạch TỪNG TRƯỜNG của thư: dữ liệu legacy/hỏng có thể mang rarity lạ (màn Thư tra
+  // RARITY_STYLE[rarity] -> undefined -> crash), id không phải chuỗi (vỡ key/merge),
+  // opened không phải boolean. Sau làm sạch: sắp xếp MỚI NHẤT TRƯỚC theo droppedAt —
+  // reducer luôn chèn đầu, nhưng payload SET_STATE legacy/hỏng có thể đang cũ-trước
+  // khiến các giới hạn hiển thị (3/5 lá đầu) cắt đúng những lá CŨ nhất.
+  const RARITIES: Rarity[] = ["common", "rare", "legendary"];
+  const slotOrUndef = (v: unknown): PersonId | undefined => (v === "A" || v === "B" ? v : undefined);
+  const letters = objArray<LoveLetter>(raw.letters).map((l, i) => ({
+    ...l,
+    id: typeof l.id === "string" && l.id ? l.id : `letter-${i}`,
+    messageId: Math.max(0, Math.floor(finiteNum(Number(l.messageId), 0))),
+    rarity: RARITIES.includes(l.rarity) ? l.rarity : "common",
+    source: typeof l.source === "string" ? l.source : "",
+    opened: l.opened === true,
+    droppedAt: typeof l.droppedAt === "string" ? l.droppedAt : "",
+    openedAt: typeof l.openedAt === "string" ? l.openedAt : "",
+    openedBy: typeof l.openedBy === "string" ? l.openedBy : "",
+    openedBySlot: slotOrUndef(l.openedBySlot),
+  })).sort((a, b) => (b.droppedAt || "").localeCompare(a.droppedAt || ""));
   // Bộ sưu tập bền vững = id đã lưu trước đó HỢP NHẤT id của mọi lá thư hiện còn trong hộp.
+  // Chỉ giữ SỐ NGUYÊN >= 1: bản cũ Number(null)=0, Number(true)=1, 1.5, -5, 999 đều lọt
+  // qua Number.isFinite, thổi phồng bộ đếm "Đã sưu tập x/36".
   const storedCollection = Array.isArray(raw.letterCollection)
-    ? raw.letterCollection.map((x) => Number(x)).filter((n) => Number.isFinite(n))
+    ? (raw.letterCollection as unknown[])
+        // Chỉ nhận SỐ hoặc CHUỖI SỐ: Number(true)=1, Number(null)=0 phải bị loại TRƯỚC khi ép kiểu.
+        .filter((x) => typeof x === "number" || (typeof x === "string" && x.trim() !== ""))
+        .map((x) => Number(x))
+        .filter((n) => Number.isInteger(n) && n >= 1)
     : [];
   const letterCollection = [...new Set([...storedCollection, ...letters.map((l) => l.messageId)])];
-  const notes = objArray<Note>(raw.notes);
-  const bucket = objArray<BucketItem>(raw.bucket);
-  const memories = objArray<MemoryItem>(raw.memories);
+  // Làm sạch từng trường cho ghi chú/bucket/kỷ niệm: objArray chỉ lọc phần tử không phải
+  // object — object có text/title là SỐ vẫn lọt vào và vỡ khi render/slice ở tầng store.
+  const strOr = (v: unknown, fb = ""): string => (typeof v === "string" ? v : fb);
+  const notesAll = objArray<Note>(raw.notes).map((n, i) => ({
+    ...n,
+    id: typeof n.id === "string" && n.id ? n.id : `note-${i}`,
+    author: strOr(n.author), authorSlot: slotOrUndef(n.authorSlot),
+    text: strOr(n.text), color: strOr(n.color, "#fbcfe8"), createdAt: strOr(n.createdAt),
+  }));
+  const bucketAll = objArray<BucketItem>(raw.bucket).map((b, i) => ({
+    ...b,
+    id: typeof b.id === "string" && b.id ? b.id : `bucket-${i}`,
+    text: strOr(b.text), done: b.done === true, createdAt: strOr(b.createdAt), authorSlot: slotOrUndef(b.authorSlot),
+  }));
+  const memoriesAll = objArray<MemoryItem>(raw.memories).map((m, i) => ({
+    ...m,
+    id: typeof m.id === "string" && m.id ? m.id : `memory-${i}`,
+    title: strOr(m.title), date: strOr(m.date), desc: strOr(m.desc), imageUrl: strOr(m.imageUrl),
+    author: strOr(m.author), authorSlot: slotOrUndef(m.authorSlot), createdAt: strOr(m.createdAt),
+  }));
+  // Tombstone: hợp lệ hoá danh sách id đã xoá (mỗi danh sách tối đa 500 id gần nhất)
+  // rồi ÁP NGAY ở normalize — state chứa cả mục lẫn tombstone của nó thì mục bị loại.
+  const saneDeleted = (v: unknown): string[] => [...new Set(strArray(v))].slice(-500);
+  const deletedIds = {
+    notes: saneDeleted(isPlainObject(raw.deletedIds) ? raw.deletedIds.notes : undefined),
+    bucket: saneDeleted(isPlainObject(raw.deletedIds) ? raw.deletedIds.bucket : undefined),
+    memories: saneDeleted(isPlainObject(raw.deletedIds) ? raw.deletedIds.memories : undefined),
+  };
+  const notes = notesAll.filter((n) => !deletedIds.notes.includes(n.id));
+  const bucket = bucketAll.filter((b) => !deletedIds.bucket.includes(b.id));
+  const memories = memoriesAll.filter((m) => !deletedIds.memories.includes(m.id));
   const rawActivities = objArray<Activity>(raw.activities);
   const treeRaw: Partial<TreeState> = isPlainObject(raw.tree) ? (raw.tree as Partial<TreeState>) : {};
   const hasHistory = Boolean(finiteNum(treeRaw.careCount, 0) > 0 || letters.length > 0 || notes.length > 1);
   const g = (isPlainObject(raw.games) ? raw.games : {}) as Partial<GamesState>;
   return {
     ...defaultState, ...raw,
-    moods: { ...defaultState.moods, ...(isPlainObject(raw.moods) ? raw.moods : {}), A: normalizeMood((raw.moods && raw.moods.A) || defaultState.moods.A), B: normalizeMood((raw.moods && raw.moods.B) || defaultState.moods.B) },
+    // Định danh + ngày bắt đầu: bản cũ để nguyên giá trị từ ...raw — currentUser lạ ("X")
+    // làm myName rơi về personB và mọi logic slot lệch; personA/B không phải chuỗi làm
+    // Text render vỡ; startDate không tồn tại (2025-02-31) làm Trang chủ hiện "Invalid Date".
+    currentUser: raw.currentUser === "B" ? "B" : "A",
+    roomCode: typeof raw.roomCode === "string" && raw.roomCode ? raw.roomCode : defaultState.roomCode,
+    personA: typeof raw.personA === "string" && raw.personA ? raw.personA : defaultState.personA,
+    personB: typeof raw.personB === "string" && raw.personB ? raw.personB : defaultState.personB,
+    startDate: isValidDateKey(raw.startDate) ? (raw.startDate as string) : defaultState.startDate,
+    answers: {
+      date: isPlainObject(raw.answers) && typeof raw.answers.date === "string" && raw.answers.date ? raw.answers.date : today(),
+      A: isPlainObject(raw.answers) && typeof raw.answers.A === "string" ? raw.answers.A : "",
+      B: isPlainObject(raw.answers) && typeof raw.answers.B === "string" ? raw.answers.B : "",
+    },
+    deletedIds,
+    moods: { ...defaultState.moods, ...(isPlainObject(raw.moods) ? raw.moods : {}), A: normalizeMood(isPlainObject(raw.moods) && typeof raw.moods.A === "string" && raw.moods.A ? raw.moods.A : defaultState.moods.A), B: normalizeMood(isPlainObject(raw.moods) && typeof raw.moods.B === "string" && raw.moods.B ? raw.moods.B : defaultState.moods.B), date: isPlainObject(raw.moods) && typeof raw.moods.date === "string" && raw.moods.date ? raw.moods.date : today() },
     tree: {
       ...defaultState.tree, ...treeRaw,
       xp: Math.max(0, finiteNum(treeRaw.xp, 0)),
@@ -385,6 +491,7 @@ export function normalizeState(rawInput: Partial<AppState>): AppState {
     letters,
     achievements: strArray(raw.achievements),
     coins: saneCoins(raw.coins),
+    coinsBase: typeof raw.coinsBase === "number" && Number.isFinite(raw.coinsBase) ? Math.max(0, Math.floor(raw.coinsBase)) : undefined,
     inventory: strArray(raw.inventory).length ? strArray(raw.inventory) : [...defaultState.inventory],
     equipped: {
       pot: typeof raw.equipped?.pot === "string" ? raw.equipped.pot : defaultState.equipped.pot,
@@ -400,11 +507,11 @@ export function normalizeState(rawInput: Partial<AppState>): AppState {
     gardenName: typeof raw.gardenName === "string" && raw.gardenName ? raw.gardenName : defaultState.gardenName,
     avatarA: typeof raw.avatarA === "string" && raw.avatarA ? raw.avatarA : defaultState.avatarA,
     avatarB: typeof raw.avatarB === "string" && raw.avatarB ? raw.avatarB : defaultState.avatarB,
-    activities: rawActivities.map((a) => ({ ...a, icon: a.icon || (a as unknown as { emoji?: string }).emoji || "leaf", text: stripEmoji(typeof a.text === "string" ? a.text : "") })),
+    activities: rawActivities.map((a, i) => ({ ...a, id: typeof a.id === "string" && a.id ? a.id : `act-${i}`, actor: typeof a.actor === "string" ? a.actor : "", time: typeof a.time === "string" ? a.time : "", slot: slotOrUndef(a.slot), icon: a.icon || (a as unknown as { emoji?: string }).emoji || "leaf", text: stripEmoji(typeof a.text === "string" ? a.text : "") })),
     games: {
       heartBest: { ...defaultGames.heartBest, ...(isPlainObject(g.heartBest) ? g.heartBest : {}), A: Math.max(0, finiteNum(isPlainObject(g.heartBest) ? g.heartBest.A : undefined, 0)), B: Math.max(0, finiteNum(isPlainObject(g.heartBest) ? g.heartBest.B : undefined, 0)) },
       spin: { ...defaultGames.spin, ...(isPlainObject(g.spin) ? g.spin : {}), A: Math.max(0, Math.floor(finiteNum(isPlainObject(g.spin) ? g.spin.A : undefined, 0))), B: Math.max(0, Math.floor(finiteNum(isPlainObject(g.spin) ? g.spin.B : undefined, 0))) },
-      quiz: { ...defaultGames.quiz, ...(isPlainObject(g.quiz) ? g.quiz : {}), A: Array.isArray(isPlainObject(g.quiz) ? g.quiz.A : undefined) ? (g.quiz!.A as number[]).filter((n) => n === 0 || n === 1) : [], B: Array.isArray(isPlainObject(g.quiz) ? g.quiz.B : undefined) ? (g.quiz!.B as number[]).filter((n) => n === 0 || n === 1) : [] },
+      quiz: { ...defaultGames.quiz, ...(isPlainObject(g.quiz) ? g.quiz : {}), A: Array.isArray(isPlainObject(g.quiz) ? g.quiz.A : undefined) ? (g.quiz!.A as unknown[]).map((n) => Number(n)).filter((n) => n === 0 || n === 1) : [], B: Array.isArray(isPlainObject(g.quiz) ? g.quiz.B : undefined) ? (g.quiz!.B as unknown[]).map((n) => Number(n)).filter((n) => n === 0 || n === 1) : [] },
       heartPlays: { ...defaultGames.heartPlays, ...(isPlainObject(g.heartPlays) ? g.heartPlays : {}), A: Math.max(0, Math.floor(finiteNum(isPlainObject(g.heartPlays) ? g.heartPlays.A : undefined, 0))), B: Math.max(0, Math.floor(finiteNum(isPlainObject(g.heartPlays) ? g.heartPlays.B : undefined, 0))) },
       dailyWins: (() => {
         const dw = isPlainObject(g.dailyWins) ? g.dailyWins : undefined;
@@ -420,7 +527,7 @@ export function normalizeState(rawInput: Partial<AppState>): AppState {
     loveNotes: { A: typeof raw.loveNotes?.A === "string" ? raw.loveNotes.A : "", B: typeof raw.loveNotes?.B === "string" ? raw.loveNotes.B : "" },
     frameRewards: {
       date: typeof raw.frameRewards?.date === "string" && raw.frameRewards.date ? raw.frameRewards.date : today(),
-      claimed: strArray(raw.frameRewards?.claimed) as FrameKind[],
+      claimed: strArray(raw.frameRewards?.claimed).filter((k): k is FrameKind => k === "days" || k === "tree" || k === "mood"),
     },
     loveLimits: {
       date: typeof raw.loveLimits?.date === "string" && raw.loveLimits.date ? raw.loveLimits.date : today(),
@@ -435,7 +542,7 @@ export function normalizeState(rawInput: Partial<AppState>): AppState {
 
 export const RARITY_STYLE: Record<Rarity, { label: string; border: string; bg: string; text: string }> = {
   common: { label: "Thường", border: "#f9a8d4", bg: "#fdf2f8", text: "#db2777" },
-  rare: { label: "Hiếm — Song chăm", border: "#f59e0b", bg: "#fffbeb", text: "#b45309" },
+  rare: { label: "Hiếm", border: "#f59e0b", bg: "#fffbeb", text: "#b45309" },
   legendary: { label: "Huyền thoại", border: "#a78bfa", bg: "#f5f3ff", text: "#7c3aed" },
 };
 
@@ -450,4 +557,15 @@ export const MILESTONES = [100, 200, 300, 365, 500, 730, 1000, 1500, 2000, 3000]
 export function nextMilestone(days: number): { target: number; remaining: number } {
   const t = MILESTONES.find((m) => m > days) || Math.ceil((days + 1) / 1000) * 1000;
   return { target: t, remaining: t - days };
+}
+/**
+ * Streak HIỆU DỤNG để hiển thị: chuỗi chỉ còn sống khi lần chăm gần nhất là hôm nay
+ * hoặc hôm qua. state.streak.count tự nó không bao giờ giảm (chỉ tính lại khi có lần
+ * chăm tiếp theo) — hiện thẳng ra Trang chủ là "5 ngày liền" dù đã nghỉ chăm 3 ngày.
+ */
+export function effectiveStreak(s: { count: number; lastDate: string }, nowMs: number = Date.now()): number {
+  if (!s.lastDate) return 0;
+  const t = dayKeyLocal(new Date(nowMs));
+  const y = dayKeyLocal(new Date(nowMs - 86400000));
+  return s.lastDate === t || s.lastDate === y ? s.count : 0;
 }

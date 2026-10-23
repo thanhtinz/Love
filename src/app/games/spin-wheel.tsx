@@ -1,8 +1,8 @@
 import React, { useRef, useState } from "react";
-import { Animated, Easing, ScrollView, Text, TouchableOpacity, View, StyleSheet } from "react-native";
+import { Animated, Easing, ScrollView, Text, TouchableOpacity, View, StyleSheet, useWindowDimensions } from "react-native";
 import Svg, { G, Path, Text as SvgText } from "react-native-svg";
 import { Ionicons } from "@expo/vector-icons";
-import { useLove, makeLetter, myName } from "../../lib/store";
+import { useLove, makeLetter, myName, ownedMessageIds } from "../../lib/store";
 import { MAX_DAILY_SPINS, SPIN_MISSIONS, SPIN_SEGMENTS } from "../../lib/data";
 import { today, uid } from "../../lib/types";
 import { PersonChip, partnerOf } from "../../components/PersonChip";
@@ -17,6 +17,12 @@ function wedgePath(cx: number, cy: number, r: number, a0: number, a1: number): s
 
 export default function SpinWheelScreen() {
   const { state, dispatch } = useLove();
+  // Kích thước bánh xe theo bề ngang THẬT của máy: bản cũ cố định vành 256 + Svg 240
+  // khiến máy hẹp (<320px, Fold/màn nhỏ) tràn thẻ. Svg co theo viewBox nên chỉ cần
+  // đổi width/height; tâm quay = svgSize/2.
+  const { width: winW } = useWindowDimensions();
+  const svgSize = Math.max(180, Math.min(240, winW - 116));
+  const ringSize = svgSize + 16;
   const meName = myName(state);
   const me = state.currentUser;
   const partner = partnerOf(state);
@@ -37,26 +43,37 @@ export default function SpinWheelScreen() {
     const segCenter = idx * 45 + 22.5;
     const target = rotVal.current + 5 * 360 + (360 - segCenter - (rotVal.current % 360) + 360) % 360;
     setSpinning(true);
-    Animated.timing(rot, { toValue: target, duration: 3600, easing: Easing.out(Easing.cubic), useNativeDriver: true }).start(() => {
+    Animated.timing(rot, { toValue: target, duration: 3600, easing: Easing.out(Easing.cubic), useNativeDriver: true }).start(({ finished }) => {
       rotVal.current = target; setSpinning(false);
-      // Lượt quay trừ vào slot của NGƯỜI QUAY; store còn khóa cứng tối đa/ngày/người (kể cả khi bấm lúc đang quay)
-      if (seg.kind !== "again") dispatch({ type: "SPIN_USE", user: me });
-      if (seg.kind === "coins") { dispatch({ type: "ADD_COINS", coins: seg.amount, actor: meName, text: `quay Vòng quay yêu thương trúng +${seg.amount} Xu Tim` }); setResult(`Chúc mừng! Bạn nhận +${seg.amount} Xu Tim.`); }
-      else if (seg.kind === "xp") { dispatch({ type: "ADD_XP", xp: seg.amount }); setResult(`Vườn nhận +${seg.amount} XP.`); }
-      else if (seg.kind === "letter-common" || seg.kind === "letter-rare") {
-        const letter = makeLetter(seg.kind === "letter-rare" ? "rare" : "common", "Vòng quay yêu thương", state.letters.map((l) => l.messageId));
-        dispatch({ type: "ADD_LETTER", letter, actor: meName, text: "vừa quay Vòng quay yêu thương và nhận một lá thư" });
+      // Animation bị dừng giữa chừng (rời màn hình/tắt app): KHÔNG tính lượt, KHÔNG
+      // thưởng — lượt quay đó coi như chưa xảy ra, không còn cảnh "mất lượt mà không
+      // có thưởng" hay "có thưởng mà chưa trừ lượt".
+      if (!finished) return;
+      // Trừ lượt + trao thưởng trong MỘT dispatch SPIN_RESOLVE ở tầng store: không còn
+      // hai dispatch rời nhau để một bản đồng bộ chen vào giữa làm lệch lượt/thưởng.
+      if (seg.kind === "coins") {
+        dispatch({ type: "SPIN_RESOLVE", user: me, actor: meName, kind: "coins", amount: seg.amount });
+        setResult(`Chúc mừng! Bạn nhận +${seg.amount} Xu Tim.`);
+      } else if (seg.kind === "xp") {
+        dispatch({ type: "SPIN_RESOLVE", user: me, actor: meName, kind: "xp", amount: seg.amount });
+        setResult(`Vườn nhận +${seg.amount} XP.`);
+      } else if (seg.kind === "letter-common" || seg.kind === "letter-rare") {
+        const letter = makeLetter(seg.kind === "letter-rare" ? "rare" : "common", "Vòng quay yêu thương", ownedMessageIds(state));
+        dispatch({ type: "SPIN_RESOLVE", user: me, actor: meName, kind: seg.kind, amount: 0, letter });
         setResult("Một lá thư vừa bay vào Hộp thư — qua tab Thư mở đọc nhé!");
       } else if (seg.kind === "mission") {
         const m = SPIN_MISSIONS[Math.floor(Math.random() * SPIN_MISSIONS.length)];
-        dispatch({ type: "ADD_BUCKET", item: { id: uid(), text: m, done: false, createdAt: new Date().toISOString(), authorSlot: me }, force: true });
+        dispatch({ type: "SPIN_RESOLVE", user: me, actor: meName, kind: "mission", amount: 0, bucketItem: { id: uid(), text: m, done: false, createdAt: new Date().toISOString(), authorSlot: me } });
         setResult(`Nhiệm vụ đặc biệt: "${m}" — đã thêm vào Bucket List.`);
-      } else setResult("Lượt quay thêm! Quay tiếp nào, không mất lượt.");
+      } else {
+        dispatch({ type: "SPIN_RESOLVE", user: me, actor: meName, kind: "again", amount: 1 });
+        setResult("Lượt quay thêm! Quay tiếp nào, không mất lượt.");
+      }
     });
   }
 
   const wheel = (
-    <Svg width={240} height={240} viewBox="0 0 230 230">
+    <Svg width={svgSize} height={svgSize} viewBox="0 0 230 230">
       <G>
         {SPIN_SEGMENTS.map((seg, i) => {
           const a0 = ((i * 45 - 90) * Math.PI) / 180;
@@ -99,10 +116,10 @@ export default function SpinWheelScreen() {
             <View style={styles.pointer}><Ionicons name="caret-down" size={30} color={C.pinkDark} /></View>
             {/* Vòng quay sạch theo spec mockup — không vành cánh hoa trang trí; chỉ thêm
                 vòng đệm mềm + bóng đổ nhẹ quanh bánh xe cho có chiều sâu. */}
-            <View style={styles.wheelRing}>
-              <View style={{ width: 240, height: 240 }}>
+            <View style={[styles.wheelRing, { width: ringSize, height: ringSize, borderRadius: ringSize / 2 }]}>
+              <View style={{ width: svgSize, height: svgSize }}>
                 <Animated.View style={{ position: "absolute", left: 0, top: 0, transform: [{ rotate: rot.interpolate({ inputRange: [0, 360], outputRange: ["0deg", "360deg"] }) }] }}>{wheel}</Animated.View>
-                <View style={[styles.wheelCenter, { top: 99, left: 99, alignSelf: "auto" }]}><HeartGameImage size={27} /></View>
+                <View style={[styles.wheelCenter, { top: svgSize / 2 - 21, left: svgSize / 2 - 21, alignSelf: "auto" }]}><HeartGameImage size={27} /></View>
               </View>
             </View>
           </View>

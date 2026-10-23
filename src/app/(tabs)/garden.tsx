@@ -2,10 +2,10 @@ import React, { useEffect, useMemo, useState } from "react";
 import { Animated, Modal, ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { router } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
-import { useLove, decideCareDrop, makeLetter, myName, type CareKind } from "../../lib/store";
+import { useLove, decideCareDrop, makeStageUpDrop, myName, type CareKind } from "../../lib/store";
 import { useAuth } from "../../lib/auth";
 import { SPECIES, careStatus, decayedPlantStats, formatDuration, fruitPending, growthFactor, speciesById, stageInfo, totalGrowthMs, totalMaturedCount } from "../../lib/plants";
-import { treeHealth, type AppState, type LoveLetter, type PersonId, type PlantState } from "../../lib/types";
+import { dayKeyLocal, treeHealth, type AppState, type LoveLetter, type PersonId, type PlantState } from "../../lib/types";
 import { EmptyPlotImage, LetterEnvelopeImage, MascotArt, PlantImage } from "../../components/Art";
 import { COLOR, FONT, RADIUS, ROLE, SPACE } from "../../components/theme";
 import { C, IconBtn, SectionTitle, SkeletonCard, StatBar, s, useNow } from "../../components/ui";
@@ -51,6 +51,7 @@ function PlantCarePanel({ plant, state, onCare, careMsg, onHarvest, onCollect }:
   const health = treeHealth(stats);
   const factor = growthFactor(stats);
   const fruit = fruitPending(plant, now);
+  const firstBlockedReason = CARE_BTNS.map((b) => careStatus(plant, b.kind, me, now)).find((cs) => !cs.ok)?.reason || "";
   return (
     <View style={s.card}>
       <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
@@ -91,8 +92,8 @@ function PlantCarePanel({ plant, state, onCare, careMsg, onHarvest, onCollect }:
 
       <View style={{ gap: 4, marginTop: 12 }}>
         <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
-          <Text style={{ fontSize: 12.5, fontFamily: FONT.bold, color: COLOR.text }}>{proj.mature ? "Đã trưởng thành" : proj.next ? `Tới "${proj.next.name}"` : ""}</Text>
-          <Text style={{ fontSize: 12.5, color: ROLE.selfDark, fontFamily: FONT.extrabold }}>{proj.mature ? "Hoàn thành" : factor <= 0 ? "cây đang héo — chưa lớn tiếp" : `còn ${formatDuration(Math.max(0, proj.remainingToNextMs / factor))}`}</Text>
+          <Text style={{ fontSize: 12.5, fontFamily: FONT.bold, color: COLOR.text, flex: 1, marginRight: 8 }} numberOfLines={2}>{proj.mature ? "Đã trưởng thành" : proj.next ? `Tới "${proj.next.name}"` : ""}</Text>
+          <Text style={{ fontSize: 12.5, color: ROLE.selfDark, fontFamily: FONT.extrabold, flexShrink: 1, textAlign: "right" }}>{proj.mature ? "Hoàn thành" : factor <= 0 ? "cây đang héo — chưa lớn tiếp" : `còn ${formatDuration(Math.max(0, proj.remainingToNextMs / factor))}`}</Text>
         </View>
         <View style={{ height: 9, borderRadius: 99, backgroundColor: COLOR.track, overflow: "hidden" }}>
           <View style={{ height: "100%", width: `${proj.progressInStage}%`, backgroundColor: COLOR.success, borderRadius: 99 }} />
@@ -113,6 +114,10 @@ function PlantCarePanel({ plant, state, onCare, careMsg, onHarvest, onCollect }:
       <View style={{ marginTop: 14 }}>
         <CareButtons plant={plant} me={me} now={now} onCare={onCare} />
         {careMsg ? <Text style={{ textAlign: "center", color: "#b45309", fontFamily: FONT.bold, fontSize: 12.5, marginTop: 7 }}>{careMsg}</Text> : null}
+        {/* Lý do chặn của nút chăm đầu tiên đang bị khóa: nút bị disabled thì người dùng
+            không bấm được để xem lý do (careMsg không bao giờ được set) — hiện sẵn ở đây
+            (vd "Chờ 23 giây nữa" / "Nước đã đầy") thay cho dòng chú thích tĩnh. */}
+        {!careMsg && firstBlockedReason ? <Text style={{ textAlign: "center", color: "#b45309", fontFamily: FONT.bold, fontSize: 12.5, marginTop: 7 }}>{firstBlockedReason}</Text> : null}
         <Text style={[s.small, { textAlign: "center", marginTop: 6 }]}>Nghỉ 60 giây giữa 2 lần chăm cùng một cây</Text>
       </View>
     </View>
@@ -125,29 +130,31 @@ export default function GardenScreen() {
   // Tick THÔ (30s) cho ô đất ở màn chính — đếm ngược từng giây nằm trong PlantCarePanel.
   const now = useNow(30000);
   const [seedOpen, setSeedOpen] = useState(false);
+  const [seedErr, setSeedErr] = useState("");
+  // Khóa gieo hạt: chạm đúp rất nhanh vào một hàng hạt có thể dispatch PLANT_SEED 2 lần
+  // trước khi modal kịp đóng (trừ tiền 2 lần, 2 cây) — khóa ngay từ lần chạm đầu tiên.
+  const [planting, setPlanting] = useState(false);
   const [falling, setFalling] = useState<LoveLetter | null>(null);
   const [fallAnim] = useState(() => new Animated.Value(0));
   const [careMsg, setCareMsg] = useState("");
+  // Đổi cây đang chọn là thông báo chăm của cây cũ phải biến mất — bản cũ careMsg là
+  // state cấp màn hình nên lý do của cây này còn dính khi đã chuyển sang cây khác.
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- reset thông báo khi đổi cây chọn
+  useEffect(() => { setCareMsg(""); }, [state.selectedPlantId]);
 
   const me = state.currentUser;
   const meName = myName(state);
   const selected = state.plants.find((p) => p.id === state.selectedPlantId) || state.plants[0];
 
-  /* Lên giai đoạn theo thời gian thật -> STAGE_UP (+ thư mừng theo tỉ lệ loài) */
+  /* Lên giai đoạn theo thời gian thật -> STAGE_UP (+ thư mừng theo tỉ lệ loài).
+     Thư dùng makeStageUpDrop XÁC ĐỊNH theo (cây, giai đoạn): cả 2 máy cùng phát hiện
+     cây lên giai đoạn sẽ tạo CÙNG id + CÙNG nội dung — bản cũ mỗi máy rút Math.random
+     riêng nên cùng một id thư mang 2 nội dung khác nhau vĩnh viễn trên 2 máy. */
   useEffect(() => {
     for (const p of state.plants) {
       const info = stageInfo(p);
       if (info.index > p.announcedStage) {
-        const sp = speciesById(p.speciesId);
-        let drop: LoveLetter | null = null;
-        // Một lần rút thăm duy nhất cho cả 2 ngưỡng (bản cũ rút 2 số ngẫu nhiên khác nhau cho điều kiện và kết quả -> sai tỉ lệ)
-        const r = Math.random();
-        if (r < 0.7) {
-          const rarity = info.mature && Math.random() < 0.5 ? "legendary" : r < sp.stageLetterLegendary ? "legendary" : r < sp.stageLetterLegendary + sp.stageLetterRare || sp.stageLetterRare >= 1 ? "rare" : "common";
-          // Id XÁC ĐỊNH theo (cây, giai đoạn): cả 2 máy đều chạy effect này khi cây lên
-          // giai đoạn — id giống nhau để merge/store chống trùng, thư chỉ xuất hiện 1 lần.
-          drop = { ...makeLetter(rarity, info.mature ? "Cây trưởng thành" : "Lên giai đoạn mới", state.letters.map((l) => l.messageId)), id: `stageup-${p.id}-${info.index}` };
-        }
+        const drop = makeStageUpDrop(state, p.id, info.index, info.mature);
         dispatch({ type: "STAGE_UP", plantId: p.id, drop });
         // eslint-disable-next-line react-hooks/set-state-in-effect -- hiện animation thư rơi khi cây tự lên giai đoạn theo thời gian thật
         if (drop) setFalling(drop);
@@ -203,9 +210,12 @@ export default function GardenScreen() {
     }
     const info = stageInfo(p, now);
     const isSel = selected?.id === p.id;
+    // Truyền status để cây héo/yếu trên các ô KHÔNG được chọn cũng hiện mờ/xám —
+    // bản cũ không truyền nên ngoài ô đang chọn, cây héo trông y như cây khỏe.
+    const cellStatus = treeHealth(decayedPlantStats(p, now)).status;
     return (
       <TouchableOpacity key={p.id} style={[styles.plot, isSel && styles.plotSel]} onPress={() => dispatch({ type: "SELECT_PLANT", plantId: p.id })}>
-        <PlantImage speciesId={p.speciesId} stageIndex={info.index} size={72} />
+        <PlantImage speciesId={p.speciesId} stageIndex={info.index} size={72} status={cellStatus} />
         <Text style={{ fontSize: 11.5, fontFamily: FONT.extrabold, color: COLOR.text, textAlign: "center" }} numberOfLines={1}>{speciesById(p.speciesId).name}</Text>
         <Text style={{ fontSize: 10, color: C.textFaint }}>{info.stage.name}</Text>
       </TouchableOpacity>
@@ -253,7 +263,7 @@ export default function GardenScreen() {
               <View key={a.id} style={{ flexDirection: "row", gap: 8, alignItems: "center" }}>
                 <Ionicons name={(a.icon + "-outline") as never} size={16} color={COLOR.primary} />
                 <Text style={{ flex: 1, fontSize: 12.5, color: COLOR.text }}><Text style={{ fontFamily: FONT.extrabold }}>{a.actor}</Text> {a.text}</Text>
-                <Text style={s.small}>{new Date(a.time).toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" })}</Text>
+                <Text style={s.small}>{(() => { const d = new Date(a.time); const hm = d.toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" }); return dayKeyLocal(d) === dayKeyLocal(new Date()) ? hm : `${d.getDate()}/${d.getMonth() + 1} ${hm}`; })()}</Text>
               </View>
             ))}
             {gardenActs.length === 0 && <Text style={s.sub}>Chưa có hoạt động nào. Hãy chăm cây đầu tiên nhé!</Text>}
@@ -274,21 +284,31 @@ export default function GardenScreen() {
       )}
 
       {/* Modal gieo hạt */}
-      <Modal visible={seedOpen} transparent animationType="slide" onRequestClose={() => setSeedOpen(false)}>
+      <Modal visible={seedOpen} transparent animationType="slide" onRequestClose={() => setSeedOpen(false)} onShow={() => { setPlanting(false); setSeedErr(""); }}>
         <View style={styles.modalWrap}>
           <View style={styles.modalCard}>
             <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
               <Text style={s.title}>Chọn hạt giống</Text>
-              <TouchableOpacity onPress={() => setSeedOpen(false)}><Ionicons name="close-circle" size={26} color={C.textFaint} /></TouchableOpacity>
+              <TouchableOpacity onPress={() => setSeedOpen(false)} hitSlop={10}><Ionicons name="close-circle" size={26} color={C.textFaint} /></TouchableOpacity>
             </View>
             <Text style={s.sub}>Số dư: {state.coins} Xu Tim · Đã thu {totalMaturedCount(state)} cây trưởng thành vào kỷ niệm</Text>
+            {seedErr ? <Text style={{ color: "#b91c1c", fontFamily: FONT.bold, fontSize: 12.5 }}>{seedErr}</Text> : null}
             <ScrollView style={{ maxHeight: 430 }} contentContainerStyle={{ gap: 9 }}>
               {SPECIES.map((sp) => {
                 const locked = sp.lockMaturedCount > 0 && totalMaturedCount(state) < sp.lockMaturedCount;
                 const afford = state.coins >= sp.seedPrice;
                 const daysTotal = Math.max(1, Math.round(totalGrowthMs(sp) / 86400000));
                 return (
-                  <TouchableOpacity key={sp.id} disabled={locked || !afford} style={[styles.seedRow, (locked || !afford) && { opacity: 0.5 }]} onPress={() => { dispatch({ type: "PLANT_SEED", speciesId: sp.id, actor: meName }); setSeedOpen(false); }}>
+                  <TouchableOpacity key={sp.id} disabled={locked || !afford || planting} style={[styles.seedRow, (locked || !afford) && { opacity: 0.5 }]} onPress={() => {
+                    if (planting) return;
+                    // Kiểm lại điều kiện NGAY lúc bấm bằng state mới nhất: trong lúc modal
+                    // đang mở, đồng bộ có thể đã thay đổi vườn (người thương vừa gieo cây
+                    // thứ 4 / vừa tiêu Xu) — bản cũ cứ dispatch rồi đóng modal, reducer
+                    // từ chối lặng lẽ: không cây, không trừ tiền, không một lời giải thích.
+                    if (state.plants.length >= 4) { setSeedErr("Vườn đã đủ 4 cây rồi — thu hoạch hoặc thu một cây vào kỷ niệm trước nhé."); return; }
+                    if (state.coins < sp.seedPrice) { setSeedErr(`Chưa đủ Xu Tim cho hạt này (cần ${sp.seedPrice} Xu).`); return; }
+                    setPlanting(true); dispatch({ type: "PLANT_SEED", speciesId: sp.id, actor: meName }); setSeedOpen(false);
+                  }}>
                     <PlantImage speciesId={sp.id} stageIndex={sp.stages.length - 1} size={54} />
                     <View style={{ flex: 1 }}>
                       <Text style={{ fontFamily: FONT.extrabold, color: COLOR.text, fontSize: 13.5 }}>{sp.name}</Text>

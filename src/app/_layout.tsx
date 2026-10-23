@@ -15,6 +15,7 @@ import {
 import { AuthProvider } from "../lib/auth";
 import { GardenProvider } from "../lib/store";
 import { COLOR } from "../components/theme";
+import { SafeAreaProvider } from "react-native-safe-area-context";
 
 SplashScreen.preventAutoHideAsync().catch(() => {});
 
@@ -67,6 +68,7 @@ export default function RootLayout() {
   // cao hết màn hình — trên điện thoại chiếm trọn màn hình như app thật.
   if (Platform.OS === "web") {
     return (
+      <SafeAreaProvider>
       <AuthProvider>
         <GardenProvider>
           <StatusBar style="dark" />
@@ -77,15 +79,18 @@ export default function RootLayout() {
           </View>
         </GardenProvider>
       </AuthProvider>
+      </SafeAreaProvider>
     );
   }
   return (
+    <SafeAreaProvider>
     <AuthProvider>
       <GardenProvider>
         <StatusBar style="dark" />
         <Navigator />
       </GardenProvider>
     </AuthProvider>
+    </SafeAreaProvider>
   );
 }
 

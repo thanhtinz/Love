@@ -28,6 +28,16 @@ export default function CatchHeartsScreen() {
   const startAtRef = useRef(0);
   const spawnTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const clockTimer = useRef<ReturnType<typeof setInterval> | null>(null);
+  /** Mọi animation tim đang bay — phải stop hết khi rời màn hình, nếu không callback
+   *  hoàn tất của chúng vẫn gọi setHearts trên component đã unmount. */
+  const animsRef = useRef<Set<Animated.Value>>(new Set());
+  /** Id các tim đã bắt trong vòng này — chốt chống tính điểm 2 lần cho cùng một tim. */
+  const caughtRef = useRef<Set<string>>(new Set());
+  /** State mới nhất — lúc hết giờ phải đọc số lượt chơi từ ĐÂY thay vì bản chụp lúc
+   *  start(): một lượt chơi khác (máy khác cùng tài khoản/đồng bộ) chen vào giữa ván
+   *  sẽ làm bản chụp cũ khiến thưởng "lượt đầu" bị phát 2 lần. */
+  const stateRef = useRef(state);
+  useEffect(() => { stateRef.current = state; }, [state]);
 
   const wk = weekKey();
   const best = state.games.heartBest.week === wk ? state.games.heartBest : { A: 0, B: 0 };
@@ -36,12 +46,18 @@ export default function CatchHeartsScreen() {
   function cleanup() {
     if (spawnTimer.current) { clearTimeout(spawnTimer.current); spawnTimer.current = null; }
     if (clockTimer.current) { clearInterval(clockTimer.current); clockTimer.current = null; }
+    animsRef.current.forEach((a) => a.stopAnimation());
+    animsRef.current.clear();
   }
   useEffect(() => cleanup, []);
 
   function start() {
     cleanup();
     playsBeforeRef.current = state.games.heartPlays.date === today() ? state.games.heartPlays[me] : 0;
+    // Ghi lượt chơi NGAY khi bắt đầu: bỏ ngang giữa vòng vẫn tính 1 lượt (bản cũ chỉ ghi
+    // khi kết thúc nên người chơi có thể thoát ra chơi lại tới khi được điểm ưng ý).
+    dispatch({ type: "HEART_PLAY", user: me });
+    caughtRef.current = new Set();
     scoreRef.current = 0; goldenRef.current = 0;
     setScore(0); setGoldenCount(0); setFirstBonus(0); setHearts([]); setTimeLeft(30); setPhase("playing");
     startAtRef.current = Date.now();
@@ -61,7 +77,9 @@ export default function CatchHeartsScreen() {
         anim: new Animated.Value(-56),
       };
       setHearts((prev) => [...prev.slice(-14), h]);
+      animsRef.current.add(h.anim);
       Animated.timing(h.anim, { toValue: AREA_H + 30, duration: h.dur, easing: Easing.linear, useNativeDriver: true }).start(({ finished }) => {
+        animsRef.current.delete(h.anim);
         if (finished) setHearts((prev) => prev.filter((x) => x.id !== h.id));
       });
       const delay = Math.max(230, 500 - elapsed * 0.009);
@@ -77,8 +95,12 @@ export default function CatchHeartsScreen() {
         const finalScore = scoreRef.current;
         // Điểm + lượt chơi ghi cho slot của NGƯỜI CHƠI (state.currentUser), không ghi nhầm cho người kia
         dispatch({ type: "HEART_SCORE", user: me, score: finalScore, actor: meName });
-        // Thưởng lượt ĐẦU trong ngày của chính người chơi: +Xu bằng điểm (tối đa 30).
-        if (playsBeforeRef.current === 0 && finalScore > 0) {
+        // Thưởng lượt ĐẦU trong ngày: playsBefore chụp tại start() (chưa tính ván này);
+        // lúc kết thúc, tổng lượt đã ghi chỉ được phép là đúng 1 (ván này) — nếu một
+        // lượt khác chen vào từ máy khác của cùng tài khoản thì không thưởng nữa.
+        const latestPlays = stateRef.current.games.heartPlays.date === today() ? stateRef.current.games.heartPlays[me] : 0;
+        const isFirstPlayToday = playsBeforeRef.current === 0 && latestPlays <= 1;
+        if (isFirstPlayToday && finalScore > 0) {
           const bonus = Math.min(finalScore, 30);
           dispatch({ type: "ADD_COINS", coins: bonus, actor: meName, text: `thưởng lượt đầu Bắt tim bay hôm nay (+${bonus} Xu Tim)` });
           setFirstBonus(bonus);
@@ -88,6 +110,10 @@ export default function CatchHeartsScreen() {
   }
 
   function catchHeart(h: FlyHeart) {
+    // Chốt theo id: chạm 2 lần thật nhanh vào cùng một tim (trước khi re-render gỡ nó
+    // khỏi danh sách) không được tính điểm 2 lần — tim vàng x3 là đau nhất.
+    if (caughtRef.current.has(h.id)) return;
+    caughtRef.current.add(h.id);
     h.anim.stopAnimation();
     setHearts((prev) => prev.filter((x) => x.id !== h.id));
     if (h.golden) { goldenRef.current += 1; setGoldenCount(goldenRef.current); scoreRef.current += 3; }

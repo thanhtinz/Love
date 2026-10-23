@@ -40,9 +40,9 @@ export const partnerOf = (state: AppState): PersonInfo => personOf(state, state.
 export const PersonChip = memo(function PersonChip({ state, slot, size = 22, showYouTag = true }: { state: AppState; slot: PersonId; size?: number; showYouTag?: boolean }) {
   const p = personOf(state, slot);
   return (
-    <View style={{ flexDirection: "row", alignItems: "center", gap: 5, backgroundColor: p.bg, borderRadius: 999, paddingLeft: 2, paddingRight: 8, paddingVertical: 2, alignSelf: "flex-start" }}>
+    <View style={{ flexDirection: "row", alignItems: "center", gap: 5, backgroundColor: p.bg, borderRadius: 999, paddingLeft: 2, paddingRight: 8, paddingVertical: 2, alignSelf: "flex-start", flexShrink: 1, minWidth: 0 }}>
       <Avatar id={p.avatar} size={size} />
-      <Text style={{ fontSize: 12, fontFamily: FONT.bold, color: p.color }}>{p.name}</Text>
+      <Text style={{ fontSize: 12, fontFamily: FONT.bold, color: p.color, flexShrink: 1 }} numberOfLines={1}>{p.name}</Text>
       {p.isSelf && showYouTag && (
         <View style={{ backgroundColor: ROLE.self, borderRadius: 999, paddingHorizontal: 6, paddingVertical: 1 }}>
           <Text style={{ fontSize: 9.5, fontFamily: FONT.black, color: "#fff" }}>Bạn</Text>

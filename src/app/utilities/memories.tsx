@@ -1,9 +1,9 @@
 import React, { memo, useCallback, useMemo, useState } from "react";
-import { FlatList, Modal, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
+import { FlatList, Modal, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useLove, myName } from "../../lib/store";
 import { speciesById } from "../../lib/plants";
-import { CONTENT_ADD_MIN_INTERVAL_MS, CONTENT_LIMITS, today, uid, type AppState, type CollectedTree, type MemoryItem } from "../../lib/types";
+import { CONTENT_ADD_MIN_INTERVAL_MS, CONTENT_LIMITS, parseDateKey, today, uid, type AppState, type CollectedTree, type MemoryItem } from "../../lib/types";
 import { MemoriesEmptyArt } from "../../components/Art";
 import { PersonChip, selfOf } from "../../components/PersonChip";
 import { C, LoadMoreRow, ScreenHeader, s, useNow } from "../../components/ui";
@@ -21,7 +21,7 @@ const MemoryRow = memo(function MemoryRow({ m, state, onDelete }: { m: MemoryIte
         {m.desc ? <Text style={{ fontSize: 13, color: C.textSoft }}>{m.desc}</Text> : null}
         {m.authorSlot ? <PersonChip state={state} slot={m.authorSlot} size={16} /> : <Text style={s.small}>Người thêm: {m.author}</Text>}
       </View>
-      <TouchableOpacity onPress={() => onDelete(m.id)}><Ionicons name="trash-outline" size={17} color={C.textFaint} /></TouchableOpacity>
+      <TouchableOpacity onPress={() => onDelete(m.id)} hitSlop={10} accessibilityLabel="Xoá kỷ niệm"><Ionicons name="trash-outline" size={17} color={C.textFaint} /></TouchableOpacity>
     </View>
   );
 });
@@ -65,10 +65,14 @@ export default function MemoriesScreen() {
 
   function addMemory() {
     if (!memTitle.trim() || addWaitMs > 0) return;
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(memDate) || isNaN(new Date(memDate + "T00:00:00").getTime())) { setFormMsg("Ngày kỷ niệm chưa đúng định dạng (năm-tháng-ngày)."); return; }
+    const memD = parseDateKey(memDate);
+    if (!memD) { setFormMsg("Ngày kỷ niệm chưa đúng (năm-tháng-ngày, ngày phải tồn tại thật — 31/02 là không hợp lệ)."); return; }
+    if (memD.getTime() > Date.now()) { setFormMsg("Ngày kỷ niệm không thể ở tương lai."); return; }
     setFormMsg("");
     dispatch({ type: "ADD_MEMORY", memory: { id: uid(), title: memTitle.trim().slice(0, CONTENT_LIMITS.memoryTitle), date: memDate, desc: memDesc.trim().slice(0, CONTENT_LIMITS.memoryDesc), imageUrl: "", author: meName, authorSlot: me.slot, createdAt: new Date().toISOString() } });
-    setMemTitle(""); setMemDesc(""); setFormOpen(false);
+    // Reset cả NGÀY về hôm nay: bản cũ chỉ reset tiêu đề/mô tả nên kỷ niệm thêm ngay
+    // sau đó lặng lẽ mang ngày của kỷ niệm trước (người dùng tưởng đang nhập ngày mới).
+    setMemTitle(""); setMemDesc(""); setMemDate(today()); setFormOpen(false);
   }
 
   return (
@@ -111,8 +115,9 @@ export default function MemoriesScreen() {
           <View style={styles.modalCard}>
             <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
               <Text style={s.cardTitle}>Thêm kỷ niệm mới</Text>
-              <TouchableOpacity onPress={() => setFormOpen(false)}><Ionicons name="close-circle" size={26} color={C.textFaint} /></TouchableOpacity>
+              <TouchableOpacity onPress={() => setFormOpen(false)} hitSlop={10} accessibilityLabel="Đóng"><Ionicons name="close-circle" size={26} color={C.textFaint} /></TouchableOpacity>
             </View>
+            <ScrollView style={{ maxHeight: 420 }} contentContainerStyle={{ gap: 9 }}>
             <Text style={s.sub}>Kỷ niệm gắn tên người thêm là bạn · nghỉ {CONTENT_ADD_MIN_INTERVAL_MS / 1000} giây giữa 2 lần thêm.</Text>
             <TextInput style={s.input} placeholder="Tên kỷ niệm (VD: Lần đầu nắm tay)" placeholderTextColor={C.textFaint} value={memTitle} onChangeText={setMemTitle} maxLength={CONTENT_LIMITS.memoryTitle} />
             <TextInput style={s.input} placeholder="Ngày (năm-tháng-ngày)" placeholderTextColor={C.textFaint} value={memDate} onChangeText={setMemDate} maxLength={10} />
@@ -121,6 +126,7 @@ export default function MemoriesScreen() {
             <TouchableOpacity style={[s.btn, (!memTitle.trim() || addWaitMs > 0) && { opacity: 0.5 }]} disabled={!memTitle.trim() || addWaitMs > 0} onPress={addMemory}>
               <Ionicons name="add-circle" size={16} color="#fff" /><Text style={s.btnText}>{addWaitMs > 0 ? `Chờ ${Math.ceil(addWaitMs / 1000)}s...` : "Lưu kỷ niệm"}</Text>
             </TouchableOpacity>
+            </ScrollView>
           </View>
         </View>
       </Modal>
@@ -130,5 +136,5 @@ export default function MemoriesScreen() {
 
 const styles = StyleSheet.create({
   modalWrap: { flex: 1, backgroundColor: "rgba(15,23,42,0.45)", justifyContent: "flex-end" },
-  modalCard: { backgroundColor: "#fff", borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 18, gap: 9 },
+  modalCard: { backgroundColor: "#fff", borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 18, gap: 9, maxHeight: "88%" },
 });

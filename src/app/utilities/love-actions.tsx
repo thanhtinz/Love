@@ -21,7 +21,9 @@ export default function LoveActionsScreen() {
   const reachedMax = myCount >= LOVE_ACTION_DAILY_MAX;
   const disabled = cooldownLeft > 0 || reachedMax;
   const feed = state.activities.filter((a) => LOVE_ACTIONS.some((x) => x.icon === a.icon)).slice(0, 10);
-  const senderSlotOf = (actor: string) => (actor === state.personA ? "A" : actor === state.personB ? "B" : null);
+  // Ưu tiên SLOT ghi trong hoạt động; bản cũ chỉ có tên hiển thị nên mới suy ngược từ tên
+  // (trùng tên hai người hoặc đổi tên là gán nhầm người gửi).
+  const senderSlotOf = (a: (typeof state.activities)[0]) => a.slot ?? (a.actor === state.personA ? "A" : a.actor === state.personB ? "B" : null);
 
   return (
     <View style={s.screen}>
@@ -56,7 +58,7 @@ export default function LoveActionsScreen() {
           <Text style={s.cardTitle}>Dòng yêu thương gần đây</Text>
           <View style={{ gap: 9, marginTop: 10 }}>
             {feed.map((a) => {
-              const slot = senderSlotOf(a.actor);
+              const slot = senderSlotOf(a);
               const receiver = slot ? (slot === "A" ? state.personB : state.personA) : "";
               return (
                 <View key={a.id} style={{ flexDirection: "row", gap: 8, alignItems: "center" }}>
