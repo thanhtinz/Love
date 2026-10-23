@@ -10,7 +10,7 @@ import { Medallion } from "./ui";
 
 /**
  * Sheet hành động nhanh mở từ nút "+" giữa tab bar — ĐÚNG 4 hành động của 5 lõi:
- * Viết note · Gửi nhịp nhớ · Chăm cây · Chia sẻ vị trí tạm thời.
+ * Viết note · Gửi nhịp nhớ · Chăm cây · Bản đồ hai đứa (vị trí tạm thời).
  * Mọi hàng dùng MỘT họ tile trung tính (TILE) — không nhuộm màu riêng từng hàng.
  */
 export function QuickActions({ visible, onClose }: { visible: boolean; onClose: () => void }) {
@@ -39,8 +39,8 @@ export function QuickActions({ visible, onClose }: { visible: boolean; onClose: 
     },
     { icon: "leaf-outline", title: "Chăm cây tình yêu", desc: "Tưới nước, phơi nắng, gửi lời yêu cho cây", onPress: () => go("/(tabs)/tree") },
     {
-      icon: "location-outline", title: "Chia sẻ vị trí tạm thời",
-      desc: myShare.active ? "Đang chia sẻ — chạm để xem hoặc dừng" : "Cho người ấy thấy mình đang ở đâu, trong chốc lát",
+      icon: "location-outline", title: "Bản đồ hai đứa",
+      desc: myShare.active ? "Đang chia sẻ vị trí — chạm để xem bản đồ" : "Xem vị trí của nhau trên bản đồ, chỉ khi đang chia sẻ",
       onPress: () => go("/location"),
     },
   ];

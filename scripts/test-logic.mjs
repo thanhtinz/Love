@@ -13,6 +13,7 @@ const CT = require("./.build/content.js");
 const MO = require("./.build/model.js");
 const R = require("./.build/reducer.js");
 const M = require("./.build/merge.js");
+const MT = require("./.build/maptiles.js");
 
 const H = 3600000;
 const MIN = 60000;
@@ -26,6 +27,8 @@ const check = (label, ok, detail) => {
 const iso = (ms) => new Date(ms).toISOString();
 const NOW = Date.now();
 const todayStr = T.today();
+/** Khoá ngày địa phương của ngày cách hôm nay n ngày (cho test giai đoạn theo ngày yêu) */
+const dayKeyAgo = (n) => T.dayKeyLocal(new Date(NOW - n * 24 * H));
 const fresh = () => MO.normalizeState(null);
 const mkTree = (over = {}) => TR.normalizeTree({
   plantedAt: iso(NOW - 1000), growthRecordedMs: 0, growthAt: iso(NOW - 1000), statsAt: iso(NOW - 1000),
@@ -83,6 +86,26 @@ console.log("\n--- B) Cây — tăng trưởng theo thời gian thật ---");
   const healthW = TR.treeHealth({ water: 10, sun: 50, love: 50 });
   const healthOk = TR.treeHealth({ water: 80, sun: 80, love: 80 });
   check("B8 treeHealth: min<20 -> wilted, đủ đầy -> happy/ok", healthW.status === "wilted" && (healthOk.status === "happy" || healthOk.status === "ok"));
+
+  /* GIAI ĐOẠN THEO NGÀY YÊU THẬT (từ 2026-10-23 — thay cho giai đoạn theo điểm lớn) */
+  const stageCases = [[1, 1], [6, 1], [7, 2], [29, 2], [30, 3], [99, 3], [100, 4], [199, 4], [200, 5], [364, 5], [365, 6], [729, 6], [730, 7], [5000, 7]];
+  check("B9 ranh giới giai đoạn theo ngày: 6->1, 7->2, 29->2, 30->3, 99->3, 100->4, 199->4, 200->5, 364->5, 365->6, 729->6, 730->7", stageCases.every(([d, s]) => TR.treeStageForDay(d).stage === s));
+  check("B10 tiến độ trong giai đoạn: ngày 15 (gđ2) = 8/23, ngày 29 = 22/23, ngày 1 = 0, gđ7 = 1",
+    Math.abs(TR.treeStageForDay(15).progress - 8 / 23) < 1e-9
+    && Math.abs(TR.treeStageForDay(29).progress - 22 / 23) < 1e-9
+    && TR.treeStageForDay(1).progress === 0
+    && TR.treeStageForDay(730).progress === 1);
+  check("B11 daysToNextStage: ngày 1 -> 6, ngày 7 -> 23, ngày 100 -> 100, ngày 729 -> 1, ngày 730 -> null",
+    TR.treeStageForDay(1).daysToNextStage === 6
+    && TR.treeStageForDay(7).daysToNextStage === 23
+    && TR.treeStageForDay(100).daysToNextStage === 100
+    && TR.treeStageForDay(729).daysToNextStage === 1
+    && TR.treeStageForDay(730).daysToNextStage === null);
+  check("B12 di trú bản cũ: startDate được cứu 251 ngày trước -> Ngày 252 -> cây ở giai đoạn 5 ngay", (() => {
+    const mig = MO.normalizeState({ startDate: dayKeyAgo(251) });
+    const d = F.dayCount(mig.couple.startDate);
+    return d === 252 && TR.treeStageForDay(d).stage === 5;
+  })());
 }
 
 /* ================= C) CHĂM CÂY: COOLDOWN / ĐẦY / COMBO / THƯ ================= */
@@ -128,14 +151,27 @@ console.log("\n--- C) Chăm cây + combo Song chăm + thư rơi ---");
   const l1 = CT.makeStageUpLetter(3, false, "A", iso(NOW));
   const l2 = CT.makeStageUpLetter(3, false, "A", iso(NOW));
   check("C15 thư lên giai đoạn xác định: cùng giai đoạn -> cùng id (2 máy hội tụ)", l1.id === l2.id && l1.id === "stageup-3" && l1.messageId >= 1 && l1.messageId <= 36);
-  const nearStage = { ...fresh(), tree: mkTree({ growthRecordedMs: 12 * H - 20 * MIN, growthAt: iso(NOW), statsAt: iso(NOW), water: 80, sun: 80, love: 80 }) };
-  const stageUpRes = F.decideCareLetter(nearStage, "water", NOW);
-  check("C16 chăm vượt ngưỡng giai đoạn -> chắc chắn rơi thư", stageUpRes.drop !== null);
+  /* Giai đoạn KHÔNG còn theo điểm lớn/chăm cây — chỉ theo ngày yêu (từ 2026-10-23) */
+  check("C16 chăm/điểm lớn không đổi giai đoạn: sổ tăng trưởng đầy + trưởng thành nhưng mới Ngày 1 -> vẫn giai đoạn 1", (() => {
+    const stFullGrowth = { ...fresh(), tree: mkTree({ growthRecordedMs: TR.totalGrowthMs(), matureAt: iso(NOW) }) };
+    return TR.treeStageForDay(F.dayCount(stFullGrowth.couple.startDate, NOW)).stage === 1;
+  })());
+  check("C16b 0 điểm tăng trưởng nhưng yêu 400 ngày -> giai đoạn 6 (giai đoạn thuần theo ngày)", (() => {
+    const stOld = MO.normalizeState({ startDate: dayKeyAgo(399) });
+    return stOld.tree.growthRecordedMs === 0 && F.dayCount(stOld.couple.startDate, NOW) === 400 && TR.treeStageForDay(400).stage === 6;
+  })());
   let ss = fresh();
-  ss = R.gardenReducer(ss, { type: "STAGE_UP", stageIndex: 2, drop: l1 });
-  const ssActs = ss.activities.length;
-  ss = R.gardenReducer(ss, { type: "STAGE_UP", stageIndex: 2, drop: l1 });
-  check("C17 STAGE_UP idempotent: ghi announcedStage 1 lần + thư 1 lần", ss.tree.announcedStage === 2 && ss.activities.length === ssActs && ss.lastLetter && ss.lastLetter.id === l1.id);
+  ss = R.gardenReducer(ss, { type: "CELEBRATE_TREE_STAGE", stage: 4, drop: l1 });
+  const ssAfter = R.gardenReducer(ss, { type: "CELEBRATE_TREE_STAGE", stage: 4, drop: l1 });
+  check("C17 CELEBRATE_TREE_STAGE: ghi celebratedStages + thư + nhật ký 'Cây tình yêu đã lên giai đoạn mới' đúng 1 lần, gọi lại -> no-op",
+    ss.couple.celebratedStages.join(",") === "4"
+    && ss.lastLetter?.id === l1.id
+    && ss.activities.filter((a) => a.text.includes("Cây tình yêu đã lên giai đoạn mới")).length === 1
+    && ssAfter === ss);
+  const ss5 = R.gardenReducer(ss, { type: "CELEBRATE_TREE_STAGE", stage: 5, drop: CT.makeStageUpLetter(4, false, "A", iso(NOW)) });
+  check("C18 giai đoạn sau vẫn ăn mừng tiếp được: celebratedStages = [4,5]", ss5.couple.celebratedStages.join(",") === "4,5");
+  const ssBad = R.gardenReducer(fresh(), { type: "CELEBRATE_TREE_STAGE", stage: 9, drop: null });
+  check("C19 CELEBRATE_TREE_STAGE với giai đoạn ngoài 1..7 -> bị chặn", ssBad.couple.celebratedStages.length === 0);
 }
 
 /* ================= D) NOTE TÌNH YÊU ================= */
@@ -270,6 +306,44 @@ console.log("\n--- G) Merge / normalize / đóng dấu ---");
   const olderIncoming = { ...fresh(), updatedAt: iso(NOW - H), personA: "Tên Cũ" };
   const guarded = R.gardenReducer(newerState, { type: "SET_STATE", state: olderIncoming });
   check("G11 SET_STATE chống ghi đè ngược: bản cũ hơn updatedAt bị từ chối", guarded === newerState);
+  const csLocal = { ...fresh(), couple: { ...fresh().couple, celebratedStages: [2] } };
+  const csRemote = { ...fresh(), couple: { ...fresh().couple, celebratedStages: [5, 2] } };
+  const mergedStages = M.mergeStates(csLocal, csRemote, "A");
+  check("G12 merge celebratedStages: hợp nhất [2] + [2,5] = [2,5] (không máy nào ăn mừng lại)", mergedStages.couple.celebratedStages.join(",") === "2,5");
+  check("G13 normalize celebratedStages: thiếu -> [], chỉ nhận số nguyên 1..7, khử trùng + sắp xếp", (() => {
+    const a = MO.normalizeState(null);
+    const b = MO.normalizeState({ couple: { celebratedStages: [5, 2, 2, 9, 0, "x"] } });
+    return a.couple.celebratedStages.length === 0 && b.couple.celebratedStages.join(",") === "2,5";
+  })());
+}
+
+/* ================= H) BẢN ĐỒ HAI ĐỨA — TOÁN GẠCH OPENSTREETMAP ================= */
+console.log("\n--- H) Bản đồ — slippy tiles + fit khung hình ---");
+{
+  const hcmc = { lat: 10.8231, lon: 106.6297 };
+  const tile = MT.tileIndices(hcmc.lat, hcmc.lon, 15);
+  check("H1 tile TP.HCM (10.8231, 106.6297) ở zoom 15 = (26089, 15392) theo công thức slippy chuẩn", tile.x === 26089 && tile.y === 15392, `${tile.x},${tile.y}`);
+  check("H2 tileUrl đúng mẫu gạch OSM", MT.tileUrl(26089, 15392, 15) === "https://tile.openstreetmap.org/15/26089/15392.png");
+  const px = MT.latLonToWorldPx(hcmc.lat, hcmc.lon, 15);
+  const rt = MT.worldPxToLatLon(px.x, px.y, 15);
+  check("H3 chiếu -> chiếu ngược ≈ toạ độ gốc (sai số < 1e-6)", Math.abs(rt.lat - hcmc.lat) < 1e-6 && Math.abs(rt.lon - hcmc.lon) < 1e-6, `${rt.lat.toFixed(6)},${rt.lon.toFixed(6)}`);
+  const W = 360, HH = 340, PAD = 40;
+  const project = (pt, fit) => {
+    const c = MT.latLonToWorldPx(fit.center.lat, fit.center.lon, fit.zoom);
+    const p = MT.latLonToWorldPx(pt.lat, pt.lon, fit.zoom);
+    return { x: p.x - (c.x - W / 2), y: p.y - (c.y - HH / 2) };
+  };
+  const inside = (pt, fit) => { const q = project(pt, fit); return q.x >= PAD - 1 && q.x <= W - PAD + 1 && q.y >= PAD - 1 && q.y <= HH - PAD + 1; };
+  const hanoi = { lat: 21.0285, lon: 105.8542 };
+  const farFit = MT.fitMapPoints([hanoi, hcmc], W, HH, PAD);
+  check("H4 fit cặp xa (Hà Nội <-> TP.HCM): cả 2 điểm lọt khung có đệm", inside(hanoi, farFit) && inside(hcmc, farFit), `zoom=${farFit.zoom}`);
+  const nearPair = [hcmc, { lat: 10.8251, lon: 106.6317 }];
+  const nearFit = MT.fitMapPoints(nearPair, W, HH, PAD);
+  check("H5 fit cặp gần (~300m): cả 2 điểm lọt khung, zoom cao hơn cặp xa và <= 17", nearPair.every((pt) => inside(pt, nearFit)) && nearFit.zoom <= 17 && nearFit.zoom > farFit.zoom, `zoom=${nearFit.zoom}`);
+  const single = MT.fitMapPoints([hcmc], W, HH, PAD);
+  check("H6 fit 1 điểm -> zoom 15, tâm đúng điểm đó", single.zoom === 15 && single.center.lat === hcmc.lat && single.center.lon === hcmc.lon);
+  const worldFit = MT.fitMapPoints([{ lat: 80, lon: -179 }, { lat: -80, lon: 179 }], W, HH, PAD);
+  check("H7 fit cặp cực đoan (gần trọn thế giới) -> zoom bị kẹp không dưới 3", worldFit.zoom >= 3, `zoom=${worldFit.zoom}`);
 }
 
 console.log(`\n===== TỔNG: ${count - failures}/${count} PASS =====`);

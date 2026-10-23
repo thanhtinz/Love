@@ -25,7 +25,7 @@ export type Action =
   | { type: "SET_START_DATE"; date: string; user: PersonId; actor: string }
   | { type: "MARK_MILESTONE"; days: number; actor: string }
   | { type: "TREE_CARE"; kind: CareKind; user: PersonId; actor: string; drop?: LetterMoment | null; combo?: boolean }
-  | { type: "STAGE_UP"; stageIndex: number; drop?: LetterMoment | null }
+  | { type: "CELEBRATE_TREE_STAGE"; stage: number; drop?: LetterMoment | null }
   | { type: "NOTE_ADD"; note: LoveNote; user: PersonId }
   | { type: "NOTE_READ"; id: string; user: PersonId }
   | { type: "PING_SEND"; user: PersonId; actor: string }
@@ -121,14 +121,19 @@ export function gardenReducer(state: AppState, action: Action): AppState {
       }
       return out;
     }
-    case "STAGE_UP": {
-      const isNewStage = action.stageIndex > state.tree.announcedStage;
-      const isNewLetter = Boolean(action.drop) && state.lastLetter?.id !== action.drop!.id;
-      if (!isNewStage && !isNewLetter) return state;
-      let out: AppState = isNewStage ? { ...state, tree: { ...state.tree, announcedStage: action.stageIndex } } : state;
-      if (isNewLetter && action.drop) {
-        out = { ...out, lastLetter: action.drop, activities: pushAct(out, nameOf(out, action.drop.bySlot), "Cây tình yêu vừa lên giai đoạn mới", "sparkles", action.drop.bySlot) };
-      }
+    case "CELEBRATE_TREE_STAGE": {
+      // Giai đoạn cây nay ĐI THEO NGÀY YÊU (treeStageForDay): khi mở app thấy
+      // giai đoạn theo ngày đã vượt mọi giai đoạn từng ăn mừng, hook sẽ dispatch
+      // action này đúng 1 lần/giai đoạn — ghi celebratedStages (union-merge 2
+      // máy) + thư rơi + 1 dòng nhật ký. Đã ăn mừng rồi -> no-op tuyệt đối.
+      const stage = Math.floor(action.stage);
+      if (!isFinite(stage) || stage < 1 || stage > 7) return state;
+      if (state.couple.celebratedStages.includes(stage)) return state;
+      const couple = { ...state.couple, celebratedStages: [...state.couple.celebratedStages, stage].sort((a, b) => a - b) };
+      let out: AppState = { ...state, couple };
+      const actorSlot = action.drop ? action.drop.bySlot : state.currentUser;
+      out = { ...out, activities: pushAct(out, nameOf(out, actorSlot), "Cây tình yêu đã lên giai đoạn mới", "sparkles", actorSlot) };
+      if (action.drop) out = { ...out, lastLetter: action.drop };
       return out;
     }
 

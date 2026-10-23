@@ -1,37 +1,28 @@
 import React, { useEffect } from "react";
-import { Pressable, ScrollView, Text, TouchableOpacity, View } from "react-native";
-import { router } from "expo-router";
+import { ScrollView, Text, TouchableOpacity, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { myName, useLove } from "../../lib/store";
-import { PING_DAILY_MAX, formatDateVN, today } from "../../lib/types";
-import { MILESTONES, dayCount, distanceText, haversineKm, milestoneReached, nextMilestone, shareStatus, timeAgoText } from "../../lib/features";
-import { stageInfo, treeHealth, decayedStats } from "../../lib/tree";
-import Avatar from "../../components/Avatar";
-import { PlantScene } from "../../components/Art";
-import { PersonChip, partnerOf, selfOf } from "../../components/PersonChip";
+import { PING_DAILY_MAX, dayKeyLocal, today } from "../../lib/types";
+import { MILESTONES, dayCount, milestoneReached, nextMilestone, timeAgoText } from "../../lib/features";
+import { HomeGardenScene } from "../../components/Art";
+import { PersonChip, personOf } from "../../components/PersonChip";
 import { LetterAndPingPops, useStageUp } from "../../components/Popups";
-import { COLOR, FONT, RADIUS, ROLE, SHADOW, SPACE, TYPE } from "../../components/theme";
-import { ChipButton, ProgressBar, SkeletonCard, StatusChip, s, tabBarPad } from "../../components/ui";
+import { COLOR, FONT, RADIUS, ROLE, SPACE, TYPE } from "../../components/theme";
+import { ProgressBar, SkeletonCard, StatusChip, s, tabBarPad } from "../../components/ui";
 
 /**
- * Trang Nhà — trái tim của bản rebuild. Ngân sách phần tử:
- * (0) Dòng chào: chồng avatar hai người + "Chào buổi ..., {tên}".
- * (1) HERO: bệ cảnh Cây Tình Yêu (tranh giai đoạn hiện tại) + "Ngày N" 42/900 +
- *     dòng tiến tới cột mốc tiếp theo + 1 dòng trạng thái cây + dấu vết người ấy.
- * (2) Card "Hôm nay": ĐÚNG 1 CTA chính theo ưu tiên — note chưa đọc của người ấy >
- *     người ấy đang chia sẻ vị trí > cây cần chăm > mặc định gửi nhịp nhớ.
- * (3) Thẻ note mới nhất (badge chưa đọc) + thẻ vị trí đang chạy (khi có) +
- *     nhật ký mini 5 dòng gần nhất.
+ * Trang Nhà — bản GỌN (2026-10-23): nhà chỉ để NGẮM và CẢM, không phải sảnh
+ * điều hướng (đã có tab bar lo việc đi lại). Nội dung CHỈ gồm 4 mục, tất cả
+ * tĩnh — không hàng link, không chevron, không bấm-xem-thêm:
+ * (1) HERO: tranh cảnh vườn mới phủ kín (hai cây hoa đan tán thành trái tim) +
+ *     lớp scrim mềm ở đáy ôm "Ngày N" + dòng cột mốc + thanh tiến trình mốc.
+ * (2) Card "Hôm nay": số nhịp nhớ hôm nay + tóm tắt chăm cây (chữ tĩnh) +
+ *     ĐÚNG 1 nút chính "Gửi nhịp nhớ".
+ * (3) Note mới nhất: xem trước TĨNH (không bấm sang tab Note).
+ * (4) "Dấu vết gần nhất": tối đa 3 dòng hoạt động gần nhất, tĩnh.
+ * Cả màn vừa khoảng một viewport + cuộn nhẹ là hết.
  */
-function greeting(): string {
-  const h = new Date().getHours();
-  if (h < 11) return "Chào buổi sáng";
-  if (h < 13) return "Chào buổi trưa";
-  if (h < 18) return "Chào buổi chiều";
-  return "Chào buổi tối";
-}
-
 const ACT_ICON: Record<string, string> = {
   water: "water", sunny: "sunny", heart: "heart", bug: "bug", sparkles: "sparkles",
   mail: "mail", location: "location", "document-text": "document-text", people: "people", leaf: "leaf",
@@ -43,8 +34,6 @@ export default function HomeScreen() {
   useStageUp(state, dispatch);
 
   const me = state.currentUser;
-  const self = selfOf(state);
-  const partner = partnerOf(state);
   const count = dayCount(state.couple.startDate);
   const next = nextMilestone(count);
   const reached = milestoneReached(count);
@@ -62,183 +51,107 @@ export default function HomeScreen() {
     return (
       <View style={s.screen}>
         <View style={{ padding: SPACE.screenX, gap: 12 }}>
-          <SkeletonCard height={300} />
-          <SkeletonCard height={130} />
+          <SkeletonCard height={330} />
+          <SkeletonCard height={150} />
           <SkeletonCard height={110} />
         </View>
       </View>
     );
   }
 
-  const info = stageInfo(state.tree);
-  const stats = decayedStats(state.tree);
-  const health = treeHealth(stats);
   const prevMilestone = [...MILESTONES].filter((m) => m <= count).pop() ?? 0;
   const milestonePct = next ? Math.min(100, Math.round(((count - prevMilestone) / (next.days - prevMilestone)) * 100)) : 100;
 
-  const unreadPartnerNotes = state.notes.filter((n) => n.authorSlot !== me && !n.readAt);
   const latestNote = state.notes[0];
-  const partnerShare = shareStatus(state.presence[partner.slot]);
-  const myShare = shareStatus(state.presence[me]);
+  const latestNoteIsNew = Boolean(latestNote && latestNote.authorSlot !== me && !latestNote.readAt);
   const pingsToday = state.pings.day.date === today() ? state.pings.day.A + state.pings.day.B : 0;
   const myPingsToday = state.pings.day.date === today() ? state.pings.day[me] : 0;
-  const lastPartnerAct = state.activities.find((a) => a.slot && a.slot !== me);
-  const lastCareSlot = state.tree.lastCareBySlot;
+  const pingFull = myPingsToday >= PING_DAILY_MAX;
 
-  /* CTA "Hôm nay" theo thứ tự ưu tiên */
-  let todayTitle = "Gửi một nhịp nhớ";
-  let todayDesc = `Hôm nay hai đứa đã nhớ nhau ${pingsToday} nhịp. Chạm để người ấy biết bạn đang nghĩ tới họ.`;
-  let todayIcon: string = "heart";
-  let todayAction = () => dispatch({ type: "PING_SEND", user: me, actor: myName(state) });
-  let todayDisabled = myPingsToday >= PING_DAILY_MAX;
-  if (todayDisabled) todayDesc = `Hôm nay bạn đã gửi đủ ${PING_DAILY_MAX} nhịp rồi — để dành nhớ thương cho ngày mai nhé.`;
-  if (health.status === "need" || health.status === "wilted") {
-    todayTitle = "Cây đang cần chăm";
-    todayDesc = health.message;
-    todayIcon = "leaf";
-    todayAction = () => router.push("/(tabs)/tree");
-    todayDisabled = false;
-  }
-  if (partnerShare.active) {
-    todayTitle = `Xem vị trí của ${partner.name}`;
-    todayDesc = `${partner.name} đang chia sẻ vị trí tạm thời với bạn.`;
-    todayIcon = "location";
-    todayAction = () => router.push("/location");
-    todayDisabled = false;
-  }
-  if (unreadPartnerNotes.length > 0) {
-    todayTitle = `Đọc note của ${partner.name}`;
-    todayDesc = `${partner.name} vừa gửi ${unreadPartnerNotes.length} note chưa đọc cho bạn.`;
-    todayIcon = "document-text";
-    todayAction = () => router.push("/(tabs)/notes");
-    todayDisabled = false;
-  }
-
-  const partnerSlotPresence = state.presence[partner.slot];
-  const myPresence = state.presence[me];
-  const bothFix = partnerSlotPresence.lat != null && partnerSlotPresence.lng != null && myPresence.lat != null && myPresence.lng != null;
-  const distKm = bothFix ? haversineKm({ lat: partnerSlotPresence.lat!, lng: partnerSlotPresence.lng! }, { lat: myPresence.lat!, lng: myPresence.lng! }) : null;
+  /* Tóm tắt chăm cây hôm nay — chữ TĨNH (không phải lối tắt sang tab Cây) */
+  const lastCareAt = state.tree.lastCareAt;
+  const caredToday = Boolean(lastCareAt) && dayKeyLocal(new Date(lastCareAt)) === today();
+  const lastCareName = state.tree.lastCareBySlot ? personOf(state, state.tree.lastCareBySlot).name : "";
+  const careSummary = caredToday && lastCareName
+    ? `Chăm cây gần nhất: ${lastCareName} · ${timeAgoText(lastCareAt)} — tổng ${state.tree.careCount} lần chăm.`
+    : state.tree.careCount > 0
+      ? `Hôm nay chưa ai chăm cây · tổng ${state.tree.careCount} lần chăm từ trước tới nay.`
+      : "Chưa ai chăm cây lần nào — cây đang chờ hai đứa ghé thăm.";
 
   return (
     <View style={s.screen}>
       <ScrollView contentContainerStyle={{ paddingHorizontal: SPACE.screenX, paddingTop: insets.top + 10, paddingBottom: tabBarPad(insets.bottom), gap: SPACE.cardGap }} showsVerticalScrollIndicator={false}>
-        {/* (0) Dòng chào */}
-        <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
-          <View style={{ flexDirection: "row" }}>
-            <Avatar id={self.avatar} size={40} ring={self.main} />
-            <View style={{ marginLeft: -12 }}>
-              <Avatar id={partner.avatar} size={40} ring={partner.main} />
-            </View>
-          </View>
-          <View style={{ flex: 1, minWidth: 0 }}>
-            <Text style={{ fontFamily: FONT.extrabold, fontSize: 17, color: COLOR.text }}>{greeting()}, {self.name}</Text>
-            <Text style={{ fontFamily: FONT.regular, fontSize: 13, color: COLOR.textSoft }}>{partner.name} đang ở đầu bên kia của khu vườn</Text>
-          </View>
-        </View>
-
-        {/* (1) HERO — cây + Ngày N */}
-        <View style={{ backgroundColor: "#fff", borderRadius: RADIUS.scene, borderWidth: 1, borderColor: COLOR.border, overflow: "hidden", ...SHADOW }}>
-          <View style={{ backgroundColor: COLOR.gardenWash }}>
-            <PlantScene stageIndex={info.index} status={health.status} height={196} imgHeight={178} />
-          </View>
-          <View style={{ paddingHorizontal: 20, paddingTop: 14, paddingBottom: 18, alignItems: "center" }}>
-            {reached && celebrated && count - reached <= 6 ? (
-              <View style={{ flexDirection: "row", alignItems: "center", gap: 6, backgroundColor: "#FDF3D8", borderRadius: 999, paddingHorizontal: 12, paddingVertical: 6, marginBottom: 10 }}>
-                <Ionicons name="sparkles" size={14} color={COLOR.legendary} />
-                <Text style={{ fontFamily: FONT.bold, fontSize: 12.5, color: "#8A6108" }}>Chúc mừng mốc {reached} ngày yêu!</Text>
-              </View>
-            ) : null}
-            <Text style={{ ...TYPE.display, color: COLOR.text }}>Ngày {count}</Text>
-            <Text style={{ fontFamily: FONT.regular, fontSize: 13.5, color: COLOR.textSoft, marginTop: 4 }}>
-              {`Yêu nhau từ ${formatDateVN(state.couple.startDate)} · Cây đang ở giai đoạn "${info.stage.name}"`}
-            </Text>
-            <View style={{ width: "100%", marginTop: 14 }}>
-              <ProgressBar value={milestonePct} color={COLOR.primary} height={8} />
-              <Text style={{ fontFamily: FONT.regular, fontSize: 12.5, color: COLOR.textSoft, marginTop: 6, textAlign: "center" }}>
+        {/* (1) HERO — cảnh vườn + Ngày N trên scrim mềm */}
+        <View style={{ borderRadius: RADIUS.scene, borderWidth: 1, borderColor: COLOR.border, overflow: "hidden", backgroundColor: COLOR.gardenWash }}>
+          <HomeGardenScene height={336} />
+          <View style={{ position: "absolute", left: 0, right: 0, bottom: 0 }}>
+            <View style={{ height: 26, backgroundColor: "rgba(255,247,240,0.38)" }} />
+            <View style={{ backgroundColor: "rgba(255,247,240,0.93)", paddingHorizontal: 20, paddingTop: 2, paddingBottom: 16, alignItems: "center" }}>
+              {reached && celebrated && count - reached <= 6 ? (
+                <View style={{ flexDirection: "row", alignItems: "center", gap: 6, backgroundColor: "#FDF3D8", borderRadius: 999, paddingHorizontal: 12, paddingVertical: 6, marginBottom: 8 }}>
+                  <Ionicons name="sparkles" size={14} color={COLOR.legendary} />
+                  <Text style={{ fontFamily: FONT.bold, fontSize: 12.5, color: "#8A6108" }}>Chúc mừng mốc {reached} ngày yêu!</Text>
+                </View>
+              ) : null}
+              <Text style={{ ...TYPE.display, color: COLOR.text }}>Ngày {count}</Text>
+              <Text style={{ fontFamily: FONT.regular, fontSize: 13.5, color: COLOR.textSoft, marginTop: 3, textAlign: "center" }}>
                 {next ? `Còn ${next.remaining} ngày nữa tới mốc ${next.days} ngày` : "Hai đứa đã đi qua mọi cột mốc trong danh sách — cứ yêu tiếp thôi"}
               </Text>
-            </View>
-            <View style={{ flexDirection: "row", alignItems: "center", gap: 6, marginTop: 10, backgroundColor: "#FFF6EF", borderRadius: 999, paddingHorizontal: 11, paddingVertical: 6 }}>
-              <Ionicons name={health.status === "wilted" ? "alert-circle" : "leaf"} size={13} color={health.status === "wilted" ? COLOR.danger : COLOR.successText} />
-              <Text style={{ fontFamily: FONT.semibold, fontSize: 12.5, color: COLOR.textSoft }}>{health.message}</Text>
-            </View>
-            {lastCareSlot ? (
-              <View style={{ marginTop: 10 }}>
-                <PersonChip state={state} slot={lastCareSlot} size={20} />
+              <View style={{ width: "100%", marginTop: 12 }}>
+                <ProgressBar value={milestonePct} color={COLOR.primary} height={8} />
               </View>
-            ) : null}
-            {lastPartnerAct ? (
-              <Text style={{ fontFamily: FONT.regular, fontSize: 12.5, color: COLOR.textFaint, marginTop: 8, textAlign: "center" }}>
-                Gần nhất: {lastPartnerAct.actor} {lastPartnerAct.text} · {timeAgoText(lastPartnerAct.time)}
-              </Text>
-            ) : null}
+            </View>
           </View>
         </View>
 
-        {/* (2) Hôm nay — 1 CTA chính */}
+        {/* (2) Hôm nay — nhịp nhớ + tóm tắt chăm cây (tĩnh) + 1 CTA */}
         <View style={[s.card, { marginTop: 2 }]}>
-          <Text style={{ ...TYPE.micro, color: COLOR.textSoft }}>Hôm nay của hai đứa</Text>
-          <Text style={{ ...TYPE.cardTitle, color: COLOR.text, marginTop: 6 }}>{todayTitle}</Text>
-          <Text style={{ ...TYPE.body, color: COLOR.textSoft, marginTop: 4 }}>{todayDesc}</Text>
+          <Text style={{ ...TYPE.micro, color: COLOR.textSoft }}>Hôm nay</Text>
+          <Text style={{ ...TYPE.emphasis, color: COLOR.text, marginTop: 8 }}>
+            Hôm nay hai đứa đã nhớ nhau {pingsToday} nhịp.
+          </Text>
+          <Text style={{ ...TYPE.body, color: COLOR.textSoft, marginTop: 4 }}>{careSummary}</Text>
+          {pingFull ? (
+            <Text style={{ ...TYPE.body, color: COLOR.textSoft, marginTop: 4 }}>
+              Bạn đã gửi đủ {PING_DAILY_MAX} nhịp hôm nay rồi — để dành nhớ thương cho ngày mai nhé.
+            </Text>
+          ) : null}
           <TouchableOpacity
-            onPress={todayAction}
-            disabled={todayDisabled}
-            style={[s.btn, { marginTop: 14, opacity: todayDisabled ? 0.55 : 1 }]}
+            onPress={() => dispatch({ type: "PING_SEND", user: me, actor: myName(state) })}
+            disabled={pingFull}
+            style={[s.btn, { marginTop: 14, opacity: pingFull ? 0.55 : 1 }]}
             accessibilityRole="button"
-            accessibilityLabel={todayTitle}
-            accessibilityState={{ disabled: todayDisabled }}
+            accessibilityLabel="Gửi nhịp nhớ"
+            accessibilityState={{ disabled: pingFull }}
           >
-            <Ionicons name={todayIcon as never} size={19} color="#fff" />
-            <Text style={s.btnText}>{todayTitle}</Text>
+            <Ionicons name="heart" size={19} color="#fff" />
+            <Text style={s.btnText}>Gửi nhịp nhớ</Text>
           </TouchableOpacity>
         </View>
 
-        {/* (3a) Note mới nhất */}
-        <Pressable onPress={() => router.push("/(tabs)/notes")} style={[s.card, { marginTop: 2 }]} accessibilityRole="button" accessibilityLabel="Mở tab Note">
+        {/* (3) Note mới nhất — xem trước TĨNH, không điều hướng */}
+        <View style={[s.card, { marginTop: 2 }]}>
           <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
-            <Text style={{ ...TYPE.micro, color: COLOR.textSoft, flex: 1 }}>Note tình yêu</Text>
-            {unreadPartnerNotes.length > 0 ? <StatusChip label={`${unreadPartnerNotes.length} chưa đọc`} variant="accent" /> : null}
+            <Text style={{ ...TYPE.micro, color: COLOR.textSoft, flex: 1 }}>Note mới nhất</Text>
+            {latestNoteIsNew ? <StatusChip label="Mới" variant="accent" /> : null}
           </View>
           {latestNote ? (
             <View style={{ marginTop: 10, gap: 7 }}>
               <PersonChip state={state} slot={latestNote.authorSlot} size={20} />
-              <Text style={{ ...TYPE.emphasis, color: COLOR.text }} numberOfLines={2}>{latestNote.text}</Text>
+              <Text style={{ ...TYPE.emphasis, color: COLOR.text }} numberOfLines={3}>{latestNote.text}</Text>
               <Text style={{ fontFamily: FONT.regular, fontSize: 12.5, color: COLOR.textFaint }}>{timeAgoText(latestNote.createdAt)}</Text>
             </View>
           ) : (
-            <Text style={{ ...TYPE.body, color: COLOR.textSoft, marginTop: 8 }}>Chưa có note nào — viết note đầu tiên cho người ấy nhé.</Text>
+            <Text style={{ ...TYPE.body, color: COLOR.textSoft, marginTop: 8 }}>Chưa có note nào — note đầu tiên của hai đứa sẽ hiện ở đây.</Text>
           )}
-        </Pressable>
+        </View>
 
-        {/* (3b) Vị trí đang chia sẻ (chỉ hiện khi có phiên chạy) */}
-        {myShare.active || partnerShare.active ? (
-          <Pressable onPress={() => router.push("/location")} style={[s.card, { marginTop: 2 }]} accessibilityRole="button" accessibilityLabel="Mở màn định vị tạm thời">
-            <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
-              <Text style={{ ...TYPE.micro, color: COLOR.textSoft, flex: 1 }}>Định vị tạm thời</Text>
-              <Ionicons name="chevron-forward" size={16} color={COLOR.chevron} />
-            </View>
-            {partnerShare.active ? (
-              <Text style={{ ...TYPE.body, color: COLOR.text, marginTop: 8 }}>
-                {partner.name} đang chia sẻ vị trí{distKm != null ? ` — ${distanceText(distKm)}` : ""} · cập nhật {timeAgoText(partnerSlotPresence.locAt || partnerSlotPresence.at)}
-              </Text>
-            ) : null}
-            {myShare.active ? (
-              <View style={{ flexDirection: "row", alignItems: "center", gap: 10, marginTop: partnerShare.active ? 8 : 8 }}>
-                <Text style={{ ...TYPE.body, color: COLOR.text, flex: 1 }}>
-                  Bạn đang chia sẻ vị trí{myShare.remainingMs != null ? ` — phiên còn đang chạy` : " — đến khi tự tắt"}
-                </Text>
-                <ChipButton label="Dừng" variant="price" onPress={() => dispatch({ type: "PRESENCE_STOP", user: me, actor: myName(state), reason: "manual" })} />
-              </View>
-            ) : null}
-          </Pressable>
-        ) : null}
-
-        {/* (3c) Nhật ký mini */}
+        {/* (4) Dấu vết gần nhất — tối đa 3 dòng, tĩnh */}
         {state.activities.length > 0 ? (
           <View style={[s.card, { marginTop: 2 }]}>
-            <Text style={{ ...TYPE.micro, color: COLOR.textSoft }}>Dấu vết của hai đứa</Text>
+            <Text style={{ ...TYPE.micro, color: COLOR.textSoft }}>Dấu vết gần nhất</Text>
             <View style={{ marginTop: 10, gap: 11 }}>
-              {state.activities.slice(0, 5).map((a) => (
+              {state.activities.slice(0, 3).map((a) => (
                 <View key={a.id} style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
                   <View style={{ width: 30, height: 30, borderRadius: 15, backgroundColor: ROLE.selfSoft, alignItems: "center", justifyContent: "center" }}>
                     <Ionicons name={(ACT_ICON[a.icon] || "heart") as never} size={14} color={ROLE.selfDark} />

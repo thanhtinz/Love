@@ -5,15 +5,21 @@ import { TreePlant, finiteNum, isPlainObject } from "./types";
  * Module THUẦN (không React) để kiểm chứng bằng Node (scripts/test-logic.mjs,
  * scripts/simulate-core.mjs).
  *
- * Mô hình thời gian thật (kế thừa bản V5 đã kiểm chứng):
+ * GIAI ĐOẠN CỦA CÂY ĐI THEO NGÀY YÊU THẬT (từ 2026-10-23): stage suy ra từ
+ * daysTogether (cùng nguồn với bộ đếm ngày — couple.startDate) qua
+ * treeStageForDay() bên dưới, KHÔNG còn từ điểm tăng trưởng. Chăm cây không làm
+ * cây lên giai đoạn nữa; chăm chỉ giữ cây TƯƠI KHỎE (chỉ số = sức sống hiển thị).
+ *
+ * Phần "tăng trưởng ghi sổ" (growthRecordedMs/growthAt/materializeTree...) được
+ * GIỮ NGUYÊN vì tương thích dữ liệu cũ + mô phỏng sức sống, nhưng từ nay nó
+ * không quyết định giai đoạn và không còn hiển thị cho người dùng:
  * - Cây lưu growthRecordedMs (tăng trưởng đã "ghi sổ") tại mốc growthAt.
  * - Tăng trưởng hiệu dụng tại now = ghi sổ + tích lũy từ growthAt -> now, tính theo
  *   từng bước <= 5 phút: mỗi bước trừ hao chỉ số rồi nhân tốc độ theo sức khỏe tại
  *   bước đó — khỏe (thấp nhất >= 40) x1 · yếu (20..40) x0.5 · héo (< 20) x0 (đứng yên).
  * - Chăm cây: cộng chỉ số + cộng "tăng tốc" quy đổi thẳng thành thời gian tăng trưởng.
- * - Giai đoạn suy ra từ tăng trưởng tích lũy — không lưu stage cứng.
- * - Trưởng thành (đủ 168 giờ tăng trưởng hiệu dụng ≈ 7 ngày): ở lại giai đoạn cuối
- *   với trạng thái "đã nở hoa" (matureAt), không chết, không thu hoạch.
+ * - Trưởng thành theo sổ cũ (đủ 168 giờ tăng trưởng hiệu dụng ≈ 7 ngày): đóng dấu
+ *   matureAt, không chết, không thu hoạch — chỉ còn là dữ kiện tương thích.
  */
 
 export const HOUR = 3600000;
@@ -31,6 +37,38 @@ export const TREE_STAGES: StageDef[] = [
   { name: "Cây trái tim", desc: "Đỉnh cao! Cây kết trái tim lấp lánh", durationMs: 0 },
 ];
 export const TREE_STAGE_COUNT = TREE_STAGES.length;
+
+/* ================= GIAI ĐOẠN THEO NGÀY YÊU THẬT =================
+ * Stage 1-based suy ra THUẦN từ số ngày yêu (day 1 = ngày đầu tiên, cùng định
+ * nghĩa với dayCount ở features.ts). Ngưỡng ngày BẮT ĐẦU của từng giai đoạn:
+ * 1: ngày 1–6 · 2: 7–29 · 3: 30–99 · 4: 100–199 · 5: 200–364 · 6: 365–729 ·
+ * 7: 730 trở đi. Đây là NƠI DUY NHẤT định nghĩa ánh xạ ngày -> giai đoạn:
+ * màn Cây, thư lên giai đoạn và mọi nơi hiển thị giai đoạn đều đi qua đây. */
+export const TREE_STAGE_START_DAYS: number[] = [1, 7, 30, 100, 200, 365, 730];
+
+export interface TreeStageForDay {
+  /** Giai đoạn 1..7 */
+  stage: number;
+  /** Tiến độ TRONG giai đoạn hiện tại 0..1 (giai đoạn 7 luôn = 1) */
+  progress: number;
+  /** Còn bao nhiêu ngày nữa lên giai đoạn mới; null ở giai đoạn 7 */
+  daysToNextStage: number | null;
+  /** Ngày bắt đầu của giai đoạn hiện tại */
+  stageStartDay: number;
+}
+
+export function treeStageForDay(day: number): TreeStageForDay {
+  const d = Math.max(1, Math.floor(isFinite(day) ? day : 1));
+  let idx = 0;
+  for (let i = 0; i < TREE_STAGE_START_DAYS.length; i++) {
+    if (d >= TREE_STAGE_START_DAYS[i]) idx = i;
+  }
+  const start = TREE_STAGE_START_DAYS[idx];
+  const nextStart = idx + 1 < TREE_STAGE_START_DAYS.length ? TREE_STAGE_START_DAYS[idx + 1] : null;
+  if (nextStart === null) return { stage: idx + 1, progress: 1, daysToNextStage: null, stageStartDay: start };
+  const progress = Math.min(1, Math.max(0, (d - start) / (nextStart - start)));
+  return { stage: idx + 1, progress, daysToNextStage: nextStart - d, stageStartDay: start };
+}
 
 /** Hao chỉ số mỗi giờ (điểm %) */
 export const DECAY_PER_HOUR = { water: 2.5, sun: 1.8, love: 1.2 };
@@ -99,7 +137,14 @@ export function treeHealth(stats: { water: number; sun: number; love: number }):
     sun: "Cây đang thiếu nắng nè — cho cây tắm nắng đi!",
     love: "Cây đang nhớ yêu thương nè — gửi lời yêu cho cây nhé!",
   };
-  if (min < 20) return { status: "wilted", message: msgs[lowest], lowest };
+  // Héo = cây đang MỆT (chỉ là sức sống hiển thị) — cây vẫn lớn theo ngày yêu
+  // như thường, chăm là để cây tươi lại, không có chuyện "đứng yên tăng trưởng".
+  const wiltMsgs: Record<string, string> = {
+    water: "Cây đang mệt vì khát nước — tưới nước và chăm cây để cây tươi lại nhé!",
+    sun: "Cây đang mệt vì thiếu nắng — cho cây tắm nắng và chăm cây để cây tươi lại nhé!",
+    love: "Cây đang mệt vì thiếu yêu thương — gửi lời yêu và chăm cây để cây tươi lại nhé!",
+  };
+  if (min < 20) return { status: "wilted", message: wiltMsgs[lowest], lowest };
   if (min < 40) return { status: "need", message: msgs[lowest], lowest };
   if (min >= 70) return { status: "happy", message: "Cây đang rất hạnh phúc", lowest };
   return { status: "ok", message: "Cây đang ổn nè. Nhớ chăm đều để cây luôn tươi nhé!", lowest };

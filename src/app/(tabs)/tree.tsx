@@ -3,8 +3,8 @@ import { ScrollView, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { myName, useLove } from "../../lib/store";
-import { COMBO_WINDOW_MS, decideCareLetter, timeAgoText } from "../../lib/features";
-import { careStatus, decayedStats, formatDuration, stageInfo, treeHealth, type CareKind } from "../../lib/tree";
+import { COMBO_WINDOW_MS, dayCount, decideCareLetter, timeAgoText } from "../../lib/features";
+import { TREE_STAGES, careStatus, decayedStats, treeHealth, treeStageForDay, type CareKind } from "../../lib/tree";
 import { PlantScene, MascotArt } from "../../components/Art";
 import { PersonChip, partnerOf } from "../../components/PersonChip";
 import { LetterAndPingPops, useStageUp } from "../../components/Popups";
@@ -13,10 +13,12 @@ import { ClosingBand, IconBtn, ProgressBar, StatBar, StatusChip, s, tabBarPad, u
 
 /**
  * Tab Cây — MỘT Cây Tình Yêu duy nhất của hai đứa.
- * - Bệ cảnh: tranh giai đoạn hiện tại (7 giai đoạn vẽ thật, ~7 ngày nở trọn).
- * - 3 thanh chỉ số Nước/Nắng/Yêu hao theo giờ thật; chăm cây có cooldown 60 giây
- *   mỗi người và VÔ HIỆU khi chỉ số liên quan đã >= 95% — lý do chặn hiện rõ
- *   ngay dưới cụm nút (khóa cứng nằm ở reducer, UI chỉ trình bày lại).
+ * - GIAI ĐOẠN đi theo NGÀY YÊU THẬT (treeStageForDay từ ngày bắt đầu yêu):
+ *   tranh giai đoạn + thanh tiến độ trong giai đoạn đều suy ra từ số ngày.
+ * - 3 thanh chỉ số Nước/Nắng/Yêu là SỨC SỐNG hiển thị, hao theo giờ thật; chăm
+ *   cây có cooldown 60 giây mỗi người và VÔ HIỆU khi chỉ số liên quan đã >= 95%
+ *   — lý do chặn hiện rõ ngay dưới cụm nút (khóa cứng nằm ở reducer, UI chỉ
+ *   trình bày lại). Chăm cây giữ cây tươi khỏe, KHÔNG đổi giai đoạn.
  * - "Song chăm": người ấy chăm trong 90 giây gần đây -> dòng gợi ý combo.
  * - Dấu vết chăm cây: lần chăm gần nhất + nhật ký chăm rút gọn.
  */
@@ -36,7 +38,10 @@ export default function TreeScreen() {
 
   const me = state.currentUser;
   const partner = partnerOf(state);
-  const info = stageInfo(state.tree, now);
+  const day = dayCount(state.couple.startDate, now);
+  const stageForDay = treeStageForDay(day);
+  const stageIdx = stageForDay.stage - 1;
+  const stageDef = TREE_STAGES[stageIdx];
   const stats = decayedStats(state.tree, now);
   const health = treeHealth(stats);
   const statuses = CARE_DEFS.map((d) => ({ def: d, cs: careStatus(state.tree, d.kind, me, now) }));
@@ -59,37 +64,34 @@ export default function TreeScreen() {
         <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
           <View style={{ flex: 1 }}>
             <Text style={s.title}>Cây Tình Yêu</Text>
-            <Text style={[s.sub, { marginTop: 2, fontSize: 13.5 }]}>Cây của hai đứa — lớn theo thời gian thật</Text>
+            <Text style={[s.sub, { marginTop: 2, fontSize: 13.5 }]}>Cây của hai đứa — lớn lên theo ngày yêu</Text>
           </View>
-          <StatusChip label={info.mature ? "Đã nở hoa" : `Giai đoạn ${info.index + 1}/7`} variant={info.mature ? "done" : "accent"} />
+          <StatusChip label={`Giai đoạn ${stageForDay.stage}/7`} variant="accent" />
         </View>
 
         {/* Bệ cảnh cây */}
         <View style={{ backgroundColor: COLOR.gardenWash, borderRadius: RADIUS.scene, borderWidth: 1, borderColor: COLOR.border, overflow: "hidden" }}>
-          <PlantScene stageIndex={info.index} status={health.status} height={308} imgHeight={284} />
+          <PlantScene stageIndex={stageIdx} status={health.status} height={308} imgHeight={284} />
         </View>
 
         {/* Trạng thái + chỉ số */}
         <View style={s.card}>
           <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
-            <Text style={{ ...TYPE.cardTitle, color: COLOR.text, flex: 1 }}>{info.stage.name}</Text>
-            {health.status === "wilted" ? <StatusChip label="Đang héo" variant="waiting" /> : health.status === "need" ? <StatusChip label="Cần chăm" variant="waiting" /> : <StatusChip label="Khỏe mạnh" variant="done" />}
+            <Text style={{ ...TYPE.cardTitle, color: COLOR.text, flex: 1 }}>{stageDef.name}</Text>
+            {health.status === "wilted" ? <StatusChip label="Đang mệt" variant="waiting" /> : health.status === "need" ? <StatusChip label="Cần chăm" variant="waiting" /> : <StatusChip label="Khỏe mạnh" variant="done" />}
           </View>
-          <Text style={{ ...TYPE.body, color: COLOR.textSoft, marginTop: 3 }}>{info.stage.desc}</Text>
-          {!info.mature && info.next ? (
-            <>
-              <View style={{ marginTop: 12 }}>
-                <ProgressBar value={info.progressInStage} color={ROLE.partner} height={8} />
-              </View>
-              <Text style={{ fontFamily: FONT.regular, fontSize: 12.5, color: COLOR.textSoft, marginTop: 6 }}>
-                {`Còn khoảng ${formatDuration(info.remainingToNextMs)} tăng trưởng nữa là lên "${info.next.name}" — chăm cây giúp cây lớn nhanh hơn.`}
-              </Text>
-            </>
-          ) : (
-            <Text style={{ fontFamily: FONT.regular, fontSize: 12.5, color: COLOR.successText, marginTop: 8 }}>
-              Cây đã nở hoa trọn vẹn rồi. Cứ chăm đều để cây luôn tươi và thỉnh thoảng làm rơi thư tình nhé.
-            </Text>
-          )}
+          <Text style={{ ...TYPE.body, color: COLOR.textSoft, marginTop: 3 }}>{stageDef.desc}</Text>
+          <View style={{ marginTop: 12 }}>
+            <ProgressBar value={Math.round(stageForDay.progress * 100)} color={ROLE.partner} height={8} />
+          </View>
+          <Text style={{ fontFamily: FONT.regular, fontSize: 12.5, color: COLOR.textSoft, marginTop: 6 }}>
+            {stageForDay.daysToNextStage != null
+              ? `Ngày ${day} · còn ${stageForDay.daysToNextStage} ngày nữa cây lên giai đoạn mới`
+              : `Ngày ${day} · cây đang ở giai đoạn cao nhất rồi`}
+          </Text>
+          <Text style={{ fontFamily: FONT.regular, fontSize: 12.5, color: COLOR.textFaint, marginTop: 3 }}>
+            Cây lớn lên theo thời gian yêu của hai bạn — chăm cây là để cây luôn tươi khỏe.
+          </Text>
           <View style={{ marginTop: 14, gap: 10 }}>
             <StatBar label="Nước" value={stats.water} color={COLOR.water} />
             <StatBar label="Nắng" value={stats.sun} color={COLOR.sun} />
@@ -162,7 +164,7 @@ export default function TreeScreen() {
         </View>
 
         {health.status === "wilted" ? (
-          <ClosingBand art={<MascotArt size={64} />} line="Cây đang héo vì chỉ số xuống quá thấp — tưới nước, phơi nắng và gửi lời yêu ngay, cây sẽ hồi lại thôi." />
+          <ClosingBand art={<MascotArt size={64} />} line="Cây đang mệt vì chỉ số xuống quá thấp — tưới nước, phơi nắng và gửi lời yêu để cây tươi lại nhé. Cây vẫn lớn theo ngày yêu như thường." />
         ) : null}
         {!hydrated ? <Text style={{ textAlign: "center", color: COLOR.textFaint, fontFamily: FONT.regular, fontSize: 12.5 }}>Đang tải khu vườn...</Text> : null}
       </ScrollView>

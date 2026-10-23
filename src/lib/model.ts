@@ -34,7 +34,7 @@ export const defaultState: AppState = {
   avatarA: "svg-a",
   avatarB: "svg-b",
   currentUser: "A",
-  couple: { startDate: today(), startSetAt: "", startSetBy: "", celebrated: [], pairedAt: new Date().toISOString() },
+  couple: { startDate: today(), startSetAt: "", startSetBy: "", celebrated: [], celebratedStages: [], pairedAt: new Date().toISOString() },
   tree: createTree(),
   notes: [],
   noteLog: { A: "", B: "" },
@@ -124,11 +124,15 @@ export function normalizeState(rawInput: unknown): AppState {
     : isValidDateKey(raw.startDate) ? (raw.startDate as string)
     : base.couple.startDate;
   const celebratedRaw = Array.isArray(rawCouple.celebrated) ? rawCouple.celebrated : [];
+  const celebratedStagesRaw = Array.isArray(rawCouple.celebratedStages) ? rawCouple.celebratedStages : [];
   base.couple = {
     startDate,
     startSetAt: strOr(rawCouple.startSetAt, ""),
     startSetBy: slotOr(rawCouple.startSetBy),
     celebrated: [...new Set(celebratedRaw.map((n) => Math.floor(finiteNum(n, 0))).filter((n) => MILESTONES.includes(n)))],
+    // Mặc định [] cho dữ liệu cũ: cặp đôi đang ở giai đoạn nào sẽ nhận đúng MỘT
+    // lá thư "lên giai đoạn" cho giai đoạn hiện tại ở lần mở app đầu tiên.
+    celebratedStages: [...new Set(celebratedStagesRaw.map((n) => Math.floor(finiteNum(n, 0))).filter((n) => n >= 1 && n <= 7))].sort((a, b) => a - b),
     pairedAt: strOr(rawCouple.pairedAt, "") || base.couple.pairedAt,
   };
 

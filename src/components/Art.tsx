@@ -5,11 +5,18 @@ import heroSrc from "../../assets/art/couple-hero.webp";
 import letterSrc from "../../assets/art/couple-letter.webp";
 import mascotSrc from "../../assets/art/mascot-mam.webp";
 import mailboxSrc from "../../assets/art/mailbox-wings.webp";
+import homeGardenSceneSrc from "../../assets/art/home-garden-scene.webp";
+
+/** Bản đồ tranh cảnh dùng theo khóa (các tranh lẻ còn lại import trực tiếp bên dưới). */
+export const ART = {
+  homeGardenScene: homeGardenSceneSrc,
+} as const;
 
 /**
  * Tranh vẽ thật của app (assets/art/**.webp, giải mã từ .webp.b64 bằng
- * scripts/decode-art.mjs). Bản rebuild chỉ dùng: hero cặp đôi, thư tình,
- * mascot Mầm, hộp thư, 7 giai đoạn Cây Tình Yêu, 12 avatar, 12 mặt mood, phong bì.
+ * scripts/decode-art.mjs). Bản rebuild chỉ dùng: cảnh vườn Home, hero cặp đôi,
+ * thư tình, mascot Mầm, hộp thư, 7 giai đoạn Cây Tình Yêu, 12 avatar, 12 mặt
+ * mood, phong bì.
  */
 
 // Màu nền đo trực tiếp từ góc tranh — khung bọc dùng đúng màu này để tranh hoà vào khung.
@@ -18,6 +25,23 @@ export const ART_BG = {
   mascot: "#fdf6df",
   mailbox: "#fbf2e7",
 } as const;
+
+/**
+ * Cảnh vườn cho HERO Trang Nhà (từ 2026-10-23): hai cây hoa đan tán thành hình
+ * trái tim, lối đi đá, nắng vàng — tranh FULL-BLEED phủ kín khối hero, chữ
+ * "Ngày N" nằm trên lớp scrim mềm ở đáy do màn Home tự chồng lên.
+ */
+export function HomeGardenScene({ height = 320 }: { height?: number }) {
+  return (
+    <Image
+      source={ART.homeGardenScene}
+      style={{ width: "100%", height }}
+      contentFit="cover"
+      contentPosition={{ top: "30%" }}
+      accessibilityLabel="Hai cây hoa đan vào nhau thành hình trái tim trong khu vườn đầy nắng"
+    />
+  );
+}
 
 // Dải tranh hero: tranh là một DẢI CẢNH phía trên tấm giấy "Ngày N" —
 // neo điểm lấy nét ở 28% chiều cao tranh như mockup đã duyệt.

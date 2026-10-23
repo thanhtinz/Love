@@ -1,7 +1,7 @@
 import {
   AppState, LetterMoment, PersonId, dayKeyLocal, localDayNumber, parseDateKey,
 } from "./types";
-import { CARE_BOOST_MS, TREE_STAGE_COUNT, materializeTree, stageIndexForGrowth, stageInfo } from "./tree";
+import { treeStageForDay } from "./tree";
 import { makeLetterMoment } from "./content";
 
 /**
@@ -41,11 +41,13 @@ export const CARE_MILESTONES: number[] = [10, 25, 50, 100, 150, 200, 300, 500, 7
  * Quyết định thư rơi cho MỘT lần chăm sắp thực hiện (gọi TRƯỚC khi dispatch, bằng
  * state hiện tại — máy người chăm là nơi duy nhất rút ngẫu nhiên; kết quả ghi vào
  * state nên máy kia nhận đúng lá thư đó, không rút lại):
- * - Chăm làm cây LÊN GIAI ĐOẠN -> chắc chắn rơi (Hiếm; trưởng thành 50% Huyền thoại).
  * - Combo Song chăm: người ấy chăm trong 90 giây gần nhất VÀ sau lần chăm cuối của
  *   mình (mỗi lần chăm của người ấy chỉ "kích hoạt" tối đa 1 combo) -> Hiếm.
  * - Tổng lần chăm chạm mốc -> Hiếm.
- * - Còn lại ~35%: Thường (cây ở giai đoạn >= 4 thêm 18% cơ hội Huyền thoại).
+ * - Còn lại ~35%: Thường (cây ở giai đoạn >= 5 theo NGÀY YÊU thêm 18% cơ hội Huyền thoại).
+ * LƯU Ý: chăm cây KHÔNG còn làm cây lên giai đoạn — giai đoạn đi theo ngày yêu
+ * (treeStageForDay) và thư "lên giai đoạn" rơi riêng khi mở app
+ * (CELEBRATE_TREE_STAGE), không qua hàm này nữa.
  */
 export function decideCareLetter(state: AppState, kind: "water" | "sun" | "love" | "bug", nowMs: number = Date.now()): { drop: LetterMoment | null; combo: boolean } {
   const me = state.currentUser;
@@ -55,22 +57,14 @@ export function decideCareLetter(state: AppState, kind: "water" | "sun" | "love"
   const myLast = state.tree.lastCareAtBy[me] ? new Date(state.tree.lastCareAtBy[me]).getTime() : 0;
   const combo = partnerLast > 0 && nowMs - partnerLast < COMBO_WINDOW_MS && partnerLast > myLast;
 
-  const mat = materializeTree(state.tree, nowMs);
-  const before = stageInfo(mat, nowMs).index;
-  const boostedGrowth = mat.matureAt ? mat.growthRecordedMs : mat.growthRecordedMs + CARE_BOOST_MS[kind];
-  const stageUp = stageIndexForGrowth(boostedGrowth) > before;
   const newCareTotal = state.tree.careCount + 1;
   const isMilestone = CARE_MILESTONES.includes(newCareTotal);
 
-  if (stageUp) {
-    const willMature = stageIndexForGrowth(boostedGrowth) >= TREE_STAGE_COUNT - 1;
-    const rarity = willMature && Math.random() < 0.5 ? "legendary" : "rare";
-    return { drop: makeLetterMoment(rarity, willMature ? "Cây trưởng thành" : "Lên giai đoạn mới", me, atIso), combo };
-  }
   if (combo) return { drop: makeLetterMoment("rare", "Combo Song chăm", me, atIso), combo };
   if (isMilestone) return { drop: makeLetterMoment("rare", `Mốc ${newCareTotal} lần chăm`, me, atIso), combo };
   if (Math.random() < 0.35) {
-    const rarity = before >= 4 && Math.random() < 0.18 ? "legendary" : "common";
+    const stageNow = treeStageForDay(dayCount(state.couple.startDate, nowMs)).stage;
+    const rarity = stageNow >= 5 && Math.random() < 0.18 ? "legendary" : "common";
     return { drop: makeLetterMoment(rarity, "Rơi khi chăm cây", me, atIso), combo };
   }
   return { drop: null, combo };

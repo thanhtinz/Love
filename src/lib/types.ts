@@ -111,7 +111,8 @@ export interface TreePlant {
   lastCareBySlot: PersonId | "";
   /** Lần chăm gần nhất của TỪNG NGƯỜI — phục vụ cooldown 60s/người + combo Song chăm 90s */
   lastCareAtBy: { A: string; B: string };
-  /** Giai đoạn đã thông báo (để bắn thư/mừng lên giai đoạn đúng 1 lần) */
+  /** TRƯỜNG CŨ (bản tăng trưởng): giai đoạn đã thông báo theo điểm lớn. Giữ để
+   *  tương thích dữ liệu đã lưu — bản theo-ngày-yêu dùng couple.celebratedStages. */
   announcedStage: number;
   matureAt: string;
 }
@@ -190,6 +191,9 @@ export interface AppState {
     startSetBy: PersonId | "";
     /** Các mốc ngày (100/200/...) đã ghi nhận ăn mừng — hợp nhất 2 máy, bắn đúng 1 lần */
     celebrated: number[];
+    /** Các GIAI ĐOẠN CÂY (1..7, theo ngày yêu — treeStageForDay) đã ăn mừng bằng
+     *  thư rơi: union-merge 2 máy, mỗi giai đoạn bắn đúng 1 lần khi mở app. */
+    celebratedStages: number[];
     pairedAt: string;
   };
   /** CORE 2 — cây tình yêu */

@@ -114,6 +114,7 @@ export function mergeStates(local: AppState, remote: AppState, mySlot: PersonId)
     startSetAt: coupleSide.couple.startSetAt,
     startSetBy: coupleSide.couple.startSetBy,
     celebrated: [...new Set([...local.couple.celebrated, ...remote.couple.celebrated])].sort((a, b) => a - b),
+    celebratedStages: [...new Set([...(local.couple.celebratedStages || []), ...(remote.couple.celebratedStages || [])])].sort((a, b) => a - b),
     pairedAt: [local.couple.pairedAt, remote.couple.pairedAt].filter(Boolean).sort()[0] || "",
   };
   if (coupleSide === remote) stampFrom("couple", remote); else stampFrom("couple", local);

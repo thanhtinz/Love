@@ -5,7 +5,8 @@ import { Ionicons } from "@expo/vector-icons";
 import type { AppState } from "../lib/types";
 import { PING_POP_COOLDOWN_MS } from "../lib/types";
 import { makeStageUpLetter, messageById } from "../lib/content";
-import { stageInfo } from "../lib/tree";
+import { dayCount } from "../lib/features";
+import { TREE_STAGE_COUNT, treeStageForDay } from "../lib/tree";
 import { useLove } from "../lib/store";
 import type { Action } from "../lib/store";
 import { personOf } from "./PersonChip";
@@ -21,8 +22,9 @@ import { COLOR, FONT, RADIUS, SHADOW_FLOAT } from "./theme";
  *    thư/bộ sưu tập — đóng là xong, chỉ còn dòng dấu vết trong nhật ký.
  * 2) PingPop — nhịp tim "Nhớ bạn" của người ấy: hiện khi chuỗi nhịp mới tới,
  *    tối đa 1 lần/30 giây phía người nhận, tự tắt sau 6 giây.
- * 3) useStageUp — khi cây lên giai đoạn mới mà announcedStage chưa theo kịp
- *    (kể cả do người ấy chăm), dispatch STAGE_UP để ghi nhận + rơi thư xác định.
+ * 3) useStageUp — giai đoạn cây đi theo NGÀY YÊU: khi giai đoạn suy ra từ ngày
+ *    yêu vượt mọi giai đoạn đã ăn mừng (couple.celebratedStages), dispatch
+ *    CELEBRATE_TREE_STAGE đúng 1 lần để rơi lá thư xác định của giai đoạn đó.
  */
 
 const letterSeenKey = (roomCode: string) => `love-letter-seen-${roomCode}`;
@@ -60,7 +62,7 @@ export function LetterPop() {
           <LetterEnvelopeImage size={64} />
           <Text style={{ fontFamily: FONT.extrabold, fontSize: 17, color: COLOR.text, marginTop: 10, textAlign: "center" }}>Một lá thư vừa rơi xuống</Text>
           <Text style={{ fontFamily: FONT.regular, fontSize: 13, color: COLOR.textSoft, marginTop: 3, textAlign: "center" }}>
-            {letter.source} · {by.name} vừa chăm cây
+            {letter.source} · {by.name}
           </Text>
           <Text style={{ fontFamily: FONT.semibold, fontSize: 16.5, lineHeight: 25, color: COLOR.text, textAlign: "center", marginTop: 14 }}>{msg.text}</Text>
           <TouchableOpacity onPress={close} style={{ backgroundColor: COLOR.primary, borderRadius: RADIUS.control, minHeight: 48, paddingHorizontal: 22, alignItems: "center", justifyContent: "center", marginTop: 18 }} accessibilityRole="button" accessibilityLabel="Giữ lấy yêu thương">
@@ -123,18 +125,22 @@ export function PingPop() {
   );
 }
 
-/** Theo dõi cây lên giai đoạn: ghi nhận announcedStage + cho rơi lá thư xác định của giai đoạn. */
+/**
+ * Theo dõi cây lên giai đoạn THEO NGÀY YÊU: giai đoạn hiện tại (treeStageForDay
+ * từ couple.startDate) vượt giai đoạn đã ăn mừng lớn nhất -> ăn mừng đúng 1 lần:
+ * rơi lá thư xác định của giai đoạn + ghi celebratedStages (kèm nhật ký ở
+ * reducer). Cặp đôi cũ (celebratedStages mặc định []) sẽ nhận đúng 1 lá thư cho
+ * giai đoạn hiện tại ở lần mở app đầu tiên — như một lời chào mừng lên giai đoạn.
+ */
 export function useStageUp(state: AppState, dispatch: React.Dispatch<Action>) {
-  const info = stageInfo(state.tree);
-  const announced = state.tree.announcedStage;
-  const letterAt = state.lastLetter?.at || "";
+  const day = dayCount(state.couple.startDate);
+  const { stage } = treeStageForDay(day);
+  const celebratedMax = state.couple.celebratedStages.reduce((a, b) => Math.max(a, b), 0);
   useEffect(() => {
-    if (info.index <= announced) return;
-    // Vừa có thư rơi từ lần chăm trong 2 phút qua thì không rơi thêm lá thứ hai.
-    const freshLetter = letterAt && Date.now() - new Date(letterAt).getTime() < 120000;
-    const drop = freshLetter ? null : makeStageUpLetter(info.index, info.mature, state.currentUser, new Date().toISOString());
-    dispatch({ type: "STAGE_UP", stageIndex: info.index, drop });
-  }, [info.index, info.mature, announced, letterAt, state.currentUser, dispatch]);
+    if (stage <= celebratedMax) return;
+    const drop = makeStageUpLetter(stage - 1, stage >= TREE_STAGE_COUNT, state.currentUser, new Date().toISOString());
+    dispatch({ type: "CELEBRATE_TREE_STAGE", stage, drop });
+  }, [stage, celebratedMax, state.currentUser, dispatch]);
 }
 
 export function LetterAndPingPops() {

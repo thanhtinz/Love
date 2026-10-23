@@ -15,7 +15,7 @@ import { ClosingBand, FeatureCard, ProgressBar, s, tabBarPad } from "../../compo
  * Tab "Hai đứa" — hub của cặp đôi trong bản rebuild:
  * - Thẻ hồ sơ navy "Chúng mình": avatar hai người, Ngày N, ngày bắt đầu, mốc tiếp theo.
  * - Sửa ngày bắt đầu yêu ngay tại đây (cả hai đều sửa được, máy kia thấy qua nhật ký).
- * - Hàng Định vị tạm thời (kèm trạng thái phiên đang chạy) -> /location.
+ * - Hàng Bản đồ hai đứa (kèm trạng thái phiên đang chạy) -> /location.
  * - Hàng Tài khoản & ghép cặp -> /account.
  * - Nhật ký hoạt động của 5 lõi (chăm cây, note, nhịp nhớ, cột mốc, vị trí).
  */
@@ -117,12 +117,12 @@ export default function CoupleScreen() {
         <View style={{ gap: SPACE.cardGap }}>
           <FeatureCard
             icon="location"
-            title="Định vị tạm thời"
+            title="Bản đồ hai đứa"
             desc={partnerShare.active
-              ? `${partner.name} đang chia sẻ vị trí — chạm để xem khoảng cách và thời gian còn lại.`
+              ? `${partner.name} đang chia sẻ vị trí — chạm để xem bản đồ, khoảng cách và thời gian còn lại.`
               : myShare.active
-                ? "Bạn đang chia sẻ vị trí — chạm để xem hoặc dừng phiên."
-                : "Chia sẻ vị trí trong 15 phút, 1 giờ, 4 giờ hoặc đến khi tự tắt. Không theo dõi nền."}
+                ? "Bạn đang chia sẻ vị trí — chạm để xem bản đồ hoặc dừng phiên."
+                : "Xem vị trí của nhau trên bản đồ khi đang chia sẻ tạm thời (15 phút, 1 giờ, 4 giờ hoặc đến khi tự tắt). Không theo dõi nền."}
             route="/location"
             badge={shareBadge}
             badgeVariant="partner"
