@@ -28,6 +28,8 @@ function Navigator() {
       <Stack.Screen name="games/catch-hearts" />
       <Stack.Screen name="games/spin-wheel" />
       <Stack.Screen name="games/quiz" />
+      <Stack.Screen name="games/memory-match" />
+      <Stack.Screen name="games/love-dice" />
       <Stack.Screen name="utilities/mood" />
       <Stack.Screen name="utilities/daily-question" />
       <Stack.Screen name="utilities/love-notes" />

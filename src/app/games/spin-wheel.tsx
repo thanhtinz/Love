@@ -7,6 +7,7 @@ import { MAX_DAILY_SPINS, SPIN_MISSIONS, SPIN_SEGMENTS } from "../../lib/data";
 import { today, uid } from "../../lib/types";
 import { PersonChip, partnerOf } from "../../components/PersonChip";
 import { C, ScreenHeader, s } from "../../components/ui";
+import { HeartGameImage } from "../../components/Art";
 
 function wedgePath(cx: number, cy: number, r: number, a0: number, a1: number): string {
   const p = (a: number) => [cx + r * Math.cos(a), cy + r * Math.sin(a)];
@@ -96,13 +97,19 @@ export default function SpinWheelScreen() {
         <View style={[s.card, { alignItems: "center" }]}>
           <View style={{ alignItems: "center", marginTop: 2 }}>
             <View style={styles.pointer}><Ionicons name="caret-down" size={30} color={C.pinkDark} /></View>
-            {/* Vòng quay sạch theo spec mockup — không vành cánh hoa trang trí */}
-            <View style={{ width: 240, height: 240 }}>
-              <Animated.View style={{ position: "absolute", left: 0, top: 0, transform: [{ rotate: rot.interpolate({ inputRange: [0, 360], outputRange: ["0deg", "360deg"] }) }] }}>{wheel}</Animated.View>
-              <View style={[styles.wheelCenter, { top: 99, left: 99, alignSelf: "auto" }]}><Ionicons name="heart" size={22} color="#fff" /></View>
+            {/* Vòng quay sạch theo spec mockup — không vành cánh hoa trang trí; chỉ thêm
+                vòng đệm mềm + bóng đổ nhẹ quanh bánh xe cho có chiều sâu. */}
+            <View style={styles.wheelRing}>
+              <View style={{ width: 240, height: 240 }}>
+                <Animated.View style={{ position: "absolute", left: 0, top: 0, transform: [{ rotate: rot.interpolate({ inputRange: [0, 360], outputRange: ["0deg", "360deg"] }) }] }}>{wheel}</Animated.View>
+                <View style={[styles.wheelCenter, { top: 99, left: 99, alignSelf: "auto" }]}><HeartGameImage size={27} /></View>
+              </View>
             </View>
           </View>
-          {result ? <Text style={{ textAlign: "center", color: C.pinkDark, fontFamily: "BeVietnamPro_700Bold", marginTop: 10, lineHeight: 19 }}>{result}</Text> : null}
+          {/* Vùng kết quả có chiều cao tối thiểu cố định — bố cục không nhảy khi có/chưa có kết quả */}
+          <View style={{ minHeight: 42, justifyContent: "center", marginTop: 10, alignSelf: "stretch" }}>
+            {result ? <Text style={{ textAlign: "center", color: C.pinkDark, fontFamily: "BeVietnamPro_700Bold", lineHeight: 19 }}>{result}</Text> : null}
+          </View>
           <TouchableOpacity style={[s.btn, { marginTop: 12, alignSelf: "stretch" }, (spinning || left <= 0) && { opacity: 0.5 }]} onPress={spin} disabled={spinning || left <= 0}>
             <Ionicons name="refresh" size={16} color="#fff" /><Text style={s.btnText}>{spinning ? "Đang quay..." : left <= 0 ? "Bạn đã hết lượt hôm nay" : "Quay ngay"}</Text>
           </TouchableOpacity>
@@ -114,5 +121,11 @@ export default function SpinWheelScreen() {
 
 const styles = StyleSheet.create({
   pointer: { marginBottom: -16, zIndex: 2 },
-  wheelCenter: { position: "absolute", top: 113, alignSelf: "center", backgroundColor: C.pink, width: 42, height: 42, borderRadius: 21, alignItems: "center", justifyContent: "center", borderWidth: 3, borderColor: "#fff" },
+  wheelRing: {
+    width: 256, height: 256, borderRadius: 128, backgroundColor: "#fff",
+    borderWidth: 2, borderColor: "#FCE7F1",
+    alignItems: "center", justifyContent: "center",
+    shadowColor: "#d6336c", shadowOpacity: 0.14, shadowRadius: 14, shadowOffset: { width: 0, height: 4 }, elevation: 3,
+  },
+  wheelCenter: { position: "absolute", top: 113, alignSelf: "center", backgroundColor: C.pink, width: 42, height: 42, borderRadius: 21, alignItems: "center", justifyContent: "center", borderWidth: 3, borderColor: "#fff", overflow: "hidden" },
 });

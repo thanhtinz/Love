@@ -2,10 +2,18 @@ import React, { useState } from "react";
 import { ScrollView, Text, TouchableOpacity, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useLove } from "../../lib/store";
-import { DATE_IDEAS } from "../../lib/data";
-import { CONTENT_ADD_MIN_INTERVAL_MS, uid } from "../../lib/types";
+import { DATE_IDEAS, moodLabel } from "../../lib/data";
+import { CONTENT_ADD_MIN_INTERVAL_MS, today, uid } from "../../lib/types";
 import { selfOf } from "../../components/PersonChip";
-import { C, ScreenHeader, s, useNow } from "../../components/ui";
+import { C, ScreenHeader, Segmented, s, useNow } from "../../components/ui";
+
+type Budget = "save" | "mid" | "comfy";
+const BUDGET_TIP: Record<Budget, string> = {
+  save: "Ngân sách tiết kiệm: ưu tiên không gian mở/ở nhà, chi phí gần như 0đ.",
+  mid: "Ngân sách vừa phải: thêm một món ăn nhẹ hoặc ly nước yêu thích (~100–200k).",
+  comfy: "Ngân sách thoải mái: kết hợp ăn tối ngoài + hoạt động chính (~300–500k).",
+};
+const BUDGET_LABEL: Record<Budget, string> = { save: "Tiết kiệm", mid: "Vừa phải", comfy: "Thoải mái" };
 
 export default function DateIdeasScreen() {
   const { state, dispatch } = useLove();
@@ -24,10 +32,64 @@ export default function DateIdeasScreen() {
     setTimeout(() => setSavedMsg(""), 2500);
   }
 
+  /* ----- KẾ HOẠCH HẸN TỐI NAY: ghép từ mood hôm nay của CẢ HAI + ngân sách + kho ý tưởng ----- */
+  const [budget, setBudget] = useState<Budget>("mid");
+  const [planIdx, setPlanIdx] = useState(() => Math.floor(Math.random() * DATE_IDEAS.length));
+  const [savedPlanMsg, setSavedPlanMsg] = useState("");
+  const moodsToday = state.moods.date === today() ? state.moods : { A: "", B: "" };
+  const planIdea = DATE_IDEAS[planIdx % DATE_IDEAS.length];
+  const moodLine = moodsToday.A && moodsToday.B
+    ? `Mood hôm nay: ${state.personA} đang "${moodLabel(moodsToday.A)}", ${state.personB} đang "${moodLabel(moodsToday.B)}" — hoạt động dưới đây hợp với cả hai mood này.`
+    : moodsToday.A || moodsToday.B
+      ? `Mới có một người chọn mood hôm nay (${moodLabel(moodsToday.A || moodsToday.B)}) — kế hoạch cân bằng để người còn lại cũng dễ hoà nhịp.`
+      : "Hai đứa chưa chọn mood hôm nay — kế hoạch cân bằng, nhẹ nhàng cho cả hai.";
+  const planText = `Hẹn tối nay: ${planIdea.text} · ${BUDGET_LABEL[budget]}`;
+
+  function reshufflePlan() {
+    setPlanIdx((v) => {
+      let n = Math.floor(Math.random() * DATE_IDEAS.length);
+      if (DATE_IDEAS.length > 1 && n === v % DATE_IDEAS.length) n = (n + 1) % DATE_IDEAS.length;
+      return n;
+    });
+  }
+  function savePlan() {
+    if (addWaitMs > 0) return;
+    dispatch({ type: "ADD_BUCKET", item: { id: uid(), text: planText, done: false, createdAt: new Date().toISOString(), authorSlot: me.slot } });
+    setSavedPlanMsg("Đã lưu kế hoạch tối nay vào Bucket List.");
+    setTimeout(() => setSavedPlanMsg(""), 2500);
+  }
+
   return (
     <View style={s.screen}>
-      <ScreenHeader title="Gợi ý hẹn hò" subtitle="Ý tưởng ngẫu nhiên cho buổi hẹn tiếp theo của hai bạn" />
+      <ScreenHeader title="Gợi ý hẹn hò" subtitle="Kế hoạch tối nay theo mood của hai đứa + ý tưởng ngẫu nhiên" />
       <ScrollView contentContainerStyle={s.scroll}>
+        {/* KẾ HOẠCH TỐI NAY */}
+        <View style={[s.card, { gap: 9 }]}>
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+            <Ionicons name="moon" size={19} color={C.violet} />
+            <Text style={s.cardTitle}>Kế hoạch hẹn tối nay</Text>
+          </View>
+          <Text style={s.sub}>{moodLine}</Text>
+          <Segmented
+            options={[{ id: "save" as const, label: "Tiết kiệm" }, { id: "mid" as const, label: "Vừa phải" }, { id: "comfy" as const, label: "Thoải mái" }]}
+            value={budget}
+            onChange={setBudget}
+          />
+          <View style={{ alignItems: "center", gap: 6, backgroundColor: "#F5F3FF", borderRadius: 14, padding: 14 }}>
+            <Ionicons name={planIdea.icon as never} size={34} color={C.violet} />
+            <Text style={{ fontSize: 16, fontFamily: "BeVietnamPro_900Black", color: C.text, textAlign: "center", lineHeight: 23 }}>{planIdea.text}</Text>
+            <Text style={[s.small, { textAlign: "center" }]}>{BUDGET_TIP[budget]}</Text>
+          </View>
+          <TouchableOpacity style={s.btn} onPress={reshufflePlan}>
+            <Ionicons name="shuffle" size={16} color="#fff" /><Text style={s.btnText}>Tạo kế hoạch khác</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={[s.btnGhost, addWaitMs > 0 && { opacity: 0.5 }]} disabled={addWaitMs > 0} onPress={savePlan}>
+            <Ionicons name="bookmark" size={15} color={C.pinkDark} /><Text style={s.btnGhostText}>{addWaitMs > 0 ? `Chờ ${Math.ceil(addWaitMs / 1000)}s để lưu tiếp` : "Lưu kế hoạch vào Bucket List"}</Text>
+          </TouchableOpacity>
+          {savedPlanMsg ? <Text style={{ textAlign: "center", color: C.pinkDark, fontFamily: "BeVietnamPro_700Bold" }}>{savedPlanMsg}</Text> : null}
+        </View>
+
+        {/* Ý TƯỞNG NGẪU NHIÊN (giữ nguyên như trước) */}
         <View style={[s.card, { alignItems: "center", backgroundColor: "#fff7ed", borderColor: "#fed7aa", gap: 9, paddingVertical: 22 }]}>
           <Ionicons name={idea.icon as never} size={46} color="#ea580c" />
           <Text style={{ fontSize: 17, fontFamily: "BeVietnamPro_900Black", color: C.text, textAlign: "center", lineHeight: 24 }}>{idea.text}</Text>

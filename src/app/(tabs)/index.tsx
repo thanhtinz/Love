@@ -109,16 +109,24 @@ export default function HomeScreen() {
         <View style={{ position: "absolute", top: 14, left: 16 }}>
           <Text style={{ ...TYPE.display, color: ROLE.shared }}>Ngày {days}</Text>
         </View>
-        <View style={{ position: "absolute", left: 12, bottom: 12, flexDirection: "row", alignItems: "center", gap: 8, backgroundColor: "rgba(255,255,255,0.9)", borderRadius: RADIUS.pill, paddingVertical: 5, paddingLeft: 5, paddingRight: 14 }}>
+        {/* Pill đáy hero: neo CẢ left:12 và right:12 — trước đây chỉ neo trái + 1 dòng chữ
+            không giới hạn nên tên dài bị tràn/cắt ở mép phải. Nay: avatar cố định bên trái,
+            cột chữ flex:1 gồm 2 dòng (tên hai người / ngày bắt đầu), dòng tên tự "..." ở đuôi. */}
+        <View style={{ position: "absolute", left: 12, right: 12, bottom: 12, flexDirection: "row", alignItems: "center", gap: 8, backgroundColor: "rgba(255,255,255,0.9)", borderRadius: RADIUS.pill, paddingVertical: 5, paddingLeft: 5, paddingRight: 14 }}>
           <View style={{ flexDirection: "row", alignItems: "center" }}>
             <Avatar id={state.avatarA} size={26} />
             <View style={{ marginLeft: -8, borderWidth: 2, borderColor: "#fff", borderRadius: 999 }}>
               <Avatar id={state.avatarB} size={26} />
             </View>
           </View>
-          <Text style={{ fontFamily: FONT.semibold, fontSize: 12.5, color: COLOR.text }} numberOfLines={1}>
-            {state.personA} & {state.personB} · bên nhau từ {new Date(state.startDate + "T00:00:00").toLocaleDateString("vi-VN")}
-          </Text>
+          <View style={{ flex: 1, minWidth: 0 }}>
+            <Text style={{ fontFamily: FONT.semibold, fontSize: 13, color: COLOR.text }} numberOfLines={1} ellipsizeMode="tail">
+              {state.personA} & {state.personB}
+            </Text>
+            <Text style={{ fontFamily: FONT.medium, fontSize: 11, color: COLOR.textSoft }} numberOfLines={1}>
+              Bên nhau từ {new Date(state.startDate + "T00:00:00").toLocaleDateString("vi-VN")}
+            </Text>
+          </View>
         </View>
       </View>
 

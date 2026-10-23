@@ -7,8 +7,9 @@ import { PersonChip, personLabel } from "../../components/PersonChip";
 import { C, ScreenHeader, s } from "../../components/ui";
 import { HeartGameImage } from "../../components/Art";
 
-interface FlyHeart { id: string; left: number; dur: number; anim: Animated.Value }
+interface FlyHeart { id: string; left: number; dur: number; golden: boolean; anim: Animated.Value }
 const AREA_H = 340;
+const RUN_MS = 30000;
 
 export default function CatchHeartsScreen() {
   const { state, dispatch } = useLove();
@@ -17,55 +18,98 @@ export default function CatchHeartsScreen() {
   const [phase, setPhase] = useState<"idle" | "playing" | "done">("idle");
   const [hearts, setHearts] = useState<FlyHeart[]>([]);
   const [score, setScore] = useState(0);
+  const [goldenCount, setGoldenCount] = useState(0);
   const [timeLeft, setTimeLeft] = useState(30);
+  const [firstBonus, setFirstBonus] = useState(0);
   const scoreRef = useRef(0);
-  const timers = useRef<ReturnType<typeof setInterval>[]>([]);
+  const goldenRef = useRef(0);
+  /** Số lượt chơi hôm nay của người chơi TRƯỚC lượt này — chụp tại start() để biết có phải lượt đầu không. */
+  const playsBeforeRef = useRef(0);
+  const startAtRef = useRef(0);
+  const spawnTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const clockTimer = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const wk = weekKey();
   const best = state.games.heartBest.week === wk ? state.games.heartBest : { A: 0, B: 0 };
   const plays = state.games.heartPlays.date === today() ? state.games.heartPlays : { A: 0, B: 0 };
 
-  function cleanup() { timers.current.forEach(clearInterval); timers.current = []; }
+  function cleanup() {
+    if (spawnTimer.current) { clearTimeout(spawnTimer.current); spawnTimer.current = null; }
+    if (clockTimer.current) { clearInterval(clockTimer.current); clockTimer.current = null; }
+  }
   useEffect(() => cleanup, []);
 
   function start() {
     cleanup();
-    scoreRef.current = 0; setScore(0); setHearts([]); setTimeLeft(30); setPhase("playing");
-    const endAt = Date.now() + 30000;
-    const spawn = setInterval(() => {
-      const h: FlyHeart = { id: uid(), left: 4 + Math.random() * 84, dur: 2000 + Math.random() * 1300, anim: new Animated.Value(-50) };
+    playsBeforeRef.current = state.games.heartPlays.date === today() ? state.games.heartPlays[me] : 0;
+    scoreRef.current = 0; goldenRef.current = 0;
+    setScore(0); setGoldenCount(0); setFirstBonus(0); setHearts([]); setTimeLeft(30); setPhase("playing");
+    startAtRef.current = Date.now();
+    const endAt = startAtRef.current + RUN_MS;
+
+    // Độ khó tăng dần: nhịp sinh tim rút ngắn + tim rơi nhanh hơn theo thời gian đã chơi.
+    const spawnNext = () => {
+      const elapsed = Date.now() - startAtRef.current;
+      if (elapsed >= RUN_MS) return;
+      const progress = Math.min(1, elapsed / RUN_MS);
+      const golden = Math.random() < 0.10;
+      const h: FlyHeart = {
+        id: uid(),
+        left: 4 + Math.random() * 84,
+        dur: (2300 - 900 * progress) + Math.random() * (1000 - 500 * progress),
+        golden,
+        anim: new Animated.Value(-56),
+      };
       setHearts((prev) => [...prev.slice(-14), h]);
       Animated.timing(h.anim, { toValue: AREA_H + 30, duration: h.dur, easing: Easing.linear, useNativeDriver: true }).start(({ finished }) => {
         if (finished) setHearts((prev) => prev.filter((x) => x.id !== h.id));
       });
-    }, 480);
-    const clock = setInterval(() => {
+      const delay = Math.max(230, 500 - elapsed * 0.009);
+      spawnTimer.current = setTimeout(spawnNext, delay);
+    };
+    spawnNext();
+
+    clockTimer.current = setInterval(() => {
       const left = Math.max(0, Math.ceil((endAt - Date.now()) / 1000));
       setTimeLeft(left);
       if (left <= 0) {
         cleanup(); setHearts([]); setPhase("done");
+        const finalScore = scoreRef.current;
         // Điểm + lượt chơi ghi cho slot của NGƯỜI CHƠI (state.currentUser), không ghi nhầm cho người kia
-        dispatch({ type: "HEART_SCORE", user: me, score: scoreRef.current, actor: meName });
+        dispatch({ type: "HEART_SCORE", user: me, score: finalScore, actor: meName });
+        // Thưởng lượt ĐẦU trong ngày của chính người chơi: +Xu bằng điểm (tối đa 30).
+        if (playsBeforeRef.current === 0 && finalScore > 0) {
+          const bonus = Math.min(finalScore, 30);
+          dispatch({ type: "ADD_COINS", coins: bonus, actor: meName, text: `thưởng lượt đầu Bắt tim bay hôm nay (+${bonus} Xu Tim)` });
+          setFirstBonus(bonus);
+        }
       }
     }, 200);
-    timers.current = [spawn, clock];
   }
 
   function catchHeart(h: FlyHeart) {
     h.anim.stopAnimation();
     setHearts((prev) => prev.filter((x) => x.id !== h.id));
-    scoreRef.current += 1; setScore(scoreRef.current);
+    if (h.golden) { goldenRef.current += 1; setGoldenCount(goldenRef.current); scoreRef.current += 3; }
+    else scoreRef.current += 1;
+    setScore(scoreRef.current);
   }
 
   return (
     <View style={s.screen}>
-      <ScreenHeader title="Bắt tim bay" subtitle="30 giây — chạm vào tim đang rơi để ghi điểm" />
+      <ScreenHeader title="Bắt tim bay" subtitle="30 giây — tim thường 1 điểm, tim vàng 3 điểm, càng về cuối rơi càng nhanh" />
       <ScrollView contentContainerStyle={s.scroll}>
         <View style={styles.area}>
           {hearts.map((h) => (
             <Animated.View key={h.id} style={{ position: "absolute", left: `${h.left}%`, transform: [{ translateY: h.anim }] }}>
               <TouchableOpacity onPress={() => catchHeart(h)} hitSlop={8}>
-                <HeartGameImage size={44} />
+                {h.golden ? (
+                  <View style={styles.goldenWrap}>
+                    <HeartGameImage size={50} />
+                  </View>
+                ) : (
+                  <HeartGameImage size={44} />
+                )}
               </TouchableOpacity>
             </Animated.View>
           ))}
@@ -74,8 +118,9 @@ export default function CatchHeartsScreen() {
               {phase === "done" ? (
                 <>
                   <Ionicons name="trophy" size={38} color={C.amber} />
-                  <Text style={{ fontFamily: "BeVietnamPro_900Black", fontSize: 17, color: C.text, textAlign: "center" }}>Hết giờ! {personLabel(state, me)} bắt được {score} tim</Text>
-                  <Text style={s.small}>Kỷ lục tuần này của bạn: {Math.max(best[me], score)} tim</Text>
+                  <Text style={{ fontFamily: "BeVietnamPro_900Black", fontSize: 17, color: C.text, textAlign: "center" }}>Hết giờ! {personLabel(state, me)} ghi {score} điểm</Text>
+                  <Text style={s.small}>Kỷ lục tuần này của bạn: {Math.max(best[me], score)} điểm</Text>
+                  {firstBonus > 0 && <Text style={{ fontFamily: "BeVietnamPro_800ExtraBold", color: C.pinkDark }}>+{firstBonus} Xu thưởng lượt đầu hôm nay</Text>}
                 </>
               ) : (
                 <>
@@ -91,7 +136,10 @@ export default function CatchHeartsScreen() {
           {phase === "playing" && (
             <View style={styles.hud}>
               <View style={s.chip}><Ionicons name="timer" size={13} color={C.pinkDark} /><Text style={s.chipText}>{timeLeft}s</Text></View>
-              <View style={s.chip}><Ionicons name="heart" size={13} color={C.pinkDark} /><Text style={s.chipText}>{score} tim</Text></View>
+              <View style={{ flexDirection: "row", gap: 6 }}>
+                <View style={s.chip}><Ionicons name="star" size={13} color="#B45309" /><Text style={s.chipText}>{goldenCount} tim vàng ×3</Text></View>
+                <View style={s.chip}><Ionicons name="heart" size={13} color={C.pinkDark} /><Text style={s.chipText}>{score} điểm</Text></View>
+              </View>
             </View>
           )}
         </View>
@@ -104,11 +152,11 @@ export default function CatchHeartsScreen() {
                 <PersonChip state={state} slot={slot} />
                 <View style={{ flex: 1 }} />
                 <Text style={s.small}>hôm nay đã chơi {plays[slot]} lượt</Text>
-                <Text style={{ fontSize: 17, fontFamily: "BeVietnamPro_900Black", color: C.pinkDark }}>{best[slot]} tim</Text>
+                <Text style={{ fontSize: 17, fontFamily: "BeVietnamPro_900Black", color: C.pinkDark }}>{best[slot]} điểm</Text>
               </View>
             ))}
           </View>
-          <Text style={[s.small, { marginTop: 6 }]}>Điểm và lượt chơi lưu riêng cho từng người; kỷ lục tuần tự đặt lại vào thứ Hai.</Text>
+          <Text style={[s.small, { marginTop: 6 }]}>Điểm và lượt chơi lưu riêng cho từng người; kỷ lục tuần tự đặt lại vào thứ Hai. Lượt chơi đầu tiên mỗi ngày được thưởng Xu bằng số điểm (tối đa 30).</Text>
         </View>
       </ScrollView>
     </View>
@@ -119,4 +167,5 @@ const styles = StyleSheet.create({
   area: { height: AREA_H, backgroundColor: "#FFF5EF", borderRadius: 16, overflow: "hidden", borderWidth: 1.5, borderColor: C.pinkBorder },
   areaCenter: { flex: 1, alignItems: "center", justifyContent: "center", gap: 7, padding: 16 },
   hud: { position: "absolute", top: 8, left: 8, right: 8, flexDirection: "row", justifyContent: "space-between" },
+  goldenWrap: { width: 62, height: 62, borderRadius: 31, backgroundColor: "#FEF3C7", borderWidth: 2, borderColor: "#F59E0B", alignItems: "center", justifyContent: "center" },
 });

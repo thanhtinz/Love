@@ -5,7 +5,7 @@ import { useLove, myName } from "../../lib/store";
 import { quizOfDay } from "../../lib/data";
 import { today } from "../../lib/types";
 import { PersonChip, partnerOf } from "../../components/PersonChip";
-import { C, ScreenHeader, s } from "../../components/ui";
+import { C, ProgressBar, ScreenHeader, s } from "../../components/ui";
 
 export default function QuizScreen() {
   const { state, dispatch } = useLove();
@@ -24,7 +24,8 @@ export default function QuizScreen() {
   const theirDone = theirs.length === questions.length;
   const bothDone = myDone && theirDone;
   const matchCount = bothDone ? questions.reduce((acc, _, i) => acc + (mine[i] === theirs[i] ? 1 : 0), 0) : 0;
-  const pickedAll = picks.filter((p) => p !== undefined).length >= questions.length;
+  const pickedCount = picks.filter((p) => p !== undefined).length;
+  const pickedAll = pickedCount >= questions.length;
 
   return (
     <View style={s.screen}>
@@ -55,9 +56,16 @@ export default function QuizScreen() {
             ))}
           </View>
           {!myDone ? (
-            <TouchableOpacity style={[s.btn, { marginTop: 13 }, !pickedAll && { opacity: 0.5 }]} disabled={!pickedAll} onPress={() => dispatch({ type: "QUIZ_ANSWER", user: me, answers: picks, actor: meName })}>
+            <>
+              {/* Chỉ báo tiến độ chọn đáp án — biết còn thiếu bao nhiêu câu mới niêm phong được */}
+              <View style={{ marginTop: 13, gap: 5 }}>
+                <Text style={{ fontSize: 12.5, fontFamily: "BeVietnamPro_700Bold", color: C.textSoft }}>Đã chọn {pickedCount}/{questions.length}</Text>
+                <ProgressBar value={(pickedCount / questions.length) * 100} color={C.pink} height={8} />
+              </View>
+              <TouchableOpacity style={[s.btn, { marginTop: 11 }, !pickedAll && { opacity: 0.5 }]} disabled={!pickedAll} onPress={() => dispatch({ type: "QUIZ_ANSWER", user: me, answers: picks, actor: meName })}>
               <Ionicons name="lock-closed" size={15} color="#fff" /><Text style={s.btnText}>Niêm phong đáp án của bạn</Text>
             </TouchableOpacity>
+            </>
           ) : (
             <Text style={[s.small, { marginTop: 10 }]}>Đáp án đã niêm phong — không sửa được nữa, và {partner.name} không nhìn thấy đáp án của bạn cho tới khi cả hai cùng nộp.</Text>
           )}
@@ -72,13 +80,17 @@ export default function QuizScreen() {
           {theirDone ? (
             bothDone ? (
               <View style={{ gap: 8, marginTop: 10 }}>
-                {questions.map((q, qi) => (
-                  <View key={qi} style={{ flexDirection: "row", gap: 8, alignItems: "center", backgroundColor: "#EFFAF7", borderRadius: 12, padding: 10 }}>
-                    <Ionicons name={mine[qi] === theirs[qi] ? "checkmark-circle" : "close-circle"} size={18} color={mine[qi] === theirs[qi] ? C.green : C.textFaint} />
-                    <Text style={{ flex: 1, fontSize: 13, color: C.text }}>{q.options[theirs[qi]]}</Text>
-                    <Text style={s.small}>{mine[qi] === theirs[qi] ? "Trùng ý với bạn" : "Khác lựa chọn của bạn"}</Text>
-                  </View>
-                ))}
+                {questions.map((q, qi) => {
+                  const matched = mine[qi] === theirs[qi];
+                  // Hàng trùng ý: nền xanh mint; hàng khác ý: nền hổ phách ấm — đọc kết quả bằng màu trước, chữ sau.
+                  return (
+                    <View key={qi} style={{ flexDirection: "row", gap: 8, alignItems: "center", backgroundColor: matched ? "#EFFAF7" : "#FFF6E0", borderRadius: 12, padding: 10 }}>
+                      <Ionicons name={matched ? "checkmark-circle" : "close-circle"} size={18} color={matched ? C.green : C.amber} />
+                      <Text style={{ flex: 1, fontSize: 13, color: C.text }}>{q.options[theirs[qi]]}</Text>
+                      <Text style={[s.small, matched ? {} : { color: "#B45309", fontFamily: "BeVietnamPro_700Bold" }]}>{matched ? "Trùng ý với bạn" : "Khác lựa chọn của bạn"}</Text>
+                    </View>
+                  );
+                })}
               </View>
             ) : (
               <Text style={[s.sub, { marginTop: 8 }]}>{partner.name} đã nộp đáp án (đang niêm phong). Bạn nộp đáp án của mình thì kết quả của cả hai mới mở ra.</Text>

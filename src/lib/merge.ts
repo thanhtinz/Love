@@ -192,6 +192,12 @@ export function mergeStates(local: AppState, remote: AppState, mySlot: PersonId)
   else games.heartPlays = { date: local.games.heartPlays.date, A: Math.max(local.games.heartPlays.A, remote.games.heartPlays.A), B: Math.max(local.games.heartPlays.B, remote.games.heartPlays.B) };
   if (local.games.heartBest.week !== remote.games.heartBest.week) games.heartBest = local.games.heartBest.week > remote.games.heartBest.week ? local.games.heartBest : remote.games.heartBest;
   else games.heartBest = { week: local.games.heartBest.week, A: Math.max(local.games.heartBest.A, remote.games.heartBest.A), B: Math.max(local.games.heartBest.B, remote.games.heartBest.B) };
+  if (local.games.dailyWins.date !== remote.games.dailyWins.date) games.dailyWins = local.games.dailyWins.date > remote.games.dailyWins.date ? local.games.dailyWins : remote.games.dailyWins;
+  else games.dailyWins = {
+    date: local.games.dailyWins.date,
+    memory: { A: Math.max(local.games.dailyWins.memory.A, remote.games.dailyWins.memory.A), B: Math.max(local.games.dailyWins.memory.B, remote.games.dailyWins.memory.B) },
+    dice: { A: Math.max(local.games.dailyWins.dice.A, remote.games.dailyWins.dice.A), B: Math.max(local.games.dailyWins.dice.B, remote.games.dailyWins.dice.B) },
+  };
   if (local.games.quiz.date !== remote.games.quiz.date) games.quiz = local.games.quiz.date > remote.games.quiz.date ? local.games.quiz : remote.games.quiz;
   else {
     const quiz = { date: local.games.quiz.date, A: local.games.quiz.A, B: local.games.quiz.B };
@@ -253,6 +259,14 @@ export function mergeStates(local: AppState, remote: AppState, mySlot: PersonId)
     else if (rl.opened === ll.opened && remoteNewer) letterMap.set(rl.id, rl);
   }
   const letters = [...letterMap.values()].sort((a, b) => (b.droppedAt || "").localeCompare(a.droppedAt || "")).slice(0, 100);
+  // Bộ sưu tập thư bền vững: union letterCollection của 2 phía + id (ép SỐ) của mọi lá thư
+  // hai phía đang giữ — thư bị cắt khỏi hộp thư khi xoay vòng vẫn không mất khỏi sưu tập.
+  const letterCollection = [...new Set([
+    ...(local.letterCollection ?? []),
+    ...(remote.letterCollection ?? []),
+    ...local.letters.map((l) => Number(l.messageId)),
+    ...remote.letters.map((l) => Number(l.messageId)),
+  ].map((n) => Number(n)).filter((n) => Number.isFinite(n)))];
 
   const unionById = <T extends { id: string }>(a: T[], b: T[]): T[] => {
     const m = new Map(a.map((x) => [x.id, x]));
@@ -325,7 +339,7 @@ export function mergeStates(local: AppState, remote: AppState, mySlot: PersonId)
     everOnboarded: local.everOnboarded || remote.everOnboarded,
     tree, coins, streak, equipped, inventory, achievements,
     moods, answers, daily, games, loveNotes, loveLimits, contentLog, frameRewards,
-    letters, notes, bucket, memories, activities, treeCollection,
+    letters, letterCollection, notes, bucket, memories, activities, treeCollection,
     plants, selectedPlantId, lastLoveAction,
     updatedAt: lt >= rt ? lt : rt,
     secTs,

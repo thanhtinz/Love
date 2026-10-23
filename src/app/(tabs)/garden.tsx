@@ -56,9 +56,13 @@ function PlantCarePanel({ plant, state, onCare, careMsg, onHarvest, onCollect }:
       <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
         <Ionicons name="flower" size={18} color={COLOR.tealDark} />
         <Text style={{ fontFamily: FONT.bold, fontSize: 16, color: COLOR.text, flex: 1 }}>Đang chăm</Text>
-        <View style={[s.chip, { backgroundColor: health.status === "wilted" ? COLOR.dangerSoft : health.status === "need" ? COLOR.warningSoft : COLOR.successSoft }]}>
+        {/* Chip trạng thái cây: health.message là câu dài (ổn/khát nước/thiếu nắng/nhớ yêu
+            thương — cùng một vị trí này) nên chip + Text PHẢI co được (flexShrink 1,
+            minWidth 0) để chữ xuống dòng gọn trong thẻ; thiếu 2 thuộc tính này thì Text
+            bị đo theo bề rộng nội dung 1 dòng và tràn/cắt chữ ở mép phải thẻ. */}
+        <View style={[s.chip, { flexShrink: 1, minWidth: 0, backgroundColor: health.status === "wilted" ? COLOR.dangerSoft : health.status === "need" ? COLOR.warningSoft : COLOR.successSoft }]}>
           <Ionicons name={health.status === "wilted" ? "alert-circle" : "happy"} size={13} color={health.status === "wilted" ? COLOR.danger : COLOR.text} />
-          <Text style={[s.chipText, { color: COLOR.text }]}>{health.message}</Text>
+          <Text style={[s.chipText, { color: COLOR.text, flexShrink: 1, minWidth: 0 }]}>{health.message}</Text>
         </View>
       </View>
 

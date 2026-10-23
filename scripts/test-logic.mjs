@@ -268,6 +268,49 @@ console.log("\n--- Thời gian: ngày địa phương / tuần / offset server -
   TM.setServerOffsetMs(0);
 }
 
+/* ================= 5) GAME_WIN + BỘ SƯU TẬP THƯ BỀN VỮNG ================= */
+console.log("\n--- GAME_WIN: thưởng ngày khóa cứng ở store ---");
+{
+  const s0 = base();
+  const w1 = R.gardenReducer(s0, { type: "GAME_WIN", game: "memory", user: "A", actor: "An" });
+  check("memory thắng lần 1: +20 Xu, +10 XP vườn, đếm 1", w1.coins === s0.coins + 20 && w1.tree.xp === s0.tree.xp + 10 && w1.games.dailyWins.memory.A === 1);
+  check("memory thắng lần 2 cùng ngày: no-op (cap 1 lần/ngày)", R.gardenReducer(w1, { type: "GAME_WIN", game: "memory", user: "A", actor: "An" }) === w1);
+  const wB = R.gardenReducer(w1, { type: "GAME_WIN", game: "memory", user: "B", actor: "Bình" });
+  check("memory: phần của B độc lập với A", wB !== w1 && wB.games.dailyWins.memory.B === 1 && wB.coins === w1.coins + 20);
+  const d1 = R.gardenReducer(s0, { type: "GAME_WIN", game: "dice", user: "A", actor: "An" });
+  check("dice thắng lần 1: +15 Xu, +10 XP", d1.coins === s0.coins + 15 && d1.tree.xp === s0.tree.xp + 10 && d1.games.dailyWins.dice.A === 1);
+  check("dice lần 2 cùng ngày: no-op", R.gardenReducer(d1, { type: "GAME_WIN", game: "dice", user: "A", actor: "An" }) === d1);
+  const stale = { ...s0, games: { ...s0.games, dailyWins: { date: "2020-01-01", memory: { A: 1, B: 1 }, dice: { A: 1, B: 1 } } } };
+  const wStale = R.gardenReducer(stale, { type: "GAME_WIN", game: "memory", user: "A", actor: "An" });
+  check("dailyWins ngày cũ: rollover reset, thắng lại được", wStale !== stale && wStale.games.dailyWins.date === todayStr && wStale.games.dailyWins.memory.A === 1);
+  const gw = (dw) => ({ ...base(), games: { ...base().games, dailyWins: dw } });
+  const mgw = M.mergeStates(gw({ date: todayStr, memory: { A: 1, B: 0 }, dice: { A: 0, B: 0 } }), gw({ date: todayStr, memory: { A: 0, B: 0 }, dice: { A: 0, B: 1 } }), "A");
+  check("merge dailyWins cùng ngày: max từng game/người", mgw.games.dailyWins.memory.A === 1 && mgw.games.dailyWins.dice.B === 1 && mgw.games.dailyWins.memory.B === 0);
+  const mgw2 = M.mergeStates(gw({ date: "2020-01-01", memory: { A: 1, B: 1 }, dice: { A: 1, B: 1 } }), gw({ date: todayStr, memory: { A: 0, B: 0 }, dice: { A: 0, B: 1 } }), "A");
+  check("merge dailyWins khác ngày: phía ngày mới hơn thắng", mgw2.games.dailyWins.date === todayStr && mgw2.games.dailyWins.memory.A === 0 && mgw2.games.dailyWins.dice.B === 1);
+}
+
+console.log("\n--- Bộ sưu tập thư: bền vững khi xoay vòng + messageId chuỗi ---");
+{
+  const letter = (id, messageId, opened = false) => ({ id, messageId, rarity: "common", source: "test", opened, droppedAt: iso(NOW), openedAt: "", openedBy: "" });
+  const s1 = P.normalizeStateV5({ letters: [letter("c1", 5), letter("c2", 7)] });
+  check("normalize: letterCollection = id các thư hiện có", s1.letterCollection.includes(5) && s1.letterCollection.includes(7));
+  const rotated = P.normalizeStateV5({ ...s1, letters: [letter("c3", 9)] });
+  check("thư bị xoay vòng khỏi hộp thư: collection VẪN giữ id cũ + thêm id mới", rotated.letters.length === 1 && rotated.letterCollection.includes(5) && rotated.letterCollection.includes(7) && rotated.letterCollection.includes(9));
+  const strId = P.normalizeStateV5({ letters: [letter("s1", "12")] });
+  check("messageId dạng chuỗi: ép về số trong thư và collection", strId.letters[0].messageId === 12 && strId.letterCollection.includes(12));
+  const stored = P.normalizeStateV5({ letterCollection: [3, "4"], letters: [] });
+  check("letterCollection đã lưu được giữ lại (kể cả phần tử chuỗi)", stored.letterCollection.includes(3) && stored.letterCollection.includes(4));
+  const o1 = R.gardenReducer(s1, { type: "OPEN_LETTER", id: "c1", opener: "An" });
+  check("OPEN_LETTER: id thư nằm trong collection sau khi mở", o1.letterCollection.includes(5) && o1.letterCollection.includes(7));
+  const a1 = R.gardenReducer(s1, { type: "ADD_LETTER", letter: letter("c9", 21), actor: "An", text: "t" });
+  check("ADD_LETTER: id thư mới được ghi vào collection", a1.letterCollection.includes(21));
+  const mgA = P.normalizeStateV5({ letterCollection: [5], letters: [letter("m1", 5)] });
+  const mgB = P.normalizeStateV5({ letterCollection: [8], letters: [letter("m2", "8")] });
+  const mgc = M.mergeStates(mgA, mgB, "A");
+  check("merge: collection hợp nhất 2 phía + id thư của cả hai (kể cả chuỗi)", mgc.letterCollection.includes(5) && mgc.letterCollection.includes(8) && mgc.letters.length === 2);
+}
+
 console.log(`\n${count - failures}/${count} test đạt`);
 console.log(failures === 0 ? "TẤT CẢ TEST LOGIC ĐẠT" : `CÓ ${failures} TEST CHƯA ĐẠT`);
 process.exit(failures === 0 ? 0 : 1);

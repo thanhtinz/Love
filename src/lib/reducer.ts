@@ -46,6 +46,7 @@ export type Action =
   | { type: "SET_IDENTITY"; a: string; b: string; avatarA: string; avatarB: string; user: "A" | "B"; roomCode: string }
   // --- mini-game ---
   | { type: "HEART_SCORE"; user: "A" | "B"; score: number; actor: string }
+  | { type: "GAME_WIN"; game: "memory" | "dice"; user: "A" | "B"; actor: string }
   | { type: "SPIN_USE"; user: "A" | "B" }
   | { type: "QUIZ_ANSWER"; user: "A" | "B"; answers: number[]; actor: string };
 
@@ -68,6 +69,7 @@ function rollDay(s: AppState): AppState {
   if (out.games.spin.date !== t) out = { ...out, games: { ...out.games, spin: { date: t, A: 0, B: 0 } } };
   if (out.games.quiz.date !== t) out = { ...out, games: { ...out.games, quiz: { date: t, A: [], B: [] } } };
   if (out.games.heartPlays.date !== t) out = { ...out, games: { ...out.games, heartPlays: { date: t, A: 0, B: 0 } } };
+  if (out.games.dailyWins.date !== t) out = { ...out, games: { ...out.games, dailyWins: { date: t, memory: { A: 0, B: 0 }, dice: { A: 0, B: 0 } } } };
   if (out.frameRewards.date !== t) out = { ...out, frameRewards: { date: t, claimed: [] } };
   if (out.loveLimits.date !== t) out = { ...out, loveLimits: { date: t, counts: { A: 0, B: 0 }, lastAt: { A: "", B: "" } } };
   return out;
@@ -125,7 +127,7 @@ export function decideCareDrop(state: AppState, plantId: string, kind: CareKind)
   const afterIdx = stageInfo(boosted).index;
   const stageUp = afterIdx > before;
   const sp = speciesById(plant.speciesId);
-  const ownedIds = state.letters.map((l) => l.messageId);
+  const ownedIds = [...new Set([...(state.letterCollection ?? []), ...state.letters.map((l) => Number(l.messageId))])].filter((n) => Number.isFinite(n));
   let rarity: LoveLetter["rarity"] | null = null; let source = "";
   if (stageUp) {
     const r = Math.random();
@@ -288,12 +290,18 @@ export function gardenReducer(state: AppState, action: Action): AppState {
       if (!target || target.opened) return state;
       const letters = state.letters.map((l) => (l.id === action.id ? { ...l, opened: true, openedAt: new Date().toISOString(), openedBy: action.opener } : l));
       const gain = LETTER_COINS[target.rarity];
-      return checkAch({ ...state, letters, coins: state.coins + gain, activities: pushAct(state, action.opener, `đã mở một lá thư ${target.rarity === "legendary" ? "Huyền thoại" : target.rarity === "rare" ? "Hiếm" : "tình yêu"} (+${gain} Xu Tim)`, "mail") });
+      // Ghi id vào bộ sưu tập BỀN VỮNG (ép số: messageId legacy có thể là chuỗi) — thư bị
+      // cắt khỏi hộp khi xoay vòng 100 lá vẫn giữ được trong bộ sưu tập.
+      const mid = Number(target.messageId);
+      const letterCollection = Number.isFinite(mid) ? [...new Set([...(state.letterCollection ?? []), mid])] : state.letterCollection;
+      return checkAch({ ...state, letters, letterCollection, coins: state.coins + gain, activities: pushAct(state, action.opener, `đã mở một lá thư ${target.rarity === "legendary" ? "Huyền thoại" : target.rarity === "rare" ? "Hiếm" : "tình yêu"} (+${gain} Xu Tim)`, "mail") });
     }
     case "ADD_LETTER": {
       // Chống trùng thư khi cùng một sự kiện được phát hiện ở cả 2 máy (id xác định, vd stageup-...)
       if (state.letters.some((l) => l.id === action.letter.id)) return state;
-      return { ...state, letters: [action.letter, ...state.letters].slice(0, 100), activities: pushAct(state, action.actor, action.text, "mail") };
+      const mid = Number(action.letter.messageId);
+      const letterCollection = Number.isFinite(mid) ? [...new Set([...(state.letterCollection ?? []), mid])] : state.letterCollection;
+      return { ...state, letters: [action.letter, ...state.letters].slice(0, 100), letterCollection, activities: pushAct(state, action.actor, action.text, "mail") };
     }
     case "CLAIM_QUEST": {
       // Nhận thưởng theo TỪNG NGƯỜI + idempotent. Toàn bộ điều kiện + phần thưởng lấy từ
@@ -431,6 +439,25 @@ export function gardenReducer(state: AppState, action: Action): AppState {
       const games = { ...state.games, heartBest: hb, heartPlays: hp };
       if (!isRecord) return { ...state, games };
       return { ...state, games, activities: pushAct(state, action.actor, `vừa lập kỷ lục Bắt tim bay tuần này: ${action.score} điểm`, "heart") };
+    }
+    case "GAME_WIN": {
+      // Thưởng thắng game ngày: TỐI ĐA 1 lần/người/game/ngày, khóa cứng ở store.
+      // memory: +20 Xu +10 XP · dice: +15 Xu +10 XP (XP vào XP vườn chung như ADD_XP).
+      const t = today();
+      const cur = state.games.dailyWins.date === t
+        ? { date: t, memory: { ...state.games.dailyWins.memory }, dice: { ...state.games.dailyWins.dice } }
+        : { date: t, memory: { A: 0, B: 0 }, dice: { A: 0, B: 0 } };
+      if (cur[action.game][action.user] >= 1) return state;
+      cur[action.game][action.user] += 1;
+      const reward = action.game === "memory" ? { coins: 20, xp: 10 } : { coins: 15, xp: 10 };
+      const gameName = action.game === "memory" ? "Ghép cặp ký ức" : "Xúc xắc hẹn hò";
+      return checkAch({
+        ...state,
+        games: { ...state.games, dailyWins: cur },
+        coins: state.coins + reward.coins,
+        tree: { ...state.tree, xp: state.tree.xp + reward.xp },
+        activities: pushAct(state, action.actor, `thắng ${gameName} — nhận thưởng ngày (+${reward.coins} Xu Tim, +${reward.xp} XP)`, "trophy"),
+      });
     }
     case "SPIN_USE": {
       const sp = state.games.spin.date === today() ? { ...state.games.spin } : { date: today(), A: 0, B: 0 };

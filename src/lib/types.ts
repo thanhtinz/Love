@@ -141,6 +141,8 @@ export interface GamesState {
   quiz: { date: string; A: number[]; B: number[] };
   /** Bắt tim bay: số lượt chơi hôm nay của từng người */
   heartPlays: { date: string; A: number; B: number };
+  /** Thưởng thắng game ngày (Ghép cặp ký ức / Xúc xắc hẹn hò): mỗi người nhận tối đa 1 lần/game/ngày */
+  dailyWins: { date: string; memory: { A: number; B: number }; dice: { A: number; B: number } };
 }
 /** Chống spam hành động yêu thương: nghỉ 30 giây giữa 2 lần gửi, tối đa 20 lần/ngày/người */
 export const LOVE_ACTION_COOLDOWN_MS = 30000;
@@ -157,6 +159,10 @@ export interface AppState {
   answers: { date: string; A: string; B: string };
   activities: Activity[];
   letters: LoveLetter[];
+  /** Bộ sưu tập thư BỀN VỮNG: id thông điệp (số) đã từng sở hữu — tách khỏi mảng letters
+   *  (letters bị cắt tối đa 100 lá khi xoay vòng, thư cũ biến mất khỏi hộp thư nhưng
+   *  KHÔNG được mất khỏi bộ sưu tập). */
+  letterCollection?: number[];
   daily: DailyState;
   streak: { count: number; lastDate: string };
   achievements: string[];
@@ -277,6 +283,7 @@ export const defaultGames: GamesState = {
   spin: { date: today(), A: 0, B: 0 },
   quiz: { date: today(), A: [], B: [] },
   heartPlays: { date: today(), A: 0, B: 0 },
+  dailyWins: { date: today(), memory: { A: 0, B: 0 }, dice: { A: 0, B: 0 } },
 };
 
 export const defaultState: AppState = {
@@ -291,6 +298,7 @@ export const defaultState: AppState = {
   answers: { date: today(), A: "", B: "" },
   activities: [{ id: "a0", actor: "Hệ thống", text: "đã tạo khu vườn tình yêu", icon: "leaf", time: new Date().toISOString() }],
   letters: [],
+  letterCollection: [],
   daily: freshDailyState(),
   streak: { count: 0, lastDate: "" },
   achievements: [],
@@ -344,7 +352,14 @@ function saneCoins(v: unknown): number {
 export function normalizeState(rawInput: Partial<AppState>): AppState {
   // Dữ liệu từ Supabase/cache có thể hỏng ở mọi mức (không phải object, mảng sai kiểu, NaN...)
   const raw: Partial<AppState> = isPlainObject(rawInput) ? rawInput : {};
-  const letters = objArray<LoveLetter>(raw.letters);
+  // messageId ép về SỐ: dữ liệu legacy/đồng bộ có thể mang messageId dạng chuỗi ("12") —
+  // không ép thì bộ sưu tập so khớp Set<number> sẽ trượt và thư bị tính là chưa sở hữu.
+  const letters = objArray<LoveLetter>(raw.letters).map((l) => ({ ...l, messageId: finiteNum(Number(l.messageId), 0) }));
+  // Bộ sưu tập bền vững = id đã lưu trước đó HỢP NHẤT id của mọi lá thư hiện còn trong hộp.
+  const storedCollection = Array.isArray(raw.letterCollection)
+    ? raw.letterCollection.map((x) => Number(x)).filter((n) => Number.isFinite(n))
+    : [];
+  const letterCollection = [...new Set([...storedCollection, ...letters.map((l) => l.messageId)])];
   const notes = objArray<Note>(raw.notes);
   const bucket = objArray<BucketItem>(raw.bucket);
   const memories = objArray<MemoryItem>(raw.memories);
@@ -364,6 +379,7 @@ export function normalizeState(rawInput: Partial<AppState>): AppState {
       careCount: Math.max(0, Math.floor(finiteNum(treeRaw.careCount, 0))),
       statsAt: treeRaw.statsAt || treeRaw.lastCareAt || defaultState.tree.statsAt,
     },
+    letterCollection,
     daily: normalizeDaily(isPlainObject(raw.daily) ? raw.daily : undefined),
     streak: { count: Math.max(0, Math.floor(finiteNum(isPlainObject(raw.streak) ? raw.streak.count : undefined, 0))), lastDate: (isPlainObject(raw.streak) && typeof raw.streak.lastDate === "string") ? raw.streak.lastDate : "" },
     letters,
@@ -390,6 +406,16 @@ export function normalizeState(rawInput: Partial<AppState>): AppState {
       spin: { ...defaultGames.spin, ...(isPlainObject(g.spin) ? g.spin : {}), A: Math.max(0, Math.floor(finiteNum(isPlainObject(g.spin) ? g.spin.A : undefined, 0))), B: Math.max(0, Math.floor(finiteNum(isPlainObject(g.spin) ? g.spin.B : undefined, 0))) },
       quiz: { ...defaultGames.quiz, ...(isPlainObject(g.quiz) ? g.quiz : {}), A: Array.isArray(isPlainObject(g.quiz) ? g.quiz.A : undefined) ? (g.quiz!.A as number[]).filter((n) => n === 0 || n === 1) : [], B: Array.isArray(isPlainObject(g.quiz) ? g.quiz.B : undefined) ? (g.quiz!.B as number[]).filter((n) => n === 0 || n === 1) : [] },
       heartPlays: { ...defaultGames.heartPlays, ...(isPlainObject(g.heartPlays) ? g.heartPlays : {}), A: Math.max(0, Math.floor(finiteNum(isPlainObject(g.heartPlays) ? g.heartPlays.A : undefined, 0))), B: Math.max(0, Math.floor(finiteNum(isPlainObject(g.heartPlays) ? g.heartPlays.B : undefined, 0))) },
+      dailyWins: (() => {
+        const dw = isPlainObject(g.dailyWins) ? g.dailyWins : undefined;
+        const cnt = (v: unknown) => Math.max(0, Math.floor(finiteNum(v, 0)));
+        const pair = (v: unknown): { A: number; B: number } => (isPlainObject(v) ? { A: cnt(v.A), B: cnt(v.B) } : { A: 0, B: 0 });
+        return {
+          date: dw && typeof dw.date === "string" && dw.date ? dw.date : today(),
+          memory: pair(dw?.memory),
+          dice: pair(dw?.dice),
+        };
+      })(),
     },
     loveNotes: { A: typeof raw.loveNotes?.A === "string" ? raw.loveNotes.A : "", B: typeof raw.loveNotes?.B === "string" ? raw.loveNotes.B : "" },
     frameRewards: {

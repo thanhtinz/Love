@@ -9,7 +9,11 @@ import { PersonChip } from "../../components/PersonChip";
 import { COLOR, FONT, ROLE } from "../../components/theme";
 import { C, LoadMoreRow, SectionTitle, Segmented, s } from "../../components/ui";
 
-const PAGE = 10;
+/** Hộp thư rút gọn: thư chưa mở hiện 3 lá đầu (mỗi lần +5), thư đã mở hiện 5 (mỗi lần +10). */
+const UNOPENED_FIRST = 3;
+const UNOPENED_STEP = 5;
+const OPENED_FIRST = 5;
+const OPENED_STEP = 10;
 
 /**
  * Màu accent ô thư theo độ hiếm — ĐÚNG spec mockup tham chiếu:
@@ -36,64 +40,103 @@ type MailRow =
   | { kind: "head-unopened"; count: number }
   | { kind: "unopened"; letter: LoveLetter }
   | { kind: "empty-unopened" }
+  | { kind: "loadmore-unopened"; remaining: number }
   | { kind: "head-opened"; count: number }
   | { kind: "opened"; letter: LoveLetter }
   | { kind: "empty-opened" }
-  | { kind: "loadmore" };
+  | { kind: "loadmore-opened"; remaining: number };
 
-/** Ô bộ sưu tập — memo + props nguyên thủy để FlatList không vẽ lại cả lưới 36 ô. */
-const CollectionCell = memo(function CollectionCell({ msg, has }: { msg: LoveMessage; has: boolean }) {
+/** Ô bộ sưu tập — memo + props nguyên thủy để FlatList không vẽ lại cả lưới. Ô đã sở hữu
+ *  bấm được để đọc lại thư; dưới icon có số thứ tự lá thư (#id). */
+const CollectionCell = memo(function CollectionCell({ msg, has, onPress }: { msg: LoveMessage; has: boolean; onPress?: (m: LoveMessage) => void }) {
   const ts = TILE_STYLE[msg.rarity];
   return (
-    <View style={{ flex: 1, aspectRatio: 1, margin: 3, borderRadius: 13, alignItems: "center", justifyContent: "center", backgroundColor: has ? ts.soft : "#F7F2F4", borderWidth: 1.5, borderColor: has ? ts.accent : "#E9E2E6" }}>
+    <TouchableOpacity
+      disabled={!has}
+      onPress={() => onPress?.(msg)}
+      style={{ flex: 1, aspectRatio: 1, margin: 3, borderRadius: 13, alignItems: "center", justifyContent: "center", gap: 1, backgroundColor: has ? ts.soft : "#F7F2F4", borderWidth: 1.5, borderColor: has ? ts.accent : "#E9E2E6" }}
+    >
       <Ionicons name={has ? "mail-open-outline" : "lock-closed"} size={15} color={has ? ts.accent : C.textFaint} />
-    </View>
+      <Text style={{ fontSize: 9.5, fontFamily: FONT.bold, color: has ? ts.text : C.textFaint }}>#{msg.id}</Text>
+    </TouchableOpacity>
   );
 });
+
+interface Reading { letter: LoveLetter | null; msg: LoveMessage }
 
 export default function LettersScreen() {
   const { state, dispatch } = useLove();
   const [tab, setTab] = useState<"mail" | "collection">("mail");
-  const [reading, setReading] = useState<LoveLetter | null>(null);
-  const [openedLimit, setOpenedLimit] = useState(PAGE);
+  const [reading, setReading] = useState<Reading | null>(null);
+  const [unopenedLimit, setUnopenedLimit] = useState(UNOPENED_FIRST);
+  const [openedLimit, setOpenedLimit] = useState(OPENED_FIRST);
+  const [rarityFilter, setRarityFilter] = useState<"all" | Rarity>("all");
   const meName = myName(state);
-  const ownedIds = useMemo(() => new Set(state.letters.map((l) => l.messageId)), [state.letters]);
+
+  // Đã sở hữu = bộ sưu tập BỀN VỮNG hợp nhất id các lá thư hiện còn — id luôn ép SỐ vì
+  // dữ liệu legacy/đồng bộ có thể mang messageId dạng chuỗi.
+  const ownedIds = useMemo(() => {
+    const set = new Set<number>();
+    for (const n of state.letterCollection ?? []) { const v = Number(n); if (Number.isFinite(v)) set.add(v); }
+    for (const l of state.letters) { const v = Number(l.messageId); if (Number.isFinite(v)) set.add(v); }
+    return set;
+  }, [state.letterCollection, state.letters]);
+
   const unopened = useMemo(() => state.letters.filter((l) => !l.opened), [state.letters]);
   const opened = useMemo(() => state.letters.filter((l) => l.opened), [state.letters]);
+  const collectionMsgs = useMemo(
+    () => (rarityFilter === "all" ? LOVE_MESSAGES : LOVE_MESSAGES.filter((m) => m.rarity === rarityFilter)),
+    [rarityFilter],
+  );
 
   const openLetter = useCallback((l: LoveLetter) => {
+    const msg = LOVE_MESSAGES.find((m) => m.id === Number(l.messageId));
+    if (!msg) return;
     if (!l.opened) dispatch({ type: "OPEN_LETTER", id: l.id, opener: meName });
-    setReading({ ...l, opened: true });
+    setReading({ letter: { ...l, opened: true }, msg });
   }, [dispatch, meName]);
+
+  // Đọc lại từ bộ sưu tập: tìm bản thư tương ứng (nếu còn trong hộp) để hiện nguồn/ngày rơi.
+  const openCollected = useCallback((msg: LoveMessage) => {
+    const letter = state.letters.find((l) => Number(l.messageId) === msg.id) ?? null;
+    setReading({ letter, msg });
+  }, [state.letters]);
 
   const rows = useMemo<MailRow[]>(() => {
     const r: MailRow[] = [{ kind: "head-unopened", count: unopened.length }];
     if (unopened.length === 0) r.push({ kind: "empty-unopened" });
-    else unopened.forEach((l) => r.push({ kind: "unopened", letter: l }));
+    else {
+      unopened.slice(0, unopenedLimit).forEach((l) => r.push({ kind: "unopened", letter: l }));
+      if (unopened.length > unopenedLimit) r.push({ kind: "loadmore-unopened", remaining: unopened.length - unopenedLimit });
+    }
     r.push({ kind: "head-opened", count: opened.length });
     if (opened.length === 0) r.push({ kind: "empty-opened" });
-    else opened.slice(0, openedLimit).forEach((l) => r.push({ kind: "opened", letter: l }));
-    if (opened.length > openedLimit) r.push({ kind: "loadmore" });
+    else {
+      opened.slice(0, openedLimit).forEach((l) => r.push({ kind: "opened", letter: l }));
+      if (opened.length > openedLimit) r.push({ kind: "loadmore-opened", remaining: opened.length - openedLimit });
+    }
     return r;
-  }, [unopened, opened, openedLimit]);
+  }, [unopened, opened, unopenedLimit, openedLimit]);
 
   const renderRow = useCallback(({ item }: { item: MailRow }) => {
     switch (item.kind) {
       case "head-unopened":
-        return <Text style={[s.cardTitle, { marginTop: 4 }]}>Thư chưa mở ({item.count})</Text>;
+        return <Text style={[s.cardTitle, { marginTop: 2 }]}>Thư chưa mở ({item.count})</Text>;
       case "head-opened":
-        return <Text style={[s.cardTitle, { marginTop: 14 }]}>Thư đã mở ({item.count})</Text>;
+        return <Text style={[s.cardTitle, { marginTop: 12 }]}>Thư đã mở ({item.count})</Text>;
       case "empty-unopened":
         return (
-          <View style={{ alignItems: "center", gap: 4, paddingVertical: 8 }}>
-            <MailboxArt size={118} />
+          <View style={{ alignItems: "center", gap: 2, paddingVertical: 4 }}>
+            <MailboxArt size={76} />
             <Text style={s.sub}>Chưa có thư mới — chăm cây để thư rơi nhé.</Text>
           </View>
         );
       case "empty-opened":
         return <Text style={s.sub}>Chưa mở lá thư nào.</Text>;
-      case "loadmore":
-        return <LoadMoreRow onPress={() => setOpenedLimit((v) => v + PAGE)} label={`Xem thêm thư đã mở (${opened.length - openedLimit} còn lại)`} />;
+      case "loadmore-unopened":
+        return <LoadMoreRow onPress={() => setUnopenedLimit((v) => v + UNOPENED_STEP)} label={`Xem thêm thư chưa mở (${item.remaining} còn lại)`} />;
+      case "loadmore-opened":
+        return <LoadMoreRow onPress={() => setOpenedLimit((v) => v + OPENED_STEP)} label={`Xem thêm thư đã mở (${item.remaining} còn lại)`} />;
       case "unopened": {
         const l = item.letter;
         const rs = RARITY_STYLE[l.rarity];
@@ -111,7 +154,7 @@ export default function LettersScreen() {
       }
       case "opened": {
         const l = item.letter;
-        const msg = LOVE_MESSAGES.find((m) => m.id === l.messageId);
+        const msg = LOVE_MESSAGES.find((m) => m.id === Number(l.messageId));
         const rs = RARITY_STYLE[l.rarity];
         const ts = TILE_STYLE[l.rarity];
         return (
@@ -128,9 +171,24 @@ export default function LettersScreen() {
         );
       }
     }
-  }, [openLetter, opened.length, openedLimit, state]);
+  }, [openLetter, state]);
 
-  const readingMsg = reading ? LOVE_MESSAGES.find((m) => m.id === reading.messageId) : null;
+  const filterChips = (
+    <View style={{ flexDirection: "row", gap: 6, marginTop: 10, flexWrap: "wrap" }}>
+      {([["all", "Tất cả"], ["common", "Thường"], ["rare", "Hiếm"], ["legendary", "Huyền thoại"]] as const).map(([id, label]) => {
+        const active = rarityFilter === id;
+        return (
+          <TouchableOpacity
+            key={id}
+            onPress={() => setRarityFilter(id)}
+            style={{ paddingHorizontal: 11, paddingVertical: 6, borderRadius: 999, borderWidth: 1.5, borderColor: active ? C.pink : "#E9E2E6", backgroundColor: active ? C.pink : "#fff" }}
+          >
+            <Text style={{ fontSize: 12, fontFamily: FONT.bold, color: active ? "#fff" : C.textSoft }}>{label}</Text>
+          </TouchableOpacity>
+        );
+      })}
+    </View>
+  );
 
   return (
     <View style={[s.screen, { paddingTop: 44, paddingHorizontal: 16 }]}>
@@ -142,8 +200,11 @@ export default function LettersScreen() {
         onChange={setTab}
       />
 
+      {/* QUAN TRỌNG: 2 FlatList phải có key KHÁC NHAU — bản cũ render cùng vị trí không key,
+          React cập nhật numColumns tại chỗ (RN không hỗ trợ) làm vỡ lưới bộ sưu tập. */}
       {tab === "mail" ? (
         <FlatList
+          key="mail"
           style={{ marginTop: 12 }}
           data={rows}
           keyExtractor={(item, i) => item.kind + ("letter" in item ? item.letter.id : i)}
@@ -154,20 +215,25 @@ export default function LettersScreen() {
         />
       ) : (
         <FlatList
+          key="collection"
           style={{ marginTop: 12 }}
-          data={LOVE_MESSAGES}
+          data={collectionMsgs}
           keyExtractor={(m) => String(m.id)}
           numColumns={6}
-          renderItem={({ item }) => <CollectionCell msg={item} has={ownedIds.has(item.id)} />}
+          renderItem={({ item }) => <CollectionCell msg={item} has={ownedIds.has(item.id)} onPress={openCollected} />}
           ListHeaderComponent={
             <View style={{ marginBottom: 8 }}>
-              <Text style={s.cardTitle}>Đã sưu tập {ownedIds.size}/36 lá</Text>
-              <View style={{ height: 10, borderRadius: 99, backgroundColor: "#f1f5f9", marginTop: 9, overflow: "hidden" }}>
+              <View style={{ flexDirection: "row", alignItems: "baseline", justifyContent: "space-between" }}>
+                <Text style={s.cardTitle}>Đã sưu tập {ownedIds.size}/36 lá</Text>
+                <Text style={s.small}>{Math.round((ownedIds.size / 36) * 100)}%</Text>
+              </View>
+              <View style={{ height: 8, borderRadius: 99, backgroundColor: "#f1f5f9", marginTop: 7, overflow: "hidden" }}>
                 <View style={{ height: "100%", width: `${(ownedIds.size / 36) * 100}%`, backgroundColor: C.pink, borderRadius: 99 }} />
               </View>
+              {filterChips}
               {ownedIds.size === 0 && (
-                <View style={{ alignItems: "center", gap: 4, paddingTop: 14 }}>
-                  <MailboxArt size={118} />
+                <View style={{ alignItems: "center", gap: 2, paddingTop: 12 }}>
+                  <MailboxArt size={76} />
                   <Text style={s.sub}>Chưa sưu tập được lá nào — lá đầu tiên đang chờ rơi từ cây.</Text>
                 </View>
               )}
@@ -182,9 +248,9 @@ export default function LettersScreen() {
         <View style={styles.modalWrap}>
           <View style={styles.modalCard}>
             {reading && <LetterEnvelopeImage size={76} />}
-            {reading && <Text style={[s.chip, { color: TILE_STYLE[reading.rarity].text, backgroundColor: TILE_STYLE[reading.rarity].soft, paddingHorizontal: 10, paddingVertical: 4, fontFamily: FONT.extrabold, fontSize: 12 }]}>Thư {RARITY_STYLE[reading.rarity].label}</Text>}
-            <Text style={styles.letterText}>{readingMsg?.text}</Text>
-            <Text style={s.small}>{reading?.source} · {reading ? new Date(reading.droppedAt).toLocaleString("vi-VN") : ""}</Text>
+            {reading && <Text style={[s.chip, { color: TILE_STYLE[reading.msg.rarity].text, backgroundColor: TILE_STYLE[reading.msg.rarity].soft, paddingHorizontal: 10, paddingVertical: 4, fontFamily: FONT.extrabold, fontSize: 12 }]}>Thư {RARITY_STYLE[reading.msg.rarity].label}</Text>}
+            <Text style={styles.letterText}>{reading?.msg.text}</Text>
+            <Text style={s.small}>{reading?.letter ? `${reading.letter.source} · ${new Date(reading.letter.droppedAt).toLocaleString("vi-VN")}` : "Từ Bộ sưu tập của hai đứa"}</Text>
             <TouchableOpacity style={s.btn} onPress={() => setReading(null)}><Text style={s.btnText}>Đóng thư</Text></TouchableOpacity>
           </View>
         </View>

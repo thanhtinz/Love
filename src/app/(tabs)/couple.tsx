@@ -41,7 +41,7 @@ export default function CoupleHubScreen() {
 
       {/* Menu nhóm tính năng */}
       <View style={{ gap: SPACE.sm }}>
-        <FeatureCard icon="game-controller" title="Trò chơi" desc="Bắt tim bay, Vòng quay yêu thương, Hiểu ý nhau" color="#8B5CF6" bg="#EFEAFE" route="/(tabs)/games" />
+        <FeatureCard icon="game-controller" title="Trò chơi" desc="5 game đôi: Bắt tim bay, Vòng quay, Hiểu ý nhau, Ghép cặp ký ức, Xúc xắc hẹn hò" color="#8B5CF6" bg="#EFEAFE" route="/(tabs)/games" />
         <FeatureCard icon="heart-circle" title="Tiện ích đôi mình" desc="Mood, câu hỏi mỗi ngày, ghi chú, bucket list, kỷ niệm..." color={COLOR.primary} bg={ROLE.selfSoft} route="/(tabs)/utilities" />
         <FeatureCard icon="image" title="Khung màn hình" desc="3 khung kỷ niệm để xuất ảnh PNG ghim màn hình chính" color={ROLE.partnerDark} bg={ROLE.partnerSoft} route="/frames" badge={unopened > 0 ? `${unopened} thư mới ở tab Thư` : undefined} />
         <FeatureCard icon="person-circle" title="Tài khoản" desc="Hồ sơ của bạn, mã mời và thông tin khu vườn" color={ROLE.shared} bg={ROLE.sharedSoft} route="/(tabs)/account" />

@@ -32,7 +32,32 @@ export default function FrameDaysScreen() {
           <Text style={{ fontSize: 13, fontFamily: "BeVietnamPro_700Bold", color: C.textSoft }}>ngày bên nhau</Text>
           <Text style={s.small}>Mốc {nm.target} ngày: còn {nm.remaining} ngày · từ {new Date(state.startDate + "T00:00:00").toLocaleDateString("vi-VN")}</Text>
         </FrameExport>
+
+        {/* MỐC TÌNH YÊU — suy ra thuần từ startDate + số ngày (không đổi state).
+            Ngày đạt mốc N = ngày bắt đầu + (N-1) ngày, khớp daysTogether (ngày bắt đầu là ngày 1). */}
+        <View style={s.card}>
+          <Text style={s.cardTitle}>Mốc tình yêu</Text>
+          <Text style={[s.sub, { marginTop: 4 }]}>
+            Mốc tiếp theo: <Text style={{ fontFamily: "BeVietnamPro_800ExtraBold", color: C.pinkDark }}>{nm.target} ngày</Text> — còn {nm.remaining} ngày nữa thôi!
+          </Text>
+          <View style={{ gap: 8, marginTop: 11 }}>
+            {MILESTONE_DAYS.map((m) => {
+              const reached = days >= m;
+              const date = new Date(new Date(state.startDate + "T00:00:00").getTime() + (m - 1) * 86400000);
+              return (
+                <View key={m} style={{ flexDirection: "row", alignItems: "center", gap: 9, backgroundColor: reached ? "#EFFAF7" : "#F8F5F6", borderRadius: 12, padding: 10 }}>
+                  <Ionicons name={reached ? "checkmark-circle" : "time-outline"} size={19} color={reached ? C.green : C.textFaint} />
+                  <Text style={{ flex: 1, fontFamily: "BeVietnamPro_800ExtraBold", color: C.text }}>{m} ngày</Text>
+                  <Text style={s.small}>{date.toLocaleDateString("vi-VN")}</Text>
+                  <Text style={{ fontSize: 12, fontFamily: "BeVietnamPro_700Bold", color: reached ? C.green : "#B45309" }}>{reached ? "Đã đạt" : `Còn ${m - days} ngày`}</Text>
+                </View>
+              );
+            })}
+          </View>
+        </View>
       </ScrollView>
     </View>
   );
 }
+
+const MILESTONE_DAYS = [100, 200, 300, 365, 500, 730, 1000, 1500, 2000];
