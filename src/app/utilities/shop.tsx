@@ -5,6 +5,8 @@ import { useLove, myName } from "../../lib/store";
 import { SHOP_ITEMS } from "../../lib/data";
 import { PersonChip, selfOf } from "../../components/PersonChip";
 import { C, ScreenHeader, s } from "../../components/ui";
+import { Image } from "expo-image";
+import { SHOP_ART } from "../../components/Art";
 
 const SHOP_CATS: { id: "pot" | "scene" | "accessory"; label: string }[] = [
   { id: "pot", label: "Chậu cây" },
@@ -51,8 +53,8 @@ export default function ShopScreen() {
               const equipped = state.equipped[cat] === item.id;
               return (
                 <View key={item.id} style={{ flexDirection: "row", alignItems: "center", gap: 9, backgroundColor: "#fff", borderRadius: 13, borderWidth: 1.5, borderColor: "#f1f5f9", padding: 9 }}>
-                  <View style={{ width: 36, height: 36, borderRadius: 10, backgroundColor: item.category === "pot" && item.visual ? item.visual : C.pinkSoft, alignItems: "center", justifyContent: "center" }}>
-                    <Ionicons name={item.icon as never} size={19} color={item.category === "pot" && item.visual ? "#fff" : C.pinkDark} />
+                  <View style={{ width: 44, height: 44, borderRadius: 12, overflow: "hidden", backgroundColor: "#fff", borderWidth: 1, borderColor: "#f1f5f9" }}>
+                    <Image source={SHOP_ART[item.id]} style={{ width: "100%", height: "100%" }} contentFit="cover" accessibilityLabel={item.name} />
                   </View>
                   <View style={{ flex: 1 }}>
                     <Text style={{ fontFamily: "BeVietnamPro_700Bold", color: C.text, fontSize: 13 }}>{item.name}</Text>

@@ -3,7 +3,7 @@ import { ScrollView, Text, View } from "react-native";
 import { useLove } from "../../lib/store";
 import { decayedPlantStats, speciesById, stageInfo } from "../../lib/plants";
 import { treeHealth } from "../../lib/types";
-import PlantArt from "../../components/PlantArt";
+import { PlantImage } from "../../components/Art";
 import { FrameExport } from "../../components/FrameExport";
 import { COLOR } from "../../components/theme";
 import { C, ProgressBar, ScreenHeader, s } from "../../components/ui";
@@ -28,7 +28,7 @@ export default function FrameTreeScreen() {
           <Text style={{ fontSize: 15, fontFamily: "BeVietnamPro_700Bold", color: C.pinkDark }}>Cây hôm nay</Text>
           {plant && info && health ? (
             <>
-              <PlantArt speciesId={plant.speciesId} stageIndex={info.index} totalStages={speciesById(plant.speciesId).stages.length} wilted={health.status === "wilted"} size={170} />
+              <PlantImage speciesId={plant.speciesId} stageIndex={info.index} size={170} status={health.status} />
               <Text style={{ fontSize: 17, fontFamily: "BeVietnamPro_800ExtraBold", color: C.text }}>{speciesById(plant.speciesId).name}</Text>
               <Text style={{ fontSize: 13.5, color: C.pinkDark, fontFamily: "BeVietnamPro_700Bold" }}>Giai đoạn {info.index + 1}/{speciesById(plant.speciesId).stages.length}: {info.stage.name}</Text>
               <View style={{ width: "100%", gap: 6, marginTop: 4 }}>

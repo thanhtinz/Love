@@ -28,7 +28,8 @@ export const C = {
 export const s = StyleSheet.create({
   screen: { flex: 1, backgroundColor: COLOR.bg },
   scroll: { padding: SPACE.screenX, paddingBottom: 32, gap: SPACE.cardGap },
-  card: { backgroundColor: COLOR.card, borderRadius: RADIUS.card, borderWidth: 1, borderColor: COLOR.border, padding: SPACE.lg },
+  // Card theo mẫu tham chiếu: trắng thuần, KHÔNG viền, chỉ một lớp bóng rất nhẹ để tách khỏi nền #fff6f3
+  card: { backgroundColor: COLOR.card, borderRadius: RADIUS.card, padding: SPACE.lg, shadowColor: "#B4596F", shadowOpacity: 0.05, shadowRadius: 10, shadowOffset: { width: 0, height: 2 }, elevation: 1 },
   title: { ...TYPE.title, color: COLOR.text },
   cardTitle: { fontFamily: FONT.bold, fontSize: 16, lineHeight: 21, color: COLOR.text },
   body: { ...TYPE.body, color: COLOR.text },
@@ -107,7 +108,7 @@ export function ScreenHeader({ title, subtitle }: { title: string; subtitle?: st
 /** Hàng điều hướng tính năng — dùng ở các màn hình hub (chỉ điều hướng, không chứa chức năng). */
 export const FeatureCard = memo(function FeatureCard({ icon, title, desc, color = COLOR.primary, bg = ROLE.selfSoft, route, badge }: { icon: string; title: string; desc: string; color?: string; bg?: string; route: string; badge?: string }) {
   return (
-    <TouchableOpacity onPress={() => router.push(route as never)} style={{ flexDirection: "row", alignItems: "center", gap: 12, backgroundColor: "#fff", borderRadius: RADIUS.card, borderWidth: 1, borderColor: COLOR.border, padding: 14, minHeight: 68 }}>
+    <TouchableOpacity onPress={() => router.push(route as never)} style={{ flexDirection: "row", alignItems: "center", gap: 12, backgroundColor: "#fff", borderRadius: RADIUS.card, padding: 14, minHeight: 68, shadowColor: "#B4596F", shadowOpacity: 0.05, shadowRadius: 10, shadowOffset: { width: 0, height: 2 }, elevation: 1 }}>
       <View style={{ width: 46, height: 46, borderRadius: RADIUS.inner, backgroundColor: bg, alignItems: "center", justifyContent: "center" }}>
         <Ionicons name={icon as never} size={23} color={color} />
       </View>
@@ -128,7 +129,7 @@ export const FeatureCard = memo(function FeatureCard({ icon, title, desc, color 
 /** Ô lối tắt nhỏ cho lưới khám phá ở Trang chủ — luôn có icon + NHÃN chữ (không icon-only). */
 export const FeatureTile = memo(function FeatureTile({ icon, title, color = COLOR.primary, bg = ROLE.selfSoft, route, badge }: { icon: string; title: string; color?: string; bg?: string; route: string; badge?: string }) {
   return (
-    <TouchableOpacity onPress={() => router.push(route as never)} style={{ flex: 1, backgroundColor: "#fff", borderRadius: RADIUS.card, borderWidth: 1, borderColor: COLOR.border, paddingVertical: 14, paddingHorizontal: 10, alignItems: "center", gap: 8, minHeight: 84 }}>
+    <TouchableOpacity onPress={() => router.push(route as never)} style={{ flex: 1, backgroundColor: "#fff", borderRadius: RADIUS.card, paddingVertical: 14, paddingHorizontal: 10, alignItems: "center", gap: 8, minHeight: 84, shadowColor: "#B4596F", shadowOpacity: 0.05, shadowRadius: 10, shadowOffset: { width: 0, height: 2 }, elevation: 1 }}>
       <View style={{ width: 44, height: 44, borderRadius: 22, backgroundColor: bg, alignItems: "center", justifyContent: "center" }}>
         <Ionicons name={icon as never} size={22} color={color} />
       </View>

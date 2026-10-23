@@ -31,7 +31,7 @@ export const ROLE = {
   selfSoft: "#FFE9EE",
   /** Người ấy (đối phương) — xanh mint */
   partner: "#3EC6B8",
-  partnerDark: "#0B7A6E",
+  partnerDark: "#159e8f", // xanh teal đậm — accent/teal đậm theo spec mockup tham chiếu
   partnerSoft: "#D9F4F0",
   /** Chúng mình (việc chung của hai người) — xanh navy trầm */
   shared: "#2F4A67",
@@ -40,9 +40,10 @@ export const ROLE = {
 } as const;
 
 export const COLOR = {
-  bg: "#FFFAF5", // nền ấm off-white
-  card: "#FFFFFF",
-  primary: "#E75480", // CTA chính — sắc đậm của hồng đào, chữ trắng đọc rõ
+  bg: "#fff6f3", // nền hồng rất nhạt theo spec mockup tham chiếu
+  card: "#FFFFFF", // card trắng thuần
+  primary: "#e14b78", // CTA chính — hồng rose theo spec mockup, chữ trắng đọc rõ
+  tealDark: "#159e8f", // accent teal đậm (vai trò của Người ấy khi cần sắc đậm)
   primaryDark: "#C93A5B",
   primarySoft: ROLE.selfSoft,
   border: "#F3DCE0", // viền pastel rất nhẹ, thống nhất 1 mức
@@ -75,7 +76,9 @@ export const SPACE = {
 
 export const RADIUS = {
   card: 20,
+  hero: 22, // bo góc khối hero ở Trang chủ theo spec mockup
   inner: 14,
+  tile: 13, // bo góc ô thư theo spec mockup
   button: 16,
   pill: 999,
 } as const;

@@ -42,3 +42,4 @@ yarn-error.*
 
 # Script giả lập (đầu ra biên dịch tạm)
 scripts/.build/
+assets/art/**/*.webp

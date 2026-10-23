@@ -4,53 +4,47 @@ import { router } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { useLove, decideCareDrop, makeLetter, myName, type CareKind } from "../../lib/store";
 import { useAuth } from "../../lib/auth";
-import { shopItem, timeSky } from "../../lib/data";
-import { MAX_PLOTS, SPECIES, careStatus, decayedPlantStats, formatDuration, fruitPending, growthFactor, speciesById, stageInfo, totalGrowthMs, totalMaturedCount } from "../../lib/plants";
+import { SPECIES, careStatus, decayedPlantStats, formatDuration, fruitPending, growthFactor, speciesById, stageInfo, totalGrowthMs, totalMaturedCount } from "../../lib/plants";
 import { treeHealth, type AppState, type LoveLetter, type PersonId, type PlantState } from "../../lib/types";
-import PlantArt from "../../components/PlantArt";
-import { EmptyPlotArt, GardenScene, LetterArt, MascotMam } from "../../components/illustrations";
-import { PersonChip } from "../../components/PersonChip";
+import { EmptyPlotImage, LetterEnvelopeImage, MascotArt, PlantImage } from "../../components/Art";
+import { COLOR, FONT, RADIUS, ROLE, SPACE } from "../../components/theme";
 import { C, IconBtn, SectionTitle, SkeletonCard, StatBar, s, useNow } from "../../components/ui";
 
-const CARE_BTNS: { kind: CareKind; icon: string; label: string; color: string; bg: string }[] = [
-  { kind: "water", icon: "water", label: "Tưới nước", color: "#0284c7", bg: "#D9F4F0" },
-  { kind: "sun", icon: "sunny", label: "Tắm nắng", color: "#d97706", bg: "#fef3c7" },
-  { kind: "love", icon: "heart", label: "Bón tim", color: "#C93A5B", bg: "#FFE9EE" },
-  { kind: "bug", icon: "bug", label: "Bắt sâu", color: "#16a34a", bg: "#dcfce7" },
+/** Nút chăm: nền teal mềm thống nhất theo spec mockup; icon giữ màu ngữ nghĩa của từng hành động. */
+const CARE_BTNS: { kind: CareKind; icon: string; label: string; color: string }[] = [
+  { kind: "water", icon: "water", label: "Tưới nước", color: "#0284c7" },
+  { kind: "sun", icon: "sunny", label: "Tắm nắng", color: "#d97706" },
+  { kind: "love", icon: "heart", label: "Bón tim", color: "#C93A5B" },
+  { kind: "bug", icon: "bug", label: "Bắt sâu", color: "#16a34a" },
 ];
 
-/**
- * Hàng nút chăm cây — component NHỎ có đồng hồ tick 1 giây riêng, để việc đếm
- * cooldown không kéo cả màn Vườn vẽ lại mỗi giây (trước đây useNow(1000) đặt ở
- * root màn hình khiến toàn bộ cây component re-render liên tục).
- */
-function CareButtons({ plant, me, onCare }: { plant: PlantState; me: PersonId; onCare: (kind: CareKind) => void }) {
-  const now = useNow(1000);
+/** Hàng nút chăm — nhận `now` từ panel cha (component nhỏ, tick 1s riêng trong panel). */
+function CareButtons({ plant, me, now, onCare }: { plant: PlantState; me: PersonId; now: number; onCare: (kind: CareKind) => void }) {
   return (
     <View style={{ flexDirection: "row", gap: 8 }}>
       {CARE_BTNS.map((b) => {
         const cs = careStatus(plant, b.kind, me, now);
-        return <IconBtn key={b.kind} icon={b.icon} label={b.label} color={b.color} bg={b.bg} disabled={!cs.ok} onPress={() => onCare(b.kind)} />;
+        return <IconBtn key={b.kind} icon={b.icon} label={b.label} color={b.color} bg={ROLE.partnerSoft} disabled={!cs.ok} onPress={() => onCare(b.kind)} />;
       })}
     </View>
   );
 }
 
 /**
- * Bottom sheet CHI TIẾT cây: 3 chỉ số, tiến trình giai đoạn + đếm ngược (tick 1s
- * chỉ trong sheet nhỏ này), thu hoạch/thu kỷ niệm. Màn Vườn chính không còn
- * phải gánh cả khối chi tiết này nữa.
+ * Card "Đang chăm" — chi tiết cây đang chọn nằm INLINE trong card (không bottom sheet):
+ * hình cây + giai đoạn, 3 thanh chỉ số, tiến trình, nút thu hoạch/thu kỷ niệm, hàng nút chăm.
+ * Có đồng hồ tick 1 giây riêng để đếm ngược/cooldown không kéo cả màn Vườn vẽ lại.
  */
-function PlantDetailSheet({ plant, state, potColor, accessory, onClose, onHarvest, onCollect }: {
+function PlantCarePanel({ plant, state, onCare, careMsg, onHarvest, onCollect }: {
   plant: PlantState;
   state: AppState;
-  potColor: string;
-  accessory: string;
-  onClose: () => void;
+  onCare: (kind: CareKind) => void;
+  careMsg: string;
   onHarvest: () => void;
   onCollect: () => void;
 }) {
   const now = useNow(1000);
+  const me = state.currentUser;
   const sp = speciesById(plant.speciesId);
   const proj = stageInfo(plant, now);
   const stats = decayedPlantStats(plant, now);
@@ -58,64 +52,75 @@ function PlantDetailSheet({ plant, state, potColor, accessory, onClose, onHarves
   const factor = growthFactor(stats);
   const fruit = fruitPending(plant, now);
   return (
-    <Modal visible transparent animationType="slide" onRequestClose={onClose}>
-      <View style={styles.modalWrap}>
-        <View style={styles.modalCard}>
-          <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start" }}>
-            <View style={{ flex: 1 }}>
-              <Text style={s.title}>{sp.name}</Text>
-              <Text style={{ fontSize: 13, color: C.pinkDark, fontFamily: "BeVietnamPro_700Bold" }}>Giai đoạn {proj.index + 1}/{sp.stages.length}: {proj.stage.name}</Text>
-            </View>
-            <TouchableOpacity onPress={onClose}><Ionicons name="close-circle" size={26} color={C.textFaint} /></TouchableOpacity>
-          </View>
-          <View style={{ alignItems: "center" }}>
-            <PlantArt speciesId={plant.speciesId} stageIndex={proj.index} totalStages={sp.stages.length} wilted={health.status === "wilted"} potColor={potColor} accessory={accessory} fruitReady={fruit} size={132} />
-            <Text style={[s.sub, { textAlign: "center" }]}>{proj.stage.desc}</Text>
-            <View style={[s.chip, { backgroundColor: health.status === "wilted" ? "#fee2e2" : health.status === "need" ? "#fef3c7" : "#dcfce7", marginTop: 6 }]}>
-              <Ionicons name={health.status === "wilted" ? "alert-circle" : "happy"} size={13} color={health.status === "wilted" ? "#b91c1c" : C.text} />
-              <Text style={[s.chipText, { color: C.text }]}>{health.message} · Tốc độ lớn x{factor}</Text>
-            </View>
-          </View>
-          <View style={{ gap: 8 }}>
-            <StatBar label="Nước" icon="water" value={stats.water} color="#0ea5e9" />
-            <StatBar label="Nắng" icon="sunny" value={stats.sun} color="#f59e0b" />
-            <StatBar label="Tình yêu" icon="heart" value={stats.love} color="#E75480" />
-          </View>
-          <View style={{ gap: 4 }}>
-            <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
-              <Text style={{ fontSize: 12.5, fontFamily: "BeVietnamPro_700Bold", color: C.text }}>{proj.mature ? "Đã trưởng thành" : proj.next ? `Tới "${proj.next.name}"` : ""}</Text>
-              <Text style={{ fontSize: 12.5, color: C.pinkDark, fontFamily: "BeVietnamPro_800ExtraBold" }}>{proj.mature ? "Hoàn thành" : factor <= 0 ? "cây đang héo — chưa lớn tiếp" : `còn ${formatDuration(Math.max(0, proj.remainingToNextMs / factor))}`}</Text>
-            </View>
-            <View style={{ height: 9, borderRadius: 99, backgroundColor: "#f1f5f9", overflow: "hidden" }}>
-              <View style={{ height: "100%", width: `${proj.progressInStage}%`, backgroundColor: C.green, borderRadius: 99 }} />
-            </View>
-          </View>
-          {fruit && (
-            <TouchableOpacity style={[s.btn, { backgroundColor: "#dc2626" }]} onPress={onHarvest}>
-              <Ionicons name="gift" size={17} color="#fff" /><Text style={s.btnText}>Thu hoạch quả chín (+{sp.fruitCoins} Xu)</Text>
-            </TouchableOpacity>
-          )}
-          {proj.mature && sp.fruitCycleMs <= 0 && (
-            <TouchableOpacity style={[s.btn, { backgroundColor: C.violet }]} onPress={onCollect}>
-              <Ionicons name="trophy" size={17} color="#fff" /><Text style={s.btnText}>Thu vào kỷ niệm (+{sp.matureRewardCoins} Xu)</Text>
-            </TouchableOpacity>
-          )}
-          <Text style={[s.small, { textAlign: "center" }]}>Đã chăm {plant.careCount} lần · Người chăm gần nhất: {plant.lastCareBy ? (plant.lastCareBy === "A" ? state.personA : state.personB) : "chưa ai"}</Text>
+    <View style={s.card}>
+      <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+        <Ionicons name="flower" size={18} color={COLOR.tealDark} />
+        <Text style={{ fontFamily: FONT.bold, fontSize: 16, color: COLOR.text, flex: 1 }}>Đang chăm</Text>
+        <View style={[s.chip, { backgroundColor: health.status === "wilted" ? COLOR.dangerSoft : health.status === "need" ? COLOR.warningSoft : COLOR.successSoft }]}>
+          <Ionicons name={health.status === "wilted" ? "alert-circle" : "happy"} size={13} color={health.status === "wilted" ? COLOR.danger : COLOR.text} />
+          <Text style={[s.chipText, { color: COLOR.text }]}>{health.message}</Text>
         </View>
       </View>
-    </Modal>
+
+      {health.status === "wilted" && (
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 10, marginTop: 10 }}>
+          <MascotArt size={46} />
+          <Text style={[s.small, { flex: 1 }]}>Mầm nhắc: cây đang héo nên tạm ngừng lớn — tưới nước, phơi nắng và gửi yêu thương để cứu cây nhé.</Text>
+        </View>
+      )}
+
+      <View style={{ flexDirection: "row", gap: 12, marginTop: 10, alignItems: "center" }}>
+        <PlantImage speciesId={plant.speciesId} stageIndex={proj.index} size={96} status={health.status} />
+        <View style={{ flex: 1, gap: 3 }}>
+          <Text style={{ fontFamily: FONT.bold, fontSize: 15.5, color: COLOR.text }}>{sp.name}</Text>
+          <Text style={{ fontSize: 12.5, color: ROLE.selfDark, fontFamily: FONT.bold }}>Giai đoạn {proj.index + 1}/{sp.stages.length}: {proj.stage.name}</Text>
+          <Text style={s.small}>{proj.stage.desc}</Text>
+          <Text style={s.small}>Đã chăm {plant.careCount} lần · Gần nhất: {plant.lastCareBy ? (plant.lastCareBy === "A" ? state.personA : state.personB) : "chưa ai"}</Text>
+        </View>
+      </View>
+
+      <View style={{ gap: 8, marginTop: 12 }}>
+        <StatBar label="Nước" icon="water" value={stats.water} color="#0ea5e9" />
+        <StatBar label="Nắng" icon="sunny" value={stats.sun} color="#f59e0b" />
+        <StatBar label="Tình yêu" icon="heart" value={stats.love} color={COLOR.primary} />
+      </View>
+
+      <View style={{ gap: 4, marginTop: 12 }}>
+        <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
+          <Text style={{ fontSize: 12.5, fontFamily: FONT.bold, color: COLOR.text }}>{proj.mature ? "Đã trưởng thành" : proj.next ? `Tới "${proj.next.name}"` : ""}</Text>
+          <Text style={{ fontSize: 12.5, color: ROLE.selfDark, fontFamily: FONT.extrabold }}>{proj.mature ? "Hoàn thành" : factor <= 0 ? "cây đang héo — chưa lớn tiếp" : `còn ${formatDuration(Math.max(0, proj.remainingToNextMs / factor))}`}</Text>
+        </View>
+        <View style={{ height: 9, borderRadius: 99, backgroundColor: COLOR.track, overflow: "hidden" }}>
+          <View style={{ height: "100%", width: `${proj.progressInStage}%`, backgroundColor: COLOR.success, borderRadius: 99 }} />
+        </View>
+      </View>
+
+      {fruit && (
+        <TouchableOpacity style={[s.btn, { backgroundColor: "#dc2626", marginTop: 12 }]} onPress={onHarvest}>
+          <Ionicons name="gift" size={17} color="#fff" /><Text style={s.btnText}>Thu hoạch quả chín (+{sp.fruitCoins} Xu)</Text>
+        </TouchableOpacity>
+      )}
+      {proj.mature && sp.fruitCycleMs <= 0 && (
+        <TouchableOpacity style={[s.btn, { backgroundColor: "#8B5CF6", marginTop: 12 }]} onPress={onCollect}>
+          <Ionicons name="trophy" size={17} color="#fff" /><Text style={s.btnText}>Thu vào kỷ niệm (+{sp.matureRewardCoins} Xu)</Text>
+        </TouchableOpacity>
+      )}
+
+      <View style={{ marginTop: 14 }}>
+        <CareButtons plant={plant} me={me} now={now} onCare={onCare} />
+        {careMsg ? <Text style={{ textAlign: "center", color: "#b45309", fontFamily: FONT.bold, fontSize: 12.5, marginTop: 7 }}>{careMsg}</Text> : null}
+        <Text style={[s.small, { textAlign: "center", marginTop: 6 }]}>Nghỉ 60 giây giữa 2 lần chăm cùng một cây</Text>
+      </View>
+    </View>
   );
 }
 
 export default function GardenScreen() {
-  const { state, dispatch, connected, hydrated } = useLove();
+  const { state, dispatch, hydrated } = useLove();
   const { couple } = useAuth();
-  // Tick THÔ (30s) cho hiển thị cảnh/tiến trình ở màn chính — chi tiết đếm ngược
-  // từng giây đã chuyển vào CareButtons và PlantDetailSheet (component con nhỏ).
+  // Tick THÔ (30s) cho ô đất ở màn chính — đếm ngược từng giây nằm trong PlantCarePanel.
   const now = useNow(30000);
   const [seedOpen, setSeedOpen] = useState(false);
-  const [detailOpen, setDetailOpen] = useState(false);
-  const [showAllActs, setShowAllActs] = useState(false);
   const [falling, setFalling] = useState<LoveLetter | null>(null);
   const [fallAnim] = useState(() => new Animated.Value(0));
   const [careMsg, setCareMsg] = useState("");
@@ -123,11 +128,6 @@ export default function GardenScreen() {
   const me = state.currentUser;
   const meName = myName(state);
   const selected = state.plants.find((p) => p.id === state.selectedPlantId) || state.plants[0];
-  const sky = timeSky(new Date().getHours());
-  const sceneItem = shopItem(state.equipped.scene);
-  const sceneColor = state.equipped.scene === "scene-auto" || !sceneItem.visual ? sky.sky : sceneItem.visual;
-  const potColor = shopItem(state.equipped.pot).visual || "#fb923c";
-  const accessory = shopItem(state.equipped.accessory).visual || "";
 
   /* Lên giai đoạn theo thời gian thật -> STAGE_UP (+ thư mừng theo tỉ lệ loài) */
   useEffect(() => {
@@ -160,10 +160,6 @@ export default function GardenScreen() {
     return () => clearTimeout(t);
   }, [falling, fallAnim]);
 
-  const proj = useMemo(() => (selected ? stageInfo(selected, now) : null), [selected, now]);
-  const stats = useMemo(() => (selected ? decayedPlantStats(selected, now) : null), [selected, now]);
-  const health = stats ? treeHealth(stats) : null;
-
   function care(kind: CareKind) {
     if (!selected) return;
     // Kiểm tra hiệu lực TRƯỚC khi quyết định thư rơi: lần chăm vô hiệu (cooldown/chỉ số đầy)
@@ -176,154 +172,101 @@ export default function GardenScreen() {
     if (drop) setFalling(drop);
   }
 
-  const gardenActs = state.activities.filter((a) => ["leaf", "water", "sunny", "heart", "bug", "gift", "trophy", "mail", "sparkles"].includes(a.icon));
-  const visibleActs = showAllActs ? gardenActs.slice(0, 12) : gardenActs.slice(0, 3);
+  const gardenActs = useMemo(
+    () => state.activities.filter((a) => ["leaf", "water", "sunny", "heart", "bug", "gift", "trophy", "mail", "sparkles"].includes(a.icon)).slice(0, 5),
+    [state.activities],
+  );
 
   if (!hydrated) {
     return (
-      <View style={{ flex: 1, backgroundColor: C.bg, padding: 16, paddingTop: 42, gap: 12 }}>
-        <SkeletonCard height={86} />
+      <View style={{ flex: 1, backgroundColor: COLOR.bg, padding: SPACE.screenX, paddingTop: 42, gap: SPACE.cardGap }}>
         <SkeletonCard height={210} />
-        <SkeletonCard height={120} />
+        <SkeletonCard height={240} />
         <Text style={[s.sub, { textAlign: "center" }]}>Đang tải khu vườn...</Text>
       </View>
     );
   }
 
+  const plotCell = (i: number) => {
+    const p = state.plants[i];
+    if (!p) {
+      return (
+        <TouchableOpacity key={i} style={styles.plotEmpty} onPress={() => setSeedOpen(true)}>
+          <EmptyPlotImage size={62} />
+          <Text style={{ fontSize: 11, color: C.textSoft, fontFamily: FONT.bold }}>Gieo hạt</Text>
+        </TouchableOpacity>
+      );
+    }
+    const info = stageInfo(p, now);
+    const isSel = selected?.id === p.id;
+    return (
+      <TouchableOpacity key={p.id} style={[styles.plot, isSel && styles.plotSel]} onPress={() => dispatch({ type: "SELECT_PLANT", plantId: p.id })}>
+        <PlantImage speciesId={p.speciesId} stageIndex={info.index} size={72} />
+        <Text style={{ fontSize: 11.5, fontFamily: FONT.extrabold, color: COLOR.text, textAlign: "center" }} numberOfLines={1}>{speciesById(p.speciesId).name}</Text>
+        <Text style={{ fontSize: 10, color: C.textFaint }}>{info.stage.name}</Text>
+      </TouchableOpacity>
+    );
+  };
+
   return (
     <View style={{ flex: 1 }}>
-      <ScrollView style={{ flex: 1, backgroundColor: sceneColor }} contentContainerStyle={{ padding: 16, paddingBottom: 30, gap: 12 }}>
-        {/* Header gọn của vườn */}
-        <View style={[s.card, { marginTop: 26 }]}>
-          <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
-            <View style={{ flex: 1 }}>
-              <Text style={{ fontSize: 18, fontFamily: "BeVietnamPro_900Black", color: C.text }}>Vườn cây</Text>
-              <Text style={s.small}>{sky.label} · {connected ? "Đang kết nối realtime" : "Chế độ ngoại tuyến"} · {state.plants.length}/{MAX_PLOTS} ô đất</Text>
-            </View>
-            <View style={s.chip}><Ionicons name="diamond" size={13} color={C.pinkDark} /><Text style={s.chipText}>{state.coins} Xu Tim</Text></View>
-          </View>
-          <View style={{ flexDirection: "row", gap: 8, marginTop: 10 }}>
-            <PersonChip state={state} slot="A" />
-            <PersonChip state={state} slot="B" />
+      <ScrollView style={{ flex: 1, backgroundColor: COLOR.bg }} contentContainerStyle={{ padding: SPACE.screenX, paddingTop: 46, paddingBottom: 30, gap: SPACE.cardGap }}>
+        {/* Tiêu đề mỏng — không phải card */}
+        <Text style={{ fontSize: 18, fontFamily: FONT.black, color: COLOR.text }}>Vườn cây</Text>
+
+        {/* CARD 1 — lưới ô đất 2x2; ô đang chọn viền mint */}
+        <View style={s.card}>
+          <View style={{ gap: SPACE.sm }}>
+            <View style={{ flexDirection: "row", gap: SPACE.sm }}>{plotCell(0)}{plotCell(1)}</View>
+            <View style={{ flexDirection: "row", gap: SPACE.sm }}>{plotCell(2)}{plotCell(3)}</View>
           </View>
         </View>
 
-        {selected && proj && stats && health ? (
-          <>
-            {/* Cảnh vườn vẽ nhiều lớp — chạm vào cây mở sheet chi tiết chỉ số */}
-            <View style={{ borderRadius: 20, overflow: "hidden", borderWidth: 1, borderColor: "#00000010" }}>
-              <GardenScene sky={sceneColor} night={sky.night} height={204} />
-              <TouchableOpacity activeOpacity={0.92} onPress={() => setDetailOpen(true)} style={{ position: "absolute", left: 0, right: 0, top: 8, alignItems: "center" }} accessibilityLabel="Xem chi tiết cây đang chọn">
-                <PlantArt speciesId={selected.speciesId} stageIndex={proj.index} totalStages={speciesById(selected.speciesId).stages.length} wilted={health.status === "wilted"} potColor={potColor} accessory={accessory} fruitReady={fruitPending(selected, now)} size={158} />
-              </TouchableOpacity>
-              <View style={{ position: "absolute", left: 0, right: 0, bottom: 8, alignItems: "center" }}>
-                <View style={{ backgroundColor: "rgba(255,255,255,0.92)", borderRadius: 999, paddingHorizontal: 12, paddingVertical: 5 }}>
-                  <Text style={{ fontSize: 12.5, fontFamily: "BeVietnamPro_800ExtraBold", color: C.text }}>{speciesById(selected.speciesId).name} · {proj.stage.name}</Text>
-                </View>
-              </View>
-            </View>
-
-            {/* Mầm nhắc khi cây héo/khát */}
-            {health.status === "wilted" ? (
-              <View style={{ flexDirection: "row", alignItems: "center", gap: 10, backgroundColor: "#FFF7ED", borderRadius: 16, borderWidth: 1.5, borderColor: "#FED7AA", paddingHorizontal: 12, paddingVertical: 8 }}>
-                <MascotMam mood="thirsty" size={46} />
-                <Text style={{ flex: 1, fontSize: 13, color: "#9A3412", fontFamily: "BeVietnamPro_600SemiBold", lineHeight: 18 }}>Mầm bảo: cây đang héo nên tạm ngừng lớn — chăm cây ngay để cây hồi sức nhé.</Text>
-              </View>
-            ) : (
-              <View style={[s.chip, { alignSelf: "center", backgroundColor: health.status === "need" ? "#fef3c7" : "#dcfce7" }]}>
-                <Ionicons name="happy" size={13} color={C.text} />
-                <Text style={[s.chipText, { color: C.text }]}>{health.message}</Text>
-              </View>
-            )}
-
-            {/* Hàng nút chăm — luôn ở màn chính */}
-            <View style={s.card}>
-              <CareButtons plant={selected} me={me} onCare={care} />
-              {careMsg ? <Text style={{ textAlign: "center", color: "#b45309", fontFamily: "BeVietnamPro_700Bold", fontSize: 12.5, marginTop: 7 }}>{careMsg}</Text> : null}
-              <Text style={[s.small, { textAlign: "center", marginTop: 6 }]}>Nghỉ 60 giây giữa 2 lần chăm cùng một cây · Chạm vào cây để xem chỉ số chi tiết</Text>
-            </View>
-          </>
+        {/* CARD 2 — Đang chăm: chi tiết cây INLINE trong card */}
+        {selected ? (
+          <PlantCarePanel
+            plant={selected}
+            state={state}
+            onCare={care}
+            careMsg={careMsg}
+            onHarvest={() => dispatch({ type: "HARVEST_FRUIT", plantId: selected.id, actor: meName })}
+            onCollect={() => dispatch({ type: "COLLECT_PLANT", plantId: selected.id, actor: meName })}
+          />
         ) : (
           <View style={[s.card, { alignItems: "center", gap: 6 }]}>
-            <MascotMam mood="happy" size={86} />
+            <MascotArt size={104} />
             <Text style={s.title}>Vườn đang trống</Text>
             <Text style={[s.sub, { textAlign: "center" }]}>Gieo hạt đầu tiên để bắt đầu trồng cây nhé.</Text>
             <TouchableOpacity style={[s.btn, { marginTop: 4 }]} onPress={() => setSeedOpen(true)}><Ionicons name="add" size={17} color="#fff" /><Text style={s.btnText}>Gieo hạt ngay</Text></TouchableOpacity>
           </View>
         )}
 
-        {/* 4 ô đất */}
-        <View style={s.card}>
-          <SectionTitle icon="grid">Ô đất ({state.plants.length}/{MAX_PLOTS})</SectionTitle>
-          <View style={{ flexDirection: "row", gap: 8, marginTop: 10 }}>
-            {Array.from({ length: MAX_PLOTS }, (_, i) => {
-              const p = state.plants[i];
-              if (!p) {
-                return (
-                  <TouchableOpacity key={i} style={styles.plotEmpty} onPress={() => setSeedOpen(true)}>
-                    <EmptyPlotArt size={56} />
-                    <Text style={{ fontSize: 11, color: C.textSoft, fontFamily: "BeVietnamPro_700Bold" }}>Gieo hạt</Text>
-                  </TouchableOpacity>
-                );
-              }
-              const info = stageInfo(p, now);
-              const isSel = selected?.id === p.id;
-              return (
-                <TouchableOpacity key={p.id} style={[styles.plot, isSel && styles.plotSel]} onPress={() => dispatch({ type: "SELECT_PLANT", plantId: p.id })}>
-                  <PlantArt speciesId={p.speciesId} stageIndex={info.index} totalStages={speciesById(p.speciesId).stages.length} potColor={potColor} fruitReady={fruitPending(p, now)} size={64} />
-                  <Text style={{ fontSize: 10.5, fontFamily: "BeVietnamPro_800ExtraBold", color: C.text, textAlign: "center" }} numberOfLines={1}>{speciesById(p.speciesId).name}</Text>
-                  <Text style={{ fontSize: 9.5, color: C.textFaint }}>{info.stage.name}</Text>
-                </TouchableOpacity>
-              );
-            })}
-          </View>
-        </View>
-
-        {/* Hoạt động chăm vườn: mặc định 3 mục gần nhất */}
-        <View style={s.card}>
-          <SectionTitle icon="time" color={C.sky}>Hoạt động chăm vườn</SectionTitle>
+        {/* Hoạt động chăm vườn — danh sách ngắn tối đa 5 dòng, nằm dưới 2 card */}
+        <View style={{ paddingHorizontal: 2 }}>
+          <SectionTitle icon="time" color={ROLE.partner}>Hoạt động chăm vườn</SectionTitle>
           <View style={{ gap: 8, marginTop: 10 }}>
-            {visibleActs.map((a) => (
+            {gardenActs.map((a) => (
               <View key={a.id} style={{ flexDirection: "row", gap: 8, alignItems: "center" }}>
-                <Ionicons name={(a.icon + "-outline") as never} size={16} color={C.pink} />
-                <Text style={{ flex: 1, fontSize: 12.5, color: C.text }}><Text style={{ fontFamily: "BeVietnamPro_800ExtraBold" }}>{a.actor}</Text> {a.text}</Text>
+                <Ionicons name={(a.icon + "-outline") as never} size={16} color={COLOR.primary} />
+                <Text style={{ flex: 1, fontSize: 12.5, color: COLOR.text }}><Text style={{ fontFamily: FONT.extrabold }}>{a.actor}</Text> {a.text}</Text>
                 <Text style={s.small}>{new Date(a.time).toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" })}</Text>
               </View>
             ))}
             {gardenActs.length === 0 && <Text style={s.sub}>Chưa có hoạt động nào. Hãy chăm cây đầu tiên nhé!</Text>}
           </View>
-          {gardenActs.length > 3 && (
-            <TouchableOpacity onPress={() => setShowAllActs((v) => !v)} style={{ alignSelf: "center", marginTop: 9, flexDirection: "row", alignItems: "center", gap: 4, minHeight: 36, paddingHorizontal: 10 }}>
-              <Text style={{ fontFamily: "BeVietnamPro_700Bold", fontSize: 12.5, color: C.pinkDark }}>{showAllActs ? "Thu gọn" : `Xem tất cả (${gardenActs.length})`}</Text>
-              <Ionicons name={showAllActs ? "chevron-up" : "chevron-down"} size={14} color={C.pinkDark} />
-            </TouchableOpacity>
-          )}
           {couple && couple.members.length < 2 && <Text style={[s.small, { marginTop: 8 }]}>Vườn đang có 1 người — gửi mã mời {couple.code} cho người ấy để cùng chăm nhé.</Text>}
         </View>
       </ScrollView>
 
-      {/* Thư rơi — phong bì vẽ có dấu sáp trái tim */}
+      {/* Thư rơi — phong bì nét mảnh đơn giản, đồng bộ với tab Thư */}
       {falling && (
         <Animated.View style={{ position: "absolute", left: 0, right: 0, alignItems: "center", transform: [{ translateY: fallAnim.interpolate({ inputRange: [0, 1], outputRange: [-140, 130] }) }, { rotate: fallAnim.interpolate({ inputRange: [0, 1], outputRange: ["-8deg", "3deg"] }) }] }}>
           <TouchableOpacity style={styles.fallingCard} onPress={() => { setFalling(null); router.push("/(tabs)/letters"); }}>
-            <LetterArt size={76} />
-            <Text style={{ fontFamily: "BeVietnamPro_900Black", color: C.pinkDark }}>Một lá thư vừa rơi!</Text>
+            <LetterEnvelopeImage size={58} />
+            <Text style={{ fontFamily: FONT.black, color: C.pinkDark }}>Một lá thư vừa rơi!</Text>
             <Text style={s.small}>Chạm để vào Hộp thư mở đọc</Text>
           </TouchableOpacity>
         </Animated.View>
-      )}
-
-      {/* Sheet chi tiết cây */}
-      {detailOpen && selected && (
-        <PlantDetailSheet
-          plant={selected}
-          state={state}
-          potColor={potColor}
-          accessory={accessory}
-          onClose={() => setDetailOpen(false)}
-          onHarvest={() => { dispatch({ type: "HARVEST_FRUIT", plantId: selected.id, actor: meName }); setDetailOpen(false); }}
-          onCollect={() => { dispatch({ type: "COLLECT_PLANT", plantId: selected.id, actor: meName }); setDetailOpen(false); }}
-        />
       )}
 
       {/* Modal gieo hạt */}
@@ -342,11 +285,11 @@ export default function GardenScreen() {
                 const daysTotal = Math.max(1, Math.round(totalGrowthMs(sp) / 86400000));
                 return (
                   <TouchableOpacity key={sp.id} disabled={locked || !afford} style={[styles.seedRow, (locked || !afford) && { opacity: 0.5 }]} onPress={() => { dispatch({ type: "PLANT_SEED", speciesId: sp.id, actor: meName }); setSeedOpen(false); }}>
-                    <PlantArt speciesId={sp.id} stageIndex={sp.stages.length - 1} totalStages={sp.stages.length} size={54} />
+                    <PlantImage speciesId={sp.id} stageIndex={sp.stages.length - 1} size={54} />
                     <View style={{ flex: 1 }}>
-                      <Text style={{ fontFamily: "BeVietnamPro_800ExtraBold", color: C.text, fontSize: 13.5 }}>{sp.name}</Text>
+                      <Text style={{ fontFamily: FONT.extrabold, color: COLOR.text, fontSize: 13.5 }}>{sp.name}</Text>
                       <Text style={s.small}>{sp.stages.length} giai đoạn · khoảng {daysTotal} ngày · {sp.trait}</Text>
-                      <Text style={{ fontSize: 11.5, color: locked ? "#b91c1c" : C.pinkDark, fontFamily: "BeVietnamPro_700Bold" }}>{locked ? `Khóa: cần thu ${sp.lockMaturedCount} cây trưởng thành vào kỷ niệm` : sp.seedPrice === 0 ? "Miễn phí" : `${sp.seedPrice} Xu Tim`}</Text>
+                      <Text style={{ fontSize: 11.5, color: locked ? "#b91c1c" : C.pinkDark, fontFamily: FONT.bold }}>{locked ? `Khóa: cần thu ${sp.lockMaturedCount} cây trưởng thành vào kỷ niệm` : sp.seedPrice === 0 ? "Miễn phí" : `${sp.seedPrice} Xu Tim`}</Text>
                     </View>
                     <Ionicons name={locked ? "lock-closed" : "add-circle"} size={22} color={locked ? C.textFaint : C.green} />
                   </TouchableOpacity>
@@ -361,10 +304,10 @@ export default function GardenScreen() {
 }
 
 const styles = StyleSheet.create({
-  plot: { flex: 1, alignItems: "center", backgroundColor: "#fff7ed", borderRadius: 14, borderWidth: 2, borderColor: "transparent", paddingVertical: 6 },
-  plotSel: { borderColor: C.pink, backgroundColor: C.pinkSoft },
-  plotEmpty: { flex: 1, alignItems: "center", justifyContent: "center", gap: 2, borderRadius: 14, borderWidth: 2, borderStyle: "dashed", borderColor: "#cbd5e1", paddingVertical: 10 },
-  fallingCard: { backgroundColor: "#fff", borderRadius: 18, borderWidth: 2, borderColor: C.pink, paddingHorizontal: 22, paddingVertical: 14, alignItems: "center", gap: 3, elevation: 8, shadowColor: "#000", shadowOpacity: 0.18, shadowRadius: 10, shadowOffset: { width: 0, height: 4 } },
+  plot: { flex: 1, alignItems: "center", backgroundColor: "#FFFCFA", borderRadius: RADIUS.inner, borderWidth: 2, borderColor: COLOR.border, paddingVertical: 10, gap: 2 },
+  plotSel: { borderColor: ROLE.partner, backgroundColor: "#FFFFFF" },
+  plotEmpty: { flex: 1, alignItems: "center", justifyContent: "center", gap: 2, borderRadius: RADIUS.inner, borderWidth: 2, borderStyle: "dashed", borderColor: "#D8CBD2", paddingVertical: 12 },
+  fallingCard: { backgroundColor: "#fff", borderRadius: 18, borderWidth: 2, borderColor: COLOR.primary, paddingHorizontal: 22, paddingVertical: 14, alignItems: "center", gap: 3, elevation: 8, shadowColor: "#000", shadowOpacity: 0.18, shadowRadius: 10, shadowOffset: { width: 0, height: 4 } },
   modalWrap: { flex: 1, backgroundColor: "rgba(15,23,42,0.45)", justifyContent: "flex-end" },
   modalCard: { backgroundColor: "#fff", borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 18, gap: 10, maxHeight: "86%" },
   seedRow: { flexDirection: "row", alignItems: "center", gap: 10, backgroundColor: "#fff7f8", borderRadius: 16, borderWidth: 1.5, borderColor: C.pinkBorder, padding: 10 },

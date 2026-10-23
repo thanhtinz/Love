@@ -5,9 +5,9 @@ import { useLove, makeLetter, myName } from "../../lib/store";
 import { ACHIEVEMENTS, QUESTS } from "../../lib/data";
 import { daysTogether, nextMilestone, today, MILESTONES } from "../../lib/types";
 import Avatar from "../../components/Avatar";
-import { LetterArt, MascotMam } from "../../components/illustrations";
 import { PersonChip, partnerOf, selfOf } from "../../components/PersonChip";
 import { C, ScreenHeader, Segmented, s } from "../../components/ui";
+import { MascotArt } from "../../components/Art";
 
 export default function QuestsScreen() {
   const { state, dispatch } = useLove();
@@ -76,7 +76,7 @@ export default function QuestsScreen() {
         {tab === "quests" && (
         <View style={s.card}>
           <View style={{ flexDirection: "row", alignItems: "center", gap: 9 }}>
-            <MascotMam mood="celebrate" size={44} />
+            <MascotArt size={52} />
             <View style={{ flex: 1 }}>
               <Text style={s.cardTitle}>Nhiệm vụ của từng người</Text>
               <Text style={s.sub}>Mỗi người tự làm và tự nhận thưởng của mình.</Text>
@@ -137,7 +137,9 @@ export default function QuestsScreen() {
       {falling && (
         <Animated.View style={{ position: "absolute", left: 0, right: 0, alignItems: "center", transform: [{ translateY: fallAnim.interpolate({ inputRange: [0, 1], outputRange: [-120, 120] }) }] }}>
           <View style={{ backgroundColor: "#fff", borderRadius: 18, borderWidth: 2, borderColor: C.pink, paddingHorizontal: 22, paddingVertical: 14, alignItems: "center", gap: 3 }}>
-            <LetterArt size={64} />
+            <View style={{ width: 52, height: 52, borderRadius: 26, backgroundColor: "#E5EBF2", alignItems: "center", justifyContent: "center" }}>
+              <Ionicons name="mail-outline" size={27} color="#2F4A67" />
+            </View>
             <Text style={{ fontFamily: "BeVietnamPro_900Black", color: C.pinkDark }}>Thưởng nhiệm vụ: một lá thư Hiếm!</Text>
             <Text style={s.small}>Vào tab Thư để mở đọc</Text>
           </View>

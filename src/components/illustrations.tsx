@@ -59,93 +59,92 @@ function GrassTuft({ x, y, color = "#3D9B6E", s = 1 }: { x: number; y: number; c
   return <Path d="M0 0 Q-2 -9 -6 -12 M0 0 Q0 -11 1 -14 M0 0 Q3 -9 7 -11" transform={`translate(${x} ${y}) scale(${s})`} stroke={color} strokeWidth="2.2" fill="none" strokeLinecap="round" />;
 }
 
-/* ---------- 1. HeroCouple — cặp đôi chibi bên cây tình yêu ---------- */
+/* ---------- 1. HeroCouple — minh hoạ PHẲNG (flat) theo spec mockup tham chiếu ----------
+ * Cặp đôi (áo cam đào / áo mint) đứng cạnh một chậu hồng lớn, nền gradient hồng mềm.
+ * Cố ý tối giản: hình khối phẳng, không cảnh nhiều lớp, không chi tiết rườm rà. */
 
-function ChibiChar({ x, flip = false, main, dark, hair, bow = false }: { x: number; flip?: boolean; main: string; dark: string; hair: string; bow?: boolean }) {
+function FlatChar({ x, top, topDark, hair, bow = false }: { x: number; top: string; topDark: string; hair: string; bow?: boolean }) {
   return (
-    <G transform={`translate(${x} 0) ${flip ? "scale(-1 1) translate(-184 0)" : ""}`}>
-      {/* tay vươn về phía cây */}
-      <Path d="M100 138 Q117 145 126 136" stroke="#FFD9C2" strokeWidth="6.5" fill="none" strokeLinecap="round" />
-      <Path d="M84 138 Q68 148 61 137" stroke="#FFD9C2" strokeWidth="6.5" fill="none" strokeLinecap="round" />
-      {/* váy/áo */}
-      <Path d="M92 124 L73 170 Q92 178 111 170 Z" fill={main} />
-      <Path d="M73 170 Q92 178 111 170 L108 176 Q92 182 76 176 Z" fill={dark} opacity="0.55" />
-      {/* chân */}
-      <Ellipse cx="83" cy="180" rx="5.5" ry="2.8" fill={dark} />
-      <Ellipse cx="101" cy="180" rx="5.5" ry="2.8" fill={dark} />
-      {/* tóc hai bên + đầu */}
-      <Ellipse cx="70" cy="110" rx="5.5" ry="11" fill={hair} />
-      <Ellipse cx="114" cy="110" rx="5.5" ry="11" fill={hair} />
-      <Circle cx="92" cy="104" r="21" fill="#FFE3D0" />
-      <Path d="M71 103 A21 21 0 0 1 113 103 L110 90 Q92 79 74 90 Z" fill={hair} />
-      {bow ? (
-        <G transform="translate(107 82)">
-          <Polygon points="0,0 -11,-6 -11,6" fill={COLOR.primary} />
-          <Polygon points="0,0 11,-6 11,6" fill={COLOR.primary} />
-          <Circle cx="0" cy="0" r="3.4" fill={ROLE.selfDark} />
+    <G transform={`translate(${x} 0)`}>
+      {/* chân + giày */}
+      <Rect x="80" y="168" width="9" height="20" rx="4" fill="#5B4A5E" />
+      <Rect x="95" y="168" width="9" height="20" rx="4" fill="#5B4A5E" />
+      <Ellipse cx="84" cy="190" rx="7" ry="3" fill={topDark} />
+      <Ellipse cx="99" cy="190" rx="7" ry="3" fill={topDark} />
+      {/* thân áo phẳng */}
+      <Path d="M92 116 L74 172 Q92 178 110 172 Z" fill={top} />
+      <Path d="M92 116 L74 172 Q92 178 110 172 Z" fill="#FFFFFF" opacity="0.06" />
+      {/* tay */}
+      <Path d="M76 128 Q62 142 66 154" stroke="#FFD9C2" strokeWidth="7" fill="none" strokeLinecap="round" />
+      <Path d="M108 128 Q120 140 124 150" stroke="#FFD9C2" strokeWidth="7" fill="none" strokeLinecap="round" />
+      {/* đầu + tóc phẳng */}
+      <Circle cx="92" cy="94" r="21" fill="#FFE3D0" />
+      <Path d="M71 94 A21 21 0 0 1 113 94 L113 84 Q92 70 71 84 Z" fill={hair} />
+      <Ellipse cx="71" cy="102" rx="4.5" ry="9" fill={hair} />
+      <Ellipse cx="113" cy="102" rx="4.5" ry="9" fill={hair} />
+      {bow && (
+        <G transform="translate(106 74)">
+          <Polygon points="0,0 -10,-5.5 -10,5.5" fill={COLOR.primary} />
+          <Polygon points="0,0 10,-5.5 10,5.5" fill={COLOR.primary} />
+          <Circle cx="0" cy="0" r="3" fill={ROLE.selfDark} />
         </G>
-      ) : (
-        <Path d="M84 84 Q92 78 101 83" stroke={hair} strokeWidth="3.4" fill="none" strokeLinecap="round" />
       )}
-      {/* mặt */}
-      <Circle cx="85" cy="104" r="2.1" fill="#334155" />
-      <Circle cx="99" cy="104" r="2.1" fill="#334155" />
-      <Path d="M87 112 Q92 116.5 97 112" stroke="#334155" strokeWidth="2.2" fill="none" strokeLinecap="round" />
-      <Circle cx="77" cy="111" r="3.6" fill="#FDA4AF" opacity="0.85" />
-      <Circle cx="107" cy="111" r="3.6" fill="#FDA4AF" opacity="0.85" />
+      {/* mặt tối giản */}
+      <Circle cx="85" cy="95" r="2" fill="#3D3A44" />
+      <Circle cx="99" cy="95" r="2" fill="#3D3A44" />
+      <Path d="M87.5 103 Q92 107 96.5 103" stroke="#3D3A44" strokeWidth="2" fill="none" strokeLinecap="round" />
+      <Circle cx="78" cy="102" r="3.2" fill="#FDA4AF" opacity="0.8" />
+      <Circle cx="106" cy="102" r="3.2" fill="#FDA4AF" opacity="0.8" />
     </G>
   );
 }
 
-export const HeroCouple = memo(function HeroCouple({ width = 340, height = 200 }: { width?: number | string; height?: number }) {
+function Rose({ x, y, s = 1, fill = "#F2718C" }: { x: number; y: number; s?: number; fill?: string }) {
   return (
-    <Svg width={width as never} height={height} viewBox="0 0 340 200" preserveAspectRatio="xMidYMid slice">
+    <G transform={`translate(${x} ${y}) scale(${s})`}>
+      <Circle cx="0" cy="0" r="8.5" fill={fill} />
+      <Path d="M-4 1 A4.5 4.5 0 1 1 4 -2 A3 3 0 1 0 0 3" stroke="#FFFFFF" strokeWidth="1.6" fill="none" opacity="0.65" strokeLinecap="round" />
+    </G>
+  );
+}
+
+export const HeroCouple = memo(function HeroCouple({ width = 340, height = 218 }: { width?: number | string; height?: number }) {
+  return (
+    <Svg width={width as never} height={height} viewBox="0 0 340 218" preserveAspectRatio="xMidYMid slice">
       <Defs>
-        <LinearGradient id="heroSky" x1="0" y1="0" x2="0" y2="1">
-          <Stop offset="0" stopColor="#FFE3EC" />
-          <Stop offset="1" stopColor="#FFF6E9" />
+        <LinearGradient id="heroFlat" x1="0" y1="0" x2="0" y2="1">
+          <Stop offset="0" stopColor="#FFE4EE" />
+          <Stop offset="0.62" stopColor="#FFEFF3" />
+          <Stop offset="1" stopColor="#FFF6F3" />
         </LinearGradient>
       </Defs>
-      <Rect x="0" y="0" width="340" height="200" fill="url(#heroSky)" />
-      {/* mặt trời + mây */}
-      <Circle cx="296" cy="34" r="15" fill="#FFD66B" />
-      <G stroke="#FFD66B" strokeWidth="3" strokeLinecap="round">
-        <Line x1="296" y1="10" x2="296" y2="15" /><Line x1="272" y1="34" x2="277" y2="34" />
-        <Line x1="315" y1="34" x2="320" y2="34" /><Line x1="279" y1="17" x2="283" y2="21" /><Line x1="313" y1="17" x2="309" y2="21" />
+      <Rect x="0" y="0" width="340" height="218" fill="url(#heroFlat)" />
+      {/* mặt đất phẳng một dải */}
+      <Path d="M0 218 L0 192 Q170 182 340 192 L340 218 Z" fill="#FBD9E4" />
+      {/* chậu hồng lớn bên phải */}
+      <G>
+        <Path d="M238 128 C228 104 236 84 252 74 M262 130 C264 108 274 92 288 84 M250 132 C246 112 238 100 228 92" stroke="#7CB98A" strokeWidth="5" fill="none" strokeLinecap="round" />
+        <Circle cx="252" cy="66" r="34" fill="#8FCB9B" />
+        <Circle cx="222" cy="84" r="24" fill="#8FCB9B" />
+        <Circle cx="284" cy="82" r="25" fill="#7CB98A" />
+        <Circle cx="252" cy="50" r="20" fill="#A5D8AE" />
+        <Rose x={238} y={56} s={1.05} />
+        <Rose x={268} y={70} s={0.9} fill="#FF8FA3" />
+        <Rose x={228} y={82} s={0.78} fill="#FF8FA3" />
+        <Rose x={282} y={92} s={0.72} />
+        <Rose x={256} y={88} s={0.66} fill="#F9A8BC" />
+        {/* chậu đất nung */}
+        <Ellipse cx="254" cy="196" rx="40" ry="5" fill="#3D3A44" opacity="0.07" />
+        <Path d="M222 148 L286 148 L279 194 Q254 200 229 194 Z" fill="#E08A63" />
+        <Rect x="216" y="138" width="76" height="13" rx="6.5" fill="#C9714A" />
+        <HeartShape x={254} y={158} s={0.42} fill="#FFF1E6" />
       </G>
-      <Cloud x={54} y={32} s={0.9} />
-      <Cloud x={238} y={20} s={0.62} opacity={0.85} />
-      {/* cây tình yêu ở giữa sau lưng */}
-      <Path d="M170 172 C166 146 168 122 170 102" stroke="#A16207" strokeWidth="9" fill="none" strokeLinecap="round" />
-      <Path d="M170 128 C156 120 148 110 144 100 M170 122 C184 114 192 106 196 96" stroke="#A16207" strokeWidth="5" fill="none" strokeLinecap="round" />
-      <Circle cx="170" cy="72" r="34" fill="#69C779" />
-      <Circle cx="138" cy="88" r="24" fill="#69C779" />
-      <Circle cx="202" cy="88" r="24" fill="#69C779" />
-      <Circle cx="152" cy="58" r="15" fill="#3D9B6E" opacity="0.35" />
-      <HeartShape x={152} y={58} s={0.5} fill="#FF6B8A" />
-      <HeartShape x={190} y={50} s={0.42} fill={ROLE.self} />
-      <HeartShape x={172} y={78} s={0.36} fill={COLOR.primary} />
-      {/* đồi cỏ */}
-      <Path d="M0 200 L0 168 Q85 150 170 164 Q255 178 340 162 L340 200 Z" fill="#CDEFD3" />
-      <Path d="M0 200 L0 184 Q110 170 220 182 Q300 190 340 182 L340 200 Z" fill="#A9E2B4" opacity="0.85" />
-      {/* hai nhân vật */}
-      <ChibiChar x={0} main={ROLE.self} dark={ROLE.selfDark} hair="#8D5A3B" bow />
-      <ChibiChar x={156} flip main={ROLE.partner} dark={ROLE.partnerDark} hair="#3D3A44" />
-      {/* tim bay giữa hai người */}
-      <HeartShape x={170} y={118} s={0.55} fill={COLOR.primary} />
-      <HeartShape x={143} y={132} s={0.32} fill={ROLE.self} />
-      <HeartShape x={199} y={132} s={0.32} fill={ROLE.partner} />
-      <Sparkle x={170} y={104} s={0.8} />
-      <Sparkle x={128} y={118} s={0.55} fill={ROLE.self} />
-      {/* hoa + cỏ trên đồi */}
-      <MiniFlower x={34} y={186} s={0.85} />
-      <MiniFlower x={306} y={190} s={0.8} petal="#CDE7FF" />
-      <MiniFlower x={84} y={193} s={0.65} petal="#FFE58A" center="#E8A13A" />
-      <GrassTuft x={52} y={196} />
-      <GrassTuft x={282} y={197} />
-      <GrassTuft x={226} y={195} s={0.85} />
-      <Butterfly x={36} y={74} s={0.9} />
-      <Butterfly x={308} y={102} s={0.75} wing="#C4B5FD" body="#7C3AED" />
+      {/* cặp đôi bên trái chậu hồng */}
+      <FlatChar x={-26} top="#FF9E64" topDark="#D96F32" hair="#8D5A3B" bow />
+      <FlatChar x={58} top="#3EC6B8" topDark="#159E8F" hair="#3D3A44" />
+      {/* hai trái tim phẳng nhỏ bay giữa cặp đôi và chậu hồng */}
+      <HeartShape x={196} y={104} s={0.5} fill={COLOR.primary} />
+      <HeartShape x={182} y={126} s={0.32} fill={ROLE.self} opacity={0.85} />
     </Svg>
   );
 });

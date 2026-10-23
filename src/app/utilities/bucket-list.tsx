@@ -3,7 +3,7 @@ import { Modal, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View 
 import { Ionicons } from "@expo/vector-icons";
 import { useLove } from "../../lib/store";
 import { CONTENT_ADD_MIN_INTERVAL_MS, CONTENT_LIMITS, uid } from "../../lib/types";
-import { EmptyBucketArt } from "../../components/illustrations";
+import { BucketEmptyArt } from "../../components/Art";
 import { PersonChip, selfOf } from "../../components/PersonChip";
 import { C, LoadMoreRow, ScreenHeader, s, useNow } from "../../components/ui";
 
@@ -54,7 +54,7 @@ export default function BucketListScreen() {
             ))}
             {state.bucket.length === 0 && (
               <View style={{ alignItems: "center", gap: 4, paddingVertical: 8 }}>
-                <EmptyBucketArt size={118} />
+                <BucketEmptyArt size={150} />
                 <Text style={s.sub}>Chiếc giỏ đang trống — thêm điều đầu tiên hai bạn muốn làm cùng nhau nhé.</Text>
               </View>
             )}

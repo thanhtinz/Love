@@ -4,8 +4,8 @@ import { Ionicons } from "@expo/vector-icons";
 import { useLove, myName } from "../../lib/store";
 import { today, uid, weekKey } from "../../lib/types";
 import { PersonChip, personLabel } from "../../components/PersonChip";
-import { HeartFace } from "../../components/illustrations";
 import { C, ScreenHeader, s } from "../../components/ui";
+import { HeartGameImage } from "../../components/Art";
 
 interface FlyHeart { id: string; left: number; dur: number; anim: Animated.Value }
 const AREA_H = 340;
@@ -65,7 +65,7 @@ export default function CatchHeartsScreen() {
           {hearts.map((h) => (
             <Animated.View key={h.id} style={{ position: "absolute", left: `${h.left}%`, transform: [{ translateY: h.anim }] }}>
               <TouchableOpacity onPress={() => catchHeart(h)} hitSlop={8}>
-                <HeartFace size={44} variant={h.left > 50 ? "wink" : "happy"} />
+                <HeartGameImage size={44} />
               </TouchableOpacity>
             </Animated.View>
           ))}
@@ -79,7 +79,7 @@ export default function CatchHeartsScreen() {
                 </>
               ) : (
                 <>
-                  <HeartFace size={56} variant="happy" />
+                  <HeartGameImage size={56} />
                   <Text style={{ fontFamily: "BeVietnamPro_800ExtraBold", color: C.text }}>Sẵn sàng bắt tim chưa?</Text>
                 </>
               )}

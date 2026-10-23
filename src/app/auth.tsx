@@ -5,7 +5,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { useAuth } from "../lib/auth";
 import { AVATARS } from "../lib/types";
 import Avatar from "../components/Avatar";
-import { HeroCouple } from "../components/illustrations";
+import { LetterArtImage } from "../components/Art";
 import { C, s } from "../components/ui";
 
 export default function AuthScreen() {
@@ -39,9 +39,7 @@ export default function AuthScreen() {
     <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === "ios" ? "padding" : undefined}>
       <ScrollView contentContainerStyle={styles.wrap} keyboardShouldPersistTaps="handled">
         <View style={styles.hero}>
-          <View style={{ borderRadius: 20, overflow: "hidden", width: "100%" }}>
-            <HeroCouple width="100%" height={148} />
-          </View>
+          <LetterArtImage height={168} />
           <Text style={styles.h1}>Khu Vườn Tình Yêu</Text>
           <Text style={styles.heroSub}>Nơi hai trái tim cùng trồng cây, gửi thư và đếm từng ngày bên nhau.</Text>
         </View>

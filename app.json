@@ -45,7 +45,8 @@
           "imageWidth": 180,
           "resizeMode": "contain"
         }
-      ]
+      ],
+      "expo-image"
     ],
     "scheme": "lovecouple",
     "slug": "love-couple-app",

@@ -1,1 +1,12 @@
-{"buildCommand":"(npm run icons || true) && npx expo export --platform web","framework":null,"installCommand":"npm install","outputDirectory":"dist","rewrites":[{"destination":"/index.html","source":"/(.*)"}]}
+{
+  "buildCommand": "node scripts/decode-art.mjs && (npm run icons || true) && npx expo export --platform web",
+  "framework": null,
+  "installCommand": "npm install",
+  "outputDirectory": "dist",
+  "rewrites": [
+    {
+      "destination": "/index.html",
+      "source": "/(.*)"
+    }
+  ]
+}

@@ -4,7 +4,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { useLove, myName } from "../../lib/store";
 import { speciesById } from "../../lib/plants";
 import { CONTENT_ADD_MIN_INTERVAL_MS, CONTENT_LIMITS, today, uid, type AppState, type CollectedTree, type MemoryItem } from "../../lib/types";
-import { EmptyMemoriesArt } from "../../components/illustrations";
+import { MemoriesEmptyArt } from "../../components/Art";
 import { PersonChip, selfOf } from "../../components/PersonChip";
 import { C, LoadMoreRow, ScreenHeader, s, useNow } from "../../components/ui";
 
@@ -95,7 +95,7 @@ export default function MemoriesScreen() {
         }
         ListEmptyComponent={
           <View style={{ alignItems: "center", gap: 5, paddingVertical: 20 }}>
-            <EmptyMemoriesArt size={128} />
+            <MemoriesEmptyArt size={150} />
             <Text style={s.cardTitle}>Chưa có kỷ niệm nào</Text>
             <Text style={[s.sub, { textAlign: "center" }]}>Lưu khoảnh khắc đầu tiên bằng nút Thêm ở trên nhé.</Text>
           </View>
