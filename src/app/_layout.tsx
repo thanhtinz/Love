@@ -14,12 +14,17 @@ import {
 } from "@expo-google-fonts/be-vietnam-pro";
 import { AuthProvider } from "../lib/auth";
 import { GardenProvider } from "../lib/store";
-import { PresenceSync } from "../components/PresenceSync";
+import { LocationSync } from "../components/LocationSync";
 import { COLOR } from "../components/theme";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 
 SplashScreen.preventAutoHideAsync().catch(() => {});
 
+/**
+ * Bản rebuild 5 lõi — bản đồ route TOÀN APP (không còn route nào khác):
+ * index (cổng) · auth · pair · (tabs)[Nhà index / Cây tree / (+) quick / Note notes /
+ * Hai đứa couple] · location (định vị tạm thời) · account (tài khoản).
+ */
 function Navigator() {
   return (
     <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: COLOR.bg } }}>
@@ -27,30 +32,8 @@ function Navigator() {
       <Stack.Screen name="auth" />
       <Stack.Screen name="pair" />
       <Stack.Screen name="(tabs)" />
-      <Stack.Screen name="letters" />
-      <Stack.Screen name="presence" />
-      <Stack.Screen name="cycle" />
-      <Stack.Screen name="games/index" />
-      <Stack.Screen name="utilities/index" />
+      <Stack.Screen name="location" />
       <Stack.Screen name="account" />
-      <Stack.Screen name="games/spin-wheel" />
-      <Stack.Screen name="games/quiz" />
-      <Stack.Screen name="games/memory-match" />
-      <Stack.Screen name="games/love-dice" />
-      <Stack.Screen name="utilities/mood" />
-      <Stack.Screen name="utilities/daily-question" />
-      <Stack.Screen name="utilities/love-notes" />
-      <Stack.Screen name="utilities/bucket-list" />
-      <Stack.Screen name="utilities/date-ideas" />
-      <Stack.Screen name="utilities/memories" />
-      <Stack.Screen name="utilities/love-actions" />
-      <Stack.Screen name="utilities/events" />
-      <Stack.Screen name="utilities/shop" />
-      <Stack.Screen name="utilities/quests" />
-      <Stack.Screen name="frames/index" />
-      <Stack.Screen name="frames/days" />
-      <Stack.Screen name="frames/tree" />
-      <Stack.Screen name="frames/mood" />
     </Stack>
   );
 }
@@ -84,7 +67,7 @@ export default function RootLayout() {
               <Navigator />
             </View>
           </View>
-          <PresenceSync />
+          <LocationSync />
         </GardenProvider>
       </AuthProvider>
       </SafeAreaProvider>
@@ -96,7 +79,7 @@ export default function RootLayout() {
       <GardenProvider>
         <StatusBar style="dark" />
         <Navigator />
-        <PresenceSync />
+        <LocationSync />
       </GardenProvider>
     </AuthProvider>
     </SafeAreaProvider>

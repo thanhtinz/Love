@@ -1,19 +1,18 @@
 import React, { createContext, useCallback, useContext, useEffect, useReducer, useRef } from "react";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { AppState, defaultState } from "./types";
-import { normalizeStateV5 } from "./plants";
+import { AppState } from "./types";
+import { defaultState, normalizeState } from "./model";
 import { useAuth } from "./auth";
 import { SUPABASE_ANON_KEY, SUPABASE_URL, getSupabase } from "./supabase";
 import { dispatchWithStamps, type Action } from "./reducer";
 import { nowIso, refreshServerOffset } from "./time";
 
-export { makeLetter, decideCareDrop, makeLetterDeterministic, makeStageUpDrop, ownedMessageIds } from "./reducer";
 export type { Action, CareKind } from "./reducer";
 
 /**
  * Provider: nạp/persist state vườn (AsyncStorage + Supabase room_state) và realtime
- * Broadcast. Toàn bộ logic trạng thái nằm ở lib/reducer.ts (thuần, có test);
- * merge khi đồng bộ nằm ở lib/merge.ts; hiệu chỉnh giờ ở lib/time.ts.
+ * Broadcast — backend GIỮ NGUYÊN như bản cũ. Logic trạng thái thuần ở lib/reducer.ts,
+ * merge khi đồng bộ ở lib/merge.ts, hiệu chỉnh giờ server ở lib/time.ts.
  */
 const gardenKey = (coupleId: string) => `love-garden-${coupleId}`;
 const Ctx = createContext<{ state: AppState; dispatch: React.Dispatch<Action>; connected: boolean; hydrated: boolean }>({ state: defaultState, dispatch: () => {}, connected: false, hydrated: false });
@@ -31,29 +30,26 @@ export function GardenProvider({ children }: { children: React.ReactNode }) {
   const hydrated = hydratedFor === scope;
   const isRemote = useRef(false);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  /** Thế hệ thao tác CỤC BỘ: tăng mỗi khi người dùng tự thao tác trên máy này. Dùng để
-   *  phân biệt "state đổi chỉ vì vừa nhận bản đồng bộ/tải lần đầu" (echo — không phát
-   *  lại) với "state đổi vì có thao tác cục bộ đi kèm" (phải phát/ghi bình thường). */
+  /** Thế hệ thao tác CỤC BỘ: tăng mỗi khi người dùng tự thao tác trên máy này — phân biệt
+   *  "state đổi chỉ vì nhận bản đồng bộ/tải lần đầu" (echo, không phát lại) với "có thao
+   *  tác cục bộ đi kèm" (phải phát/ghi bình thường). */
   const localGenRef = useRef(0);
   /** Giá trị localGen tại thời điểm bản đồng bộ gần nhất được áp vào state. */
   const remoteGenRef = useRef(0);
-  /** coupleId hiện tại qua ref — callback debounce đọc được kể cả sau khi effect đóng. */
   const coupleIdRef = useRef<string | null>(null);
   useEffect(() => { coupleIdRef.current = coupleId; }, [coupleId]);
   const channelRef = useRef<ReturnType<ReturnType<typeof getSupabase>["channel"]> | null>(null);
   const stateRef = useRef(state);
   const stampedRef = useRef<AppState>(state);
   /**
-   * Chỉ được GHI LÊN SERVER khi đã chắc chắn biết trạng thái hiện tại là "thật":
-   * đã đọc được row room_state, hoặc có cache của chính máy này, hoặc người dùng
-   * đã tự thao tác. Thiếu điều kiện này mà vẫn upsert thì một lần đọc lỗi mạng
-   * (row có thật nhưng select thất bại, cache trống) sẽ ghi đè VƯỜN RỖNG lên dữ liệu thật.
+   * Chỉ GHI LÊN SERVER khi đã chắc chắn biết trạng thái hiện tại là "thật": đã đọc được
+   * row room_state, hoặc có cache của chính máy này, hoặc người dùng đã tự thao tác.
+   * Thiếu điều kiện này mà vẫn upsert thì một lần đọc lỗi mạng sẽ ghi đè VƯỜN RỖNG lên dữ liệu thật.
    */
   const persistOkRef = useRef(false);
   useEffect(() => { stateRef.current = state; }, [state]);
 
   const dispatch = useCallback((action: Action) => {
-    // Thao tác của chính người dùng trên máy này luôn là căn cứ để tin state hiện tại.
     if (action.type !== "SET_STATE" && action.type !== "MERGE_STATE" && action.type !== "RESET" && action.type !== "TICK" && action.type !== "SET_IDENTITY") {
       persistOkRef.current = true;
       localGenRef.current += 1;
@@ -77,29 +73,24 @@ export function GardenProvider({ children }: { children: React.ReactNode }) {
         try {
           const { data } = await sb.from("room_state").select("state").eq("couple_id", coupleId).maybeSingle();
           if (data) {
-            // Row tồn tại (kể cả state {}) -> đã có căn cứ tin cậy, được phép ghi lại sau này.
             persistOkRef.current = true;
             const remote = (data as { state?: AppState }).state;
-            if (remote && Object.keys(remote).length > 0) remoteState = normalizeStateV5(remote);
+            if (remote && Object.keys(remote).length > 0) remoteState = normalizeState(remote);
           }
         } catch { /* lỗi mạng -> thử cache; persistOk giữ false để không ghi đè mù */ }
         try {
           const raw = await AsyncStorage.getItem(gardenKey(coupleId));
-          if (raw) { persistOkRef.current = true; cacheState = normalizeStateV5(JSON.parse(raw)); }
+          if (raw) { persistOkRef.current = true; cacheState = normalizeState(JSON.parse(raw)); }
         } catch { /* bỏ qua */ }
       }
       if (cancelled) return;
       rawDispatch({ type: "RESET" });
       rawDispatch({ type: "SET_STATE", state: remoteState ?? cacheState ?? defaultState });
-      // State vừa nạp là ECHO (không phải thao tác mới): đánh dấu để effect lưu KHÔNG
-      // đóng dấu lại/broadcast/upsert lại nguyên trạng — bản cũ chỉ đánh dấu khi có cả
-      // server + cache, nên trường hợp chỉ-có-server vẫn bị ghi lại và có thể đè mất
-      // thay đổi của người thương vừa làm trong cửa sổ debounce của họ.
+      // State vừa nạp là ECHO: đánh dấu để effect lưu không phát lại nguyên trạng.
       isRemote.current = true;
       remoteGenRef.current = localGenRef.current;
-      // Có cả hai nguồn: merge cache (mới nhất của CHÍNH máy này — vd thao tác offline
-      // chưa kịp upsert trước khi app tắt) vào bản server, tránh mất thao tác như bản cũ
-      // (bản cũ luôn lấy server thắng tuyệt đối).
+      // Có cả hai nguồn: merge cache (thao tác offline của chính máy này chưa kịp
+      // upsert) vào bản server — tránh mất thao tác như bản thắng-tuyệt-đối cũ.
       if (remoteState && cacheState) {
         rawDispatch({ type: "MERGE_STATE", state: cacheState, mySlot: mySlot ?? undefined });
       }
@@ -111,7 +102,6 @@ export function GardenProvider({ children }: { children: React.ReactNode }) {
 
   const refreshedScope = useRef<string | null>(null);
   useEffect(() => {
-    // Tải lại thông tin thành viên 1 lần mỗi vườn
     if (!hydrated || !auth.couple) return;
     if (refreshedScope.current === scope) return;
     refreshedScope.current = scope;
@@ -121,9 +111,8 @@ export function GardenProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     if (!hydrated || !auth.couple || !auth.user) return;
-    // Hàng thành viên của CHÍNH MÌNH chưa có (members chưa tải xong/stale): KHÔNG
-    // dispatch — bản cũ vẫn ghi tên/avatar MẪU ("Bé A"/"Người thương") vào state và
-    // state đó bị broadcast/upsert, làm bẩn tên thật trên máy người thương.
+    // Hàng thành viên của CHÍNH MÌNH chưa có (members chưa tải xong/stale): KHÔNG dispatch —
+    // tránh ghi tên/avatar mẫu vào state rồi broadcast làm bẩn tên thật trên máy người ấy.
     const mine = auth.couple.members.find((m) => m.slot === auth.couple!.mySlot);
     if (!mine) return;
     const mA = auth.couple.members.find((m) => m.slot === "A");
@@ -155,8 +144,8 @@ export function GardenProvider({ children }: { children: React.ReactNode }) {
       .on("broadcast", { event: "state" }, ({ payload }) => {
         const p = payload as { kind?: string; state?: AppState };
         if (p?.kind === "state" && p.state) {
-          // MERGE theo từng mục (không lọc thô theo updatedAt như bản cũ): kể cả payload
-          // "cũ hơn" vẫn có thể chứa mục theo-người mới của chính chủ nhân slot đó.
+          // MERGE theo từng mục (không lọc thô theo updatedAt): payload "cũ hơn" vẫn
+          // có thể chứa mục theo-người mới của chính chủ nhân slot đó.
           isRemote.current = true;
           remoteGenRef.current = localGenRef.current;
           rawDispatch({ type: "MERGE_STATE", state: p.state, mySlot: mySlot ?? undefined });
@@ -169,42 +158,37 @@ export function GardenProvider({ children }: { children: React.ReactNode }) {
   }, [hydrated, coupleId]);
 
   /* Lưu: cache AsyncStorage + broadcast + debounce upsert room_state.
-     Mọi bản ghi đều đóng dấu updatedAt bằng GIỜ ĐÃ HIỆU CHỈNH theo server (lib/time.ts). */
+     Mọi bản ghi đóng dấu updatedAt bằng GIỜ ĐÃ HIỆU CHỈNH theo server (lib/time.ts). */
   useEffect(() => {
     if (!hydrated || !coupleId) return;
     const forCouple = coupleId;
     const stamped: AppState = { ...state, updatedAt: nowIso() };
     stampedRef.current = stamped;
     AsyncStorage.setItem(gardenKey(coupleId), JSON.stringify(stamped)).catch(() => {});
-    // Echo thuần (chỉ nhận đồng bộ/tải lần đầu, không kèm thao tác cục bộ nào từ sau
-    // mốc đó): KHÔNG broadcast lại (tránh vòng lặp phát), nhưng VẪN lên lịch upsert —
-    // nếu bỏ cả upsert thì thao tác cục bộ đang chờ ghi (timer của lượt chạy trước vừa
-    // bị cleanup huỷ) sẽ không bao giờ lên server. Bản cũ dùng 1 cờ boolean nuốt luôn
-    // thao tác cục bộ bị gộp chung vào đợt merge.
+    // Echo thuần (chỉ nhận đồng bộ/tải lần đầu): KHÔNG broadcast lại (tránh vòng lặp
+    // phát) nhưng VẪN lên lịch upsert — bỏ cả upsert thì thao tác cục bộ đang chờ ghi
+    // (timer lượt trước vừa bị cleanup huỷ) sẽ không bao giờ lên server.
     const isEcho = isRemote.current && localGenRef.current === remoteGenRef.current;
     if (isRemote.current) isRemote.current = false;
-    if (!persistOkRef.current) return; // chưa đủ căn cứ tin state — không phát/ghi lên server
+    if (!persistOkRef.current) return;
     if (!isEcho) {
       try { channelRef.current?.send({ type: "broadcast", event: "state", payload: { kind: "state", state: stamped } }); } catch { /* bỏ qua */ }
     }
     if (saveTimer.current) clearTimeout(saveTimer.current);
     saveTimer.current = setTimeout(() => {
-      // Chụp cứng snapshot + vườn đích TẠI THỜI ĐIỂM LÊN LỊCH: bản cũ callback đọc
-      // stampedRef dùng chung với coupleId trong closure cũ — sau khi đăng xuất/đổi
-      // vườn, timer mồ côi có thể upsert state vườn MỚI vào row của vườn CŨ.
+      // Chụp cứng snapshot + vườn đích TẠI THỜI ĐIỂM LÊN LỊCH: timer mồ côi sau khi
+      // đăng xuất/đổi vườn không được upsert state vườn mới vào row của vườn cũ.
       if (coupleIdRef.current !== forCouple) return;
       const sb = getSupabase();
       sb.from("room_state").upsert({ couple_id: forCouple, state: stamped, updated_at: new Date().toISOString() }).then(({ error }) => {
         if (!error) return;
-        // Upsert lỗi (Supabase báo qua {error}, không throw): thử lại 1 lần sau 3 giây
-        // với snapshot mới nhất của ĐÚNG vườn này — bản cũ nuốt lỗi im lặng, mất lần lưu cuối.
+        // Upsert lỗi (Supabase báo qua {error}, không throw): thử lại 1 lần sau 3 giây.
         setTimeout(() => {
           if (coupleIdRef.current !== forCouple) return;
           getSupabase().from("room_state").upsert({ couple_id: forCouple, state: stampedRef.current, updated_at: new Date().toISOString() }).then(() => {}, () => {});
         }, 3000);
       }, () => {});
     }, 800);
-    // Dọn timer khi effect chạy lại/unmount/đổi vườn: không để timer mồ côi bắn sau.
     return () => { if (saveTimer.current) { clearTimeout(saveTimer.current); saveTimer.current = null; } };
   }, [state, hydrated, coupleId]);
 

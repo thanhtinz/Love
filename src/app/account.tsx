@@ -1,151 +1,154 @@
 import React, { useEffect, useState } from "react";
-import { Alert, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
+import { Pressable, ScrollView, Share, Text, TextInput, TouchableOpacity, View } from "react-native";
 import { router } from "expo-router";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { useAuth } from "../lib/auth";
 import { useLove } from "../lib/store";
-import { AVATARS, parseDateKey, today } from "../lib/types";
+import { AVATARS } from "../lib/types";
 import Avatar from "../components/Avatar";
-import { COLOR, RADIUS, ROLE } from "../components/theme";
-import { C, ScreenHeader, StatusChip, s } from "../components/ui";
+import { COLOR, FONT, RADIUS, ROLE, SPACE, TYPE } from "../components/theme";
+import { ScreenHeader, StatusChip, s } from "../components/ui";
 
+/**
+ * Tài khoản (route Stack /account) — hồ sơ của CHÍNH người dùng + ghép cặp:
+ * đổi tên hiển thị/avatar (qua profiles Supabase), mã mời + thành viên,
+ * trạng thái kết nối realtime, rời vườn (xác nhận 2 bước) và đăng xuất.
+ * Các cài đặt "của vườn" (ngày bắt đầu yêu) nằm ở tab Hai đứa, không ở đây.
+ */
 export default function AccountScreen() {
-  const { user, couple, signOut, leaveCouple, updateMyProfile, refreshCouple } = useAuth();
-  const { state, dispatch, connected, hydrated } = useLove();
+  const { user, couple, signOut, leaveCouple, updateMyProfile } = useAuth();
+  const { connected } = useLove();
+  const insets = useSafeAreaInsets();
   const [name, setName] = useState("");
   const [avatarId, setAvatarId] = useState("svg-a");
-  const [gardenName, setGardenName] = useState("");
-  const [startDate, setStartDate] = useState(today());
   const [msg, setMsg] = useState("");
   const [busy, setBusy] = useState(false);
+  const [confirmLeave, setConfirmLeave] = useState(false);
 
-  // eslint-disable-next-line react-hooks/set-state-in-effect -- đồng bộ form hồ sơ từ tài khoản hiện tại
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- nạp form từ hồ sơ tài khoản hiện tại
   useEffect(() => { if (user) { setName(user.displayName); setAvatarId(user.avatar); } }, [user]);
-  // Cờ dirty cho 2 ô của form vườn: đồng bộ từ xa về giữa lúc đang gõ không được
-  // ghi đè nội dung đang nhập dở (chỉ nạp từ state khi người dùng chưa tự sửa ô đó).
-  const [gardenDirty, setGardenDirty] = useState(false);
-  const [dateDirty, setDateDirty] = useState(false);
-  // eslint-disable-next-line react-hooks/set-state-in-effect -- đồng bộ form vườn từ state đã tải, trừ ô người dùng đang sửa
-  useEffect(() => { if (!gardenDirty) setGardenName(state.gardenName); if (!dateDirty) setStartDate(state.startDate); }, [state.gardenName, state.startDate, gardenDirty, dateDirty]);
 
   if (!user) return null;
+  const members = couple?.members ?? [];
 
   async function saveProfile() {
     setMsg(""); setBusy(true);
     try {
       const res = await updateMyProfile(name, avatarId);
-      setMsg(res.error || "Đã lưu hồ sơ. Tên và avatar mới sẽ hiện cho cả hai sau khi đồng bộ.");
+      setMsg(res.error || "Đã lưu hồ sơ — tên và avatar mới sẽ hiện cho cả hai sau khi đồng bộ.");
     } catch { setMsg("Có lỗi mạng bất ngờ — thử lại nhé."); } finally { setBusy(false); }
   }
-  function saveGarden() {
-    if (!hydrated) { setMsg("Đang tải dữ liệu khu vườn — chờ một chút rồi lưu lại nhé."); return; }
-    // Kiểm tra ngày CHẶT như màn Ghép cặp: ngày không tồn tại (31/02) bị loại và ngày
-    // tương lai cũng bị chặn — bản cũ ở màn này thiếu cả hai (chỉ regex + isNaN).
-    const d = parseDateKey(startDate);
-    if (!d) { setMsg("Ngày bắt đầu yêu chưa đúng (năm-tháng-ngày, ngày phải tồn tại thật)."); return; }
-    if (d.getTime() > Date.now()) { setMsg("Ngày bắt đầu yêu không thể ở tương lai."); return; }
-    dispatch({ type: "SETUP_GARDEN", gardenName: gardenName.trim(), startDate });
-    setMsg("Đã lưu thông tin khu vườn.");
+  async function shareCode() {
+    if (!couple) return;
+    try { await Share.share({ message: `Vào Khu Vườn Tình Yêu với mình nhé! Mã mời: ${couple.code}` }); } catch { /* bỏ qua */ }
   }
-  function confirmLeave() {
-    Alert.alert("Rời khu vườn?", "Bạn sẽ rời vườn hiện tại. Toàn bộ cây và dữ liệu chung vẫn ở lại với người kia; tài khoản của bạn sẽ không còn thuộc vườn nào.", [
-      { text: "Ở lại", style: "cancel" },
-      { text: "Rời vườn", style: "destructive", onPress: async () => { const res = await leaveCouple(); if (res.error) { Alert.alert("Chưa rời được vườn", res.error); return; } router.replace("/pair"); } },
-    ]);
-  }
-  function confirmSignOut() {
-    Alert.alert("Đăng xuất?", "Bạn sẽ cần đăng nhập lại để vào vườn.", [
-      { text: "Hủy", style: "cancel" },
-      { text: "Đăng xuất", style: "destructive", onPress: async () => { await signOut(); router.replace("/auth"); } },
-    ]);
+  async function doLeave() {
+    setBusy(true);
+    try {
+      const res = await leaveCouple();
+      if (res.error) { setMsg(res.error); setConfirmLeave(false); }
+      else router.replace("/pair");
+    } catch { setMsg("Có lỗi mạng bất ngờ — thử lại nhé."); } finally { setBusy(false); }
   }
 
   return (
     <View style={s.screen}>
-      <ScreenHeader fallback="/(tabs)/couple" title="Tài khoản của bạn" subtitle="Hồ sơ, avatar, mã mời và đăng xuất" />
-      <ScrollView contentContainerStyle={s.scroll}>
-      <View style={[s.card, { alignItems: "center", gap: 6 }]}>
-        <Avatar id={user.avatar} size={76} />
-        <Text style={{ fontSize: 18, fontFamily: "BeVietnamPro_900Black", color: C.text }}>{user.displayName}</Text>
-        <Text style={s.sub}>{user.email}</Text>
-        <StatusChip icon={connected ? "wifi" : "cloud-offline"} label={connected ? "Realtime đang bật" : "Đang ngoại tuyến — sẽ đồng bộ khi có mạng"} variant={connected ? "partner" : "neutral"} />
-      </View>
-
-      <View style={s.card}>
-        <Text style={s.cardTitle}>Hồ sơ hiển thị</Text>
-        <Text style={styles.label}>Tên hiển thị</Text>
-        <TextInput style={s.input} value={name} onChangeText={setName} maxLength={24} placeholder="Tên của bạn" placeholderTextColor={C.textFaint} />
-        <Text style={styles.label}>Avatar</Text>
-        <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
-          {AVATARS.map((a) => (
-            <TouchableOpacity key={a.id} onPress={() => setAvatarId(a.id)} style={[styles.avatarBtn, avatarId === a.id && styles.avatarOn]}>
-              <Avatar id={a.id} size={40} />
-              <Text style={{ fontSize: 9.5, color: C.textSoft }}>{a.label}</Text>
-            </TouchableOpacity>
-          ))}
-        </View>
-        <TouchableOpacity style={[s.btn, busy && { opacity: 0.6 }]} onPress={saveProfile} disabled={busy}>
-          <Ionicons name="save" size={16} color="#fff" /><Text style={s.btnText}>Lưu hồ sơ</Text>
-        </TouchableOpacity>
-      </View>
-
-      {couple && (
+      <ScreenHeader title="Tài khoản" subtitle={user.email} fallback="/(tabs)/couple" />
+      <ScrollView contentContainerStyle={{ paddingHorizontal: SPACE.screenX, paddingTop: 6, paddingBottom: insets.bottom + 32, gap: SPACE.cardGap }} showsVerticalScrollIndicator={false}>
+        {/* Hồ sơ của bạn */}
         <View style={s.card}>
-          <Text style={s.cardTitle}>Khu vườn của hai bạn</Text>
-          <View style={{ gap: 7, marginTop: 8 }}>
-            <View style={s.row}><Ionicons name="key" size={16} color={C.amber} /><Text style={{ color: C.text }}>Mã mời: <Text style={{ fontFamily: "BeVietnamPro_900Black", letterSpacing: 2 }}>{couple.code}</Text></Text></View>
-            <View style={s.row}><Ionicons name="person" size={16} color={C.pink} /><Text style={{ color: C.text }}>Bạn là: <Text style={{ fontFamily: "BeVietnamPro_900Black", color: C.pink }}>{user.displayName} (Bạn)</Text> · vị trí {couple.mySlot} trong vườn</Text></View>
-            {couple.members.map((m) => {
-              const isMe = m.userId === user.id;
+          <Text style={{ ...TYPE.micro, color: COLOR.textSoft }}>Hồ sơ của bạn</Text>
+          <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 10, marginTop: 12 }}>
+            {AVATARS.map((a) => {
+              const on = avatarId === a.id;
               return (
-                <View key={m.userId} style={[s.row, { backgroundColor: isMe ? C.pinkSoft : ROLE.partnerSoft, borderRadius: 999, paddingLeft: 2, paddingRight: 10, paddingVertical: 2, alignSelf: "flex-start" }]}>
-                  <Avatar id={m.avatar} size={26} />
-                  <Text style={{ color: isMe ? C.pinkDark : ROLE.partnerDark, fontFamily: "BeVietnamPro_800ExtraBold" }}>{m.displayName}</Text>
-                  {isMe ? (<View style={{ backgroundColor: C.pink, borderRadius: 999, paddingHorizontal: 6, paddingVertical: 1 }}><Text style={{ fontSize: 9.5, fontFamily: "BeVietnamPro_900Black", color: "#fff" }}>Bạn</Text></View>) : (<Text style={{ fontSize: 11, color: ROLE.partnerDark, fontFamily: "BeVietnamPro_700Bold" }}>Người ấy</Text>)}
-                  <Text style={s.small}>· vị trí {m.slot}</Text>
-                </View>
+                <Pressable
+                  key={a.id}
+                  onPress={() => setAvatarId(a.id)}
+                  style={{ alignItems: "center", width: 62, opacity: on ? 1 : 0.65 }}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Avatar ${a.label}`}
+                  accessibilityState={{ selected: on }}
+                >
+                  <View style={{ borderRadius: 999, borderWidth: 2.5, borderColor: on ? COLOR.primary : "transparent", padding: 2 }}>
+                    <Avatar id={a.id} size={46} />
+                  </View>
+                  <Text style={{ fontFamily: FONT.semibold, fontSize: 11, color: on ? COLOR.primary : COLOR.textSoft, marginTop: 3 }}>{a.label}</Text>
+                </Pressable>
               );
             })}
           </View>
-          <Text style={styles.label}>Tên khu vườn</Text>
-          <TextInput style={s.input} value={gardenName} onChangeText={(t) => { setGardenName(t); setGardenDirty(true); }} maxLength={40} placeholder="Tên khu vườn" placeholderTextColor={C.textFaint} />
-          <Text style={styles.label}>Ngày bắt đầu yêu (năm-tháng-ngày)</Text>
-          <TextInput style={s.input} value={startDate} onChangeText={(t) => { setStartDate(t); setDateDirty(true); }} maxLength={10} placeholder="VD: 2024-02-14" placeholderTextColor={C.textFaint} />
-          {/* Hai nút xếp DỌC full-width — bản cũ ép ngang khiến nhãn quấn giữa chữ */}
-          <View style={{ gap: 8 }}>
-            <TouchableOpacity style={s.btnGhost} onPress={saveGarden}><Ionicons name="save" size={15} color={C.pinkDark} /><Text style={s.btnGhostText}>Lưu vườn</Text></TouchableOpacity>
-            <TouchableOpacity style={s.btnGhost} onPress={refreshCouple}><Ionicons name="refresh" size={15} color={C.pinkDark} /><Text style={s.btnGhostText}>Tải lại thông tin</Text></TouchableOpacity>
-          </View>
-        </View>
-      )}
-
-      {msg ? <Text style={{ color: C.pinkDark, fontFamily: "BeVietnamPro_700Bold", fontSize: 13 }}>{msg}</Text> : null}
-
-      {/* NHÓM HÀNH ĐỘNG NGUY HIỂM — MỘT kiểu hàng danger lặng thống nhất (nền
-          dangerSoft, chữ danger của theme, radius control) và MỘT vị trí: cuối
-          màn, cạnh nhau. "Rời vườn" không còn nằm trong card, "Đăng xuất" không
-          còn đứng một mình ngoài card với kiểu khác nữa. */}
-      <View style={{ gap: 9 }}>
-        {couple && (
-          <TouchableOpacity style={styles.dangerRow} onPress={confirmLeave}>
-            <Ionicons name="exit-outline" size={16} color={COLOR.danger} /><Text style={styles.dangerText}>Rời khu vườn này</Text>
+          <Text style={{ fontFamily: FONT.semibold, fontSize: 13, color: COLOR.textSoft, marginTop: 14, marginBottom: 6 }}>Tên hiển thị</Text>
+          <TextInput style={s.input} value={name} onChangeText={setName} placeholder="Tên của bạn" placeholderTextColor={COLOR.textFaint} maxLength={30} />
+          {msg ? <Text style={{ marginTop: 10, fontFamily: FONT.regular, fontSize: 13.5, color: msg.startsWith("Đã lưu") ? COLOR.successText : COLOR.danger }}>{msg}</Text> : null}
+          <TouchableOpacity style={[s.btn, { marginTop: 12, opacity: busy ? 0.6 : 1 }]} onPress={saveProfile} disabled={busy} accessibilityRole="button" accessibilityLabel="Lưu hồ sơ">
+            <Text style={s.btnText}>{busy ? "Đang lưu..." : "Lưu hồ sơ"}</Text>
           </TouchableOpacity>
-        )}
-        <TouchableOpacity style={styles.dangerRow} onPress={confirmSignOut}>
-          <Ionicons name="log-out-outline" size={17} color={COLOR.danger} /><Text style={styles.dangerText}>Đăng xuất</Text>
-        </TouchableOpacity>
-      </View>
+        </View>
 
-      <Text style={[s.small, { textAlign: "center" }]}>Khu Vườn Tình Yêu · phiên bản 1.0.0 · Dữ liệu vườn lưu trên Supabase và đồng bộ realtime giữa hai máy.</Text>
+        {/* Ghép cặp */}
+        {couple ? (
+          <View style={s.card}>
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+              <Text style={{ ...TYPE.micro, color: COLOR.textSoft, flex: 1 }}>Ghép cặp</Text>
+              <StatusChip label={connected ? "Đang đồng bộ trực tiếp" : "Đang kết nối lại"} variant={connected ? "done" : "waiting"} />
+            </View>
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 12, marginTop: 12 }}>
+              <Text style={{ fontFamily: FONT.black, fontSize: 26, letterSpacing: 3, color: COLOR.text, flex: 1 }}>{couple.code}</Text>
+              <TouchableOpacity onPress={shareCode} style={{ flexDirection: "row", alignItems: "center", gap: 6, backgroundColor: ROLE.selfSoft, borderRadius: RADIUS.control, paddingHorizontal: 14, paddingVertical: 10 }} accessibilityRole="button" accessibilityLabel="Chia sẻ mã mời">
+                <Ionicons name="share-social-outline" size={17} color={ROLE.selfDark} />
+                <Text style={{ color: ROLE.selfDark, fontFamily: FONT.bold, fontSize: 14 }}>Chia sẻ</Text>
+              </TouchableOpacity>
+            </View>
+            <View style={{ marginTop: 14, gap: 10 }}>
+              {members.map((m) => (
+                <View key={m.userId} style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
+                  <Avatar id={m.avatar} size={38} />
+                  <Text style={{ fontFamily: FONT.bold, fontSize: 15, color: COLOR.text, flex: 1 }}>{m.displayName}</Text>
+                  <Text style={{ fontFamily: FONT.regular, fontSize: 13, color: COLOR.textSoft }}>{m.slot === couple.mySlot ? "Bạn" : "Người ấy"}</Text>
+                </View>
+              ))}
+            </View>
+          </View>
+        ) : (
+          <View style={s.card}>
+            <Text style={{ ...TYPE.body, color: COLOR.textSoft }}>Bạn chưa ghép cặp với ai — vào màn Ghép cặp để tạo vườn hoặc nhập mã mời.</Text>
+            <TouchableOpacity style={[s.btn, { marginTop: 12 }]} onPress={() => router.replace("/pair")} accessibilityRole="button" accessibilityLabel="Đi tới màn ghép cặp">
+              <Text style={s.btnText}>Đi ghép cặp</Text>
+            </TouchableOpacity>
+          </View>
+        )}
+
+        {/* Rời vườn + đăng xuất */}
+        <View style={s.card}>
+          <Text style={{ ...TYPE.micro, color: COLOR.textSoft }}>Phiên đăng nhập</Text>
+          <TouchableOpacity style={[s.btnGhost, { marginTop: 12 }]} onPress={() => signOut()} accessibilityRole="button" accessibilityLabel="Đăng xuất">
+            <Text style={s.btnGhostText}>Đăng xuất</Text>
+          </TouchableOpacity>
+          {couple ? (
+            !confirmLeave ? (
+              <TouchableOpacity style={{ alignItems: "center", paddingVertical: 13, marginTop: 6 }} onPress={() => setConfirmLeave(true)} accessibilityRole="button" accessibilityLabel="Rời khỏi vườn">
+                <Text style={{ color: COLOR.danger, fontFamily: FONT.bold, fontSize: 14.5 }}>Rời khỏi vườn này</Text>
+              </TouchableOpacity>
+            ) : (
+              <View style={{ marginTop: 10, backgroundColor: COLOR.dangerSoft, borderRadius: RADIUS.tile, padding: 12 }}>
+                <Text style={{ fontFamily: FONT.regular, fontSize: 13.5, color: COLOR.danger, lineHeight: 19 }}>
+                  Rời vườn sẽ tách tài khoản của bạn khỏi vườn này. Người ấy vẫn giữ vườn và dữ liệu phía họ. Bạn chắc chắn chứ?
+                </Text>
+                <View style={{ flexDirection: "row", gap: 10, marginTop: 10 }}>
+                  <TouchableOpacity style={{ flex: 1, backgroundColor: "#fff", borderRadius: RADIUS.control, minHeight: 44, alignItems: "center", justifyContent: "center" }} onPress={() => setConfirmLeave(false)} accessibilityRole="button" accessibilityLabel="Huỷ rời vườn">
+                    <Text style={{ fontFamily: FONT.bold, fontSize: 14, color: COLOR.text }}>Ở lại</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity style={{ flex: 1, backgroundColor: COLOR.danger, borderRadius: RADIUS.control, minHeight: 44, alignItems: "center", justifyContent: "center", opacity: busy ? 0.6 : 1 }} onPress={doLeave} disabled={busy} accessibilityRole="button" accessibilityLabel="Xác nhận rời vườn">
+                    <Text style={{ fontFamily: FONT.bold, fontSize: 14, color: "#fff" }}>{busy ? "Đang rời..." : "Xác nhận rời"}</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            )
+          ) : null}
+        </View>
       </ScrollView>
     </View>
   );
 }
-
-const styles = StyleSheet.create({
-  label: { fontSize: 12.5, fontFamily: "BeVietnamPro_700Bold", color: C.textSoft, marginTop: 10, marginBottom: 5 },
-  avatarBtn: { width: "22%", alignItems: "center", paddingVertical: 7, borderRadius: 13, borderWidth: 1.5, borderColor: "transparent", backgroundColor: "#fff7f8" },
-  avatarOn: { borderColor: C.pink, backgroundColor: C.pinkSoft },
-  dangerRow: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 7, backgroundColor: COLOR.dangerSoft, borderRadius: RADIUS.control, paddingVertical: 13, minHeight: 50 },
-  dangerText: { color: COLOR.danger, fontFamily: "BeVietnamPro_800ExtraBold", fontSize: 14 },
-});

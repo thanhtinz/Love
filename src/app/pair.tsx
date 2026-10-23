@@ -3,11 +3,27 @@ import { ScrollView, Share, StyleSheet, Text, TextInput, TouchableOpacity, View 
 import { router } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { useAuth } from "../lib/auth";
-import { useLove } from "../lib/store";
-import { parseDateKey, today } from "../lib/types";
+import { myName, useLove } from "../lib/store";
+import { formatDateVN, isValidDateKey } from "../lib/types";
 import Avatar from "../components/Avatar";
 import { LetterArtImage } from "../components/Art";
-import { C, s } from "../components/ui";
+import { COLOR, FONT, RADIUS, ROLE, TYPE } from "../components/theme";
+import { s } from "../components/ui";
+
+/** Chuỗi DD/MM/YYYY -> khóa ngày YYYY-MM-DD (null nếu không hợp lệ). */
+function displayToKey(text: string): string | null {
+  const m = text.trim().match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+  if (!m) return null;
+  const key = `${m[3]}-${m[2].padStart(2, "0")}-${m[1].padStart(2, "0")}`;
+  return isValidDateKey(key) ? key : null;
+}
+
+const local = StyleSheet.create({
+  label: { ...TYPE.micro, color: COLOR.textSoft, marginBottom: 8 },
+  bodyText: { ...TYPE.body, color: COLOR.textSoft },
+  error: { ...TYPE.body, color: COLOR.danger, marginTop: 12 },
+  link: { fontFamily: FONT.bold, fontSize: 14.5, color: COLOR.primary, textAlign: "center", marginTop: 18 },
+});
 
 export default function PairScreen() {
   const { user, couple, signOut, createCouple, joinCouple } = useAuth();
@@ -15,17 +31,14 @@ export default function PairScreen() {
   const [code, setCode] = useState("");
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
-  const [gardenName, setGardenName] = useState("");
-  const [startDate, setStartDate] = useState(today());
-  const [dateErr, setDateErr] = useState("");
+  const [dateText, setDateText] = useState("");
+  const [dateDirty, setDateDirty] = useState(false);
+  const [dateMsg, setDateMsg] = useState("");
 
   useEffect(() => { if (!user) router.replace("/auth"); }, [user]);
-  // Chỉ nạp từ state khi người dùng CHƯA tự sửa: bản đồng bộ từ máy người thương về
-  // giữa lúc đang gõ sẽ ghi đè mất nội dung đang nhập dở (cờ dirty tách riêng từng ô).
-  const [nameDirty, setNameDirty] = useState(false);
-  const [dateDirty, setDateDirty] = useState(false);
-  // eslint-disable-next-line react-hooks/set-state-in-effect -- đồng bộ form đặt tên vườn từ state đã tải, trừ ô người dùng đang sửa
-  useEffect(() => { if (!nameDirty && state.gardenName) setGardenName(state.gardenName); if (!dateDirty && state.startDate) setStartDate(state.startDate); }, [state.gardenName, state.startDate, nameDirty, dateDirty]);
+  // Nạp ngày bắt đầu từ state khi người dùng chưa tự sửa ô này (tránh đồng bộ ghi đè giữa lúc gõ).
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- đồng bộ ô ngày từ state, trừ khi đang sửa
+  useEffect(() => { if (!dateDirty && hydrated) setDateText(formatDateVN(state.couple.startDate)); }, [state.couple.startDate, dateDirty, hydrated]);
 
   if (!user) return null;
   const members = couple?.members ?? [];
@@ -38,112 +51,113 @@ export default function PairScreen() {
     } catch { setErr("Có lỗi mạng bất ngờ — thử lại nhé."); } finally { setBusy(false); }
   }
   async function doJoin() {
-    setErr("");
-    if (code.trim().length !== 6) { setErr("Mã mời gồm đúng 6 ký tự."); return; }
-    setBusy(true);
+    setErr(""); setBusy(true);
     try {
       const res = await joinCouple(code);
       if (res.error) setErr(res.error);
     } catch { setErr("Có lỗi mạng bất ngờ — thử lại nhé."); } finally { setBusy(false); }
   }
-  function saveSetup(go: boolean) {
-    setDateErr("");
-    // Chưa tải xong dữ liệu vườn THẬT thì không cho lưu: dispatch lúc này ghi lên state
-    // mặc định (và bật cờ cho phép ghi server), khi tải xong bản thật sẽ ĐÈ mất phần
-    // vừa nhập — tên vườn/ngày bắt đầu "lưu rồi mà mất" chính là lỗi này.
-    if (!hydrated) { setDateErr("Đang tải dữ liệu khu vườn — chờ một chút rồi lưu lại nhé."); return; }
-    // parseDateKey chặt: "2025-02-31" không còn lăn sang tháng 3 mà qua mặt kiểm tra nữa.
-    const d = parseDateKey(startDate);
-    if (!d) { setDateErr("Ngày bắt đầu yêu chưa đúng (năm-tháng-ngày, ngày phải tồn tại thật)."); return; }
-    if (d.getTime() > Date.now()) { setDateErr("Ngày bắt đầu yêu không thể ở tương lai."); return; }
-    dispatch({ type: "SETUP_GARDEN", gardenName: gardenName.trim(), startDate });
-    if (go) router.replace("/(tabs)");
+  function saveStartDate() {
+    const key = displayToKey(dateText);
+    if (!key) { setDateMsg("Ngày chưa đúng định dạng DD/MM/YYYY hoặc không tồn tại."); return; }
+    if (new Date(`${key}T00:00:00`).getTime() > Date.now()) { setDateMsg("Ngày bắt đầu không thể ở tương lai nhé."); return; }
+    dispatch({ type: "SET_START_DATE", date: key, user: state.currentUser, actor: myName(state) });
+    setDateDirty(false);
+    setDateMsg("Đã chốt ngày bắt đầu yêu — cả hai máy đều thấy ngày này.");
+  }
+  async function shareCode() {
+    if (!couple) return;
+    try { await Share.share({ message: `Vào Khu Vườn Tình Yêu với mình nhé! Mã mời: ${couple.code}` }); } catch { /* bỏ qua */ }
   }
 
   return (
-    <ScrollView contentContainerStyle={styles.wrap}>
-      <View style={styles.head}>
-        <Avatar id={user.avatar} size={56} />
-        <View style={{ flex: 1 }}>
-          <Text style={styles.hi}>Xin chào, {user.displayName}</Text>
-          <Text style={s.sub}>{couple ? "Vườn của hai bạn đã sẵn sàng." : "Tạo một khu vườn mới hoặc nhập mã mời của người ấy để ghép cặp."}</Text>
-        </View>
-        <TouchableOpacity onPress={signOut} style={styles.logout}><Ionicons name="log-out-outline" size={20} color={C.pinkDark} /></TouchableOpacity>
-      </View>
+    <ScrollView style={s.screen} contentContainerStyle={{ padding: 20, paddingBottom: 40 }}>
+      <LetterArtImage height={150} />
+      <Text style={[s.title, { marginTop: 16 }]}>{couple ? "Hai đứa đã gặp nhau" : "Ghép cặp với người ấy"}</Text>
+      <Text style={[s.sub, { marginTop: 6, fontSize: 14, lineHeight: 20 }]}>
+        {couple
+          ? "Chia sẻ mã mời cho người ấy nếu họ chưa vào, chốt ngày bắt đầu yêu, rồi vào vườn thôi."
+          : "Một người tạo vườn để lấy mã mời, người còn lại nhập mã đó — hai tài khoản sẽ gắn với nhau."}
+      </Text>
 
-      {err ? <Text style={styles.err}>{err}</Text> : null}
+      {err ? <Text style={local.error}>{err}</Text> : null}
 
       {!couple ? (
         <>
-          <LetterArtImage height={150} />
-          <View style={s.card}>
-            <View style={s.row}><Ionicons name="leaf" size={19} color={C.green} /><Text style={s.title}>Tạo khu vườn mới</Text></View>
-            <Text style={s.sub}>Bạn sẽ nhận một mã mời 6 ký tự. Gửi mã đó cho người ấy để họ vào cùng vườn — tối đa 2 người một vườn.</Text>
-            <TouchableOpacity style={[s.btn, busy && { opacity: 0.6 }]} onPress={doCreate} disabled={busy}>
-              <Ionicons name="add-circle" size={18} color="#fff" /><Text style={s.btnText}>{busy ? "Đang tạo..." : "Tạo vườn và lấy mã mời"}</Text>
+          <View style={[s.card, { marginTop: 16 }]}>
+            <Text style={local.label}>Tạo vườn mới</Text>
+            <Text style={local.bodyText}>Tạo vườn và nhận mã mời để gửi cho người ấy.</Text>
+            <TouchableOpacity style={[s.btn, { marginTop: 12 }]} onPress={doCreate} disabled={busy} accessibilityRole="button" accessibilityLabel="Tạo vườn mới">
+              <Text style={s.btnText}>{busy ? "Đang tạo..." : "Tạo vườn, lấy mã mời"}</Text>
             </TouchableOpacity>
           </View>
-
-          <View style={s.card}>
-            <View style={s.row}><Ionicons name="key" size={19} color={C.amber} /><Text style={s.title}>Nhập mã mời</Text></View>
-            <Text style={s.sub}>Người ấy đã tạo vườn và gửi mã cho bạn? Nhập mã tại đây.</Text>
-            <TextInput style={[s.input, styles.codeInput]} placeholder="VD: AB12CD" placeholderTextColor={C.textFaint} value={code} onChangeText={(t) => setCode(t.toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 6))} autoCapitalize="characters" maxLength={6} />
-            <TouchableOpacity style={[s.btnGhost, busy && { opacity: 0.6 }]} onPress={doJoin} disabled={busy}>
-              <Ionicons name="heart" size={17} color={C.pinkDark} /><Text style={s.btnGhostText}>{busy ? "Đang kiểm tra..." : "Vào vườn của người ấy"}</Text>
+          <View style={[s.card, { marginTop: 12 }]}>
+            <Text style={local.label}>Nhập mã mời</Text>
+            <TextInput
+              style={s.input}
+              placeholder="VD: A1B2C3"
+              placeholderTextColor={COLOR.textFaint}
+              autoCapitalize="characters"
+              autoCorrect={false}
+              value={code}
+              onChangeText={setCode}
+            />
+            <TouchableOpacity style={[s.btn, { marginTop: 12, opacity: busy || code.trim().length < 4 ? 0.55 : 1 }]} onPress={doJoin} disabled={busy || code.trim().length < 4} accessibilityRole="button" accessibilityLabel="Vào vườn bằng mã mời">
+              <Text style={s.btnText}>{busy ? "Đang vào..." : "Vào vườn bằng mã này"}</Text>
             </TouchableOpacity>
           </View>
         </>
       ) : (
         <>
-          <View style={[s.card, { alignItems: "center", gap: 8 }]}>
-            <Ionicons name="checkmark-circle" size={34} color={C.green} />
-            <Text style={s.title}>Đã ghép cặp thành công</Text>
-            <Text style={s.sub}>Mã mời của vườn (gửi cho người ấy nếu họ chưa vào):</Text>
-            <Text style={styles.bigCode}>{couple.code}</Text>
-            <TouchableOpacity style={s.btnGhost} onPress={() => Share.share({ message: `Vào Khu Vườn Tình Yêu với mình nhé! Mã mời vườn: ${couple.code}` })}>
-              <Ionicons name="share-social" size={16} color={C.pinkDark} /><Text style={s.btnGhostText}>Chia sẻ mã mời</Text>
-            </TouchableOpacity>
-            <View style={{ gap: 6, width: "100%" }}>
+          <View style={[s.card, { marginTop: 16 }]}>
+            <Text style={local.label}>Mã mời của hai đứa</Text>
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
+              <Text style={{ fontFamily: FONT.black, fontSize: 30, letterSpacing: 3, color: COLOR.text, flex: 1 }}>{couple.code}</Text>
+              <TouchableOpacity onPress={shareCode} style={{ flexDirection: "row", alignItems: "center", gap: 6, backgroundColor: ROLE.selfSoft, borderRadius: RADIUS.control, paddingHorizontal: 14, paddingVertical: 10 }} accessibilityRole="button" accessibilityLabel="Chia sẻ mã mời">
+                <Ionicons name="share-social-outline" size={17} color={ROLE.selfDark} />
+                <Text style={{ color: ROLE.selfDark, fontFamily: FONT.bold, fontSize: 14 }}>Chia sẻ</Text>
+              </TouchableOpacity>
+            </View>
+            <View style={{ marginTop: 14, gap: 10 }}>
               {members.map((m) => (
-                <View key={m.userId} style={s.row}>
-                  <Avatar id={m.avatar} size={30} />
-                  <Text style={{ fontFamily: "BeVietnamPro_700Bold", color: C.text }}>{m.displayName}</Text>
-                  <Text style={s.small}>{m.slot === "A" ? "Người giữ vườn A" : "Người giữ vườn B"}{m.userId === user.id ? " (bạn)" : ""}</Text>
+                <View key={m.userId} style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
+                  <Avatar id={m.avatar} size={38} />
+                  <Text style={{ fontFamily: FONT.bold, fontSize: 15, color: COLOR.text, flex: 1 }}>{m.displayName}</Text>
+                  <Text style={{ fontFamily: FONT.regular, fontSize: 13, color: COLOR.textSoft }}>{m.slot === couple.mySlot ? "Bạn" : "Người ấy"}</Text>
                 </View>
               ))}
-              {members.length < 2 && <Text style={s.small}>Đang chờ người ấy nhập mã để vào vườn...</Text>}
+              {members.length < 2 ? <Text style={local.bodyText}>Đang chờ người ấy nhập mã mời để vào vườn...</Text> : null}
             </View>
           </View>
 
-          <View style={s.card}>
-            <View style={s.row}><Ionicons name="flower" size={19} color={C.pink} /><Text style={s.title}>{state.everOnboarded ? "Thông tin khu vườn" : "Đặt tên vườn & ngày bắt đầu yêu"}</Text></View>
-            <Text style={s.sub}>Tên vườn và ngày bắt đầu yêu dùng cho khung đếm ngày và các mốc kỷ niệm.</Text>
-            <TextInput style={s.input} placeholder="Tên khu vườn" placeholderTextColor={C.textFaint} value={gardenName} onChangeText={(t) => { setGardenName(t); setNameDirty(true); }} maxLength={40} />
-            <Text style={styles.label}>Ngày bắt đầu yêu (năm-tháng-ngày)</Text>
-            <TextInput style={s.input} placeholder="VD: 2024-02-14" placeholderTextColor={C.textFaint} value={startDate} onChangeText={(t) => { setStartDate(t); setDateDirty(true); }} keyboardType="numbers-and-punctuation" maxLength={10} />
-            {dateErr ? <Text style={styles.err}>{dateErr}</Text> : null}
-            {!hydrated && <Text style={s.small}>Đang tải dữ liệu khu vườn — nút lưu sẽ dùng được ngay khi tải xong.</Text>}
-            <TouchableOpacity style={[s.btnGhost, !hydrated && { opacity: 0.5 }]} onPress={() => saveSetup(false)} disabled={!hydrated}>
-              <Ionicons name="save" size={16} color={C.pinkDark} /><Text style={s.btnGhostText}>Lưu thông tin</Text>
+          <View style={[s.card, { marginTop: 12 }]}>
+            <Text style={local.label}>Ngày bắt đầu yêu</Text>
+            <Text style={[local.bodyText, { marginBottom: 10 }]}>
+              {"Ngày hai đứa chính thức yêu nhau — bộ đếm \"Ngày N\" ở trang Nhà tính từ ngày này."}
+            </Text>
+            <TextInput
+              style={s.input}
+              placeholder="DD/MM/YYYY"
+              placeholderTextColor={COLOR.textFaint}
+              keyboardType="numbers-and-punctuation"
+              value={dateText}
+              onChangeText={(t) => { setDateText(t); setDateDirty(true); setDateMsg(""); }}
+            />
+            {dateMsg ? <Text style={{ marginTop: 8, fontFamily: FONT.regular, fontSize: 13.5, color: dateMsg.startsWith("Đã chốt") ? COLOR.successText : COLOR.danger }}>{dateMsg}</Text> : null}
+            <TouchableOpacity style={[s.btnGhost, { marginTop: 12 }]} onPress={saveStartDate} accessibilityRole="button" accessibilityLabel="Lưu ngày bắt đầu yêu">
+              <Text style={s.btnGhostText}>Lưu ngày bắt đầu</Text>
             </TouchableOpacity>
           </View>
 
-          <TouchableOpacity style={s.btn} onPress={() => (!state.everOnboarded ? saveSetup(true) : router.replace("/(tabs)"))}>
-            <Ionicons name="leaf" size={18} color="#fff" /><Text style={s.btnText}>Vào khu vườn</Text>
+          <TouchableOpacity style={[s.btn, { marginTop: 16 }]} onPress={() => router.replace("/(tabs)")} accessibilityRole="button" accessibilityLabel="Vào khu vườn">
+            <Text style={s.btnText}>Vào khu vườn</Text>
           </TouchableOpacity>
         </>
       )}
+
+      <TouchableOpacity onPress={() => signOut()} accessibilityRole="button" accessibilityLabel="Đăng xuất">
+        <Text style={local.link}>Đăng xuất</Text>
+      </TouchableOpacity>
     </ScrollView>
   );
 }
-
-const styles = StyleSheet.create({
-  wrap: { flexGrow: 1, padding: 18, paddingTop: 48, gap: 14, backgroundColor: C.bg },
-  head: { flexDirection: "row", alignItems: "center", gap: 12 },
-  hi: { fontSize: 19, fontFamily: "BeVietnamPro_900Black", color: C.text },
-  logout: { backgroundColor: C.pinkSoft, borderRadius: 999, padding: 12 },
-  err: { color: "#dc2626", fontSize: 13, fontFamily: "BeVietnamPro_600SemiBold" },
-  codeInput: { textAlign: "center", fontSize: 20, fontFamily: "BeVietnamPro_800ExtraBold", letterSpacing: 4 },
-  bigCode: { fontSize: 30, fontFamily: "BeVietnamPro_900Black", letterSpacing: 6, color: C.pinkDark, backgroundColor: C.pinkSoft, paddingHorizontal: 18, paddingVertical: 8, borderRadius: 14, overflow: "hidden" },
-  label: { fontSize: 12.5, fontFamily: "BeVietnamPro_700Bold", color: C.textSoft },
-});

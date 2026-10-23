@@ -1,121 +1,86 @@
 import React from "react";
-import { Modal, Text, TouchableOpacity, View } from "react-native";
+import { Modal, Pressable, Text, TouchableOpacity, View } from "react-native";
 import { router } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
-import { decideCareDrop, myName, useLove } from "../lib/store";
-import { careStatus, speciesById } from "../lib/plants";
+import { myName, useLove } from "../lib/store";
 import { PING_DAILY_MAX, today } from "../lib/types";
-import { COLOR, FONT, RADIUS, SPACE, TILE } from "./theme";
+import { shareStatus } from "../lib/features";
+import { COLOR, FONT, RADIUS, ROLE, SPACE, TILE } from "./theme";
+import { Medallion } from "./ui";
 
 /**
- * Sheet hành động nhanh mở từ nút "+" ở giữa tab bar (mẫu Paired/Between:
- * nút giữa nổi bật cho việc hay làm nhất). Mỗi hàng là 1 hành động rõ ràng:
- * "Chăm cây" tưới ngay cây đang chọn (đúng luật cooldown/chỉ số đầy của store,
- * hệt nút Tưới ở tab Vườn); các hàng còn lại dẫn thẳng tới màn hình tính năng.
+ * Sheet hành động nhanh mở từ nút "+" giữa tab bar — ĐÚNG 4 hành động của 5 lõi:
+ * Viết note · Gửi nhịp nhớ · Chăm cây · Chia sẻ vị trí tạm thời.
+ * Mọi hàng dùng MỘT họ tile trung tính (TILE) — không nhuộm màu riêng từng hàng.
  */
 export function QuickActions({ visible, onClose }: { visible: boolean; onClose: () => void }) {
   const { state, dispatch } = useLove();
   const me = state.currentUser;
-  // Chỉ tưới cây ĐANG CHỌN thật: bản cũ fallback sang plants[0] khi selectedPlantId
-  // lỗi thời nhưng vẫn ghi nhãn "đang chọn" — người dùng tưới nhầm cây khác hẳn ý định.
-  const selectedPlant = state.plants.find((p) => p.id === state.selectedPlantId);
-  const plant = selectedPlant || state.plants[0];
+  const myPingsToday = state.pings.day.date === today() ? state.pings.day[me] : 0;
+  const pingFull = myPingsToday >= PING_DAILY_MAX;
+  const myShare = shareStatus(state.presence[me]);
 
   function go(route: string) {
     onClose();
     router.push(route as never);
   }
 
-  function waterNow() {
-    onClose();
-    if (!plant) { router.push("/(tabs)/garden"); return; }
-    // Cùng luật với tab Vườn: đang cooldown hoặc nước đã đầy thì không dispatch —
-    // chuyển qua tab Vườn để người dùng thấy lý do cụ thể.
-    const cs = careStatus(plant, "water", me, Date.now());
-    if (cs.ok) {
-      const { drop, combo } = decideCareDrop(state, plant.id, "water");
-      dispatch({ type: "TREE_ACTION", kind: "water", actor: myName(state), user: me, plantId: plant.id, drop, combo });
-    }
-    router.push("/(tabs)/garden");
-  }
-
   function sendPing() {
-    // "Nhớ bạn" nhịp tim: gửi ngay 1 nhịp (reducer tự chặn khi đủ 50 nhịp/ngày).
+    if (pingFull) return;
     dispatch({ type: "PING_SEND", user: me, actor: myName(state) });
     onClose();
   }
 
-  const myPingsToday = state.pings.day.date === today() ? state.pings.day[me] : 0;
-
-  // Vòng polish 2026-10-23: cả 5 hàng dùng MỘT họ tile trung tính (TILE) —
-  // không còn 5 hàng 5 màu pastel như trước.
-  const rows: { icon: string; label: string; desc: string; color: string; bg: string; onPress: () => void }[] = [
+  const rows: { icon: string; title: string; desc: string; onPress: () => void; disabled?: boolean }[] = [
+    { icon: "create-outline", title: "Viết note tình yêu", desc: "Gửi một note nhỏ cho người ấy", onPress: () => go("/(tabs)/notes") },
     {
-      icon: "heart",
-      label: "Gửi nhịp nhớ bạn",
-      desc: myPingsToday >= PING_DAILY_MAX ? `Hôm nay bạn đã gửi đủ ${PING_DAILY_MAX} nhịp rồi` : `Chạm là gửi ngay một nhịp tim · hôm nay bạn đã gửi ${myPingsToday}/${PING_DAILY_MAX} nhịp`,
-      color: TILE.icon,
-      bg: TILE.bg,
-      onPress: sendPing,
+      icon: "heart", title: "Gửi nhịp nhớ", desc: pingFull ? `Hôm nay đã đủ ${PING_DAILY_MAX} nhịp rồi` : `Hôm nay đã nhớ nhau ${myPingsToday}/${PING_DAILY_MAX} nhịp`,
+      onPress: sendPing, disabled: pingFull,
     },
+    { icon: "leaf-outline", title: "Chăm cây tình yêu", desc: "Tưới nước, phơi nắng, gửi lời yêu cho cây", onPress: () => go("/(tabs)/tree") },
     {
-      icon: "water",
-      label: "Tưới nước cho cây",
-      desc: plant ? (selectedPlant ? `${speciesById(plant.speciesId).name} đang chọn trong vườn` : `Cây đầu tiên trong vườn: ${speciesById(plant.speciesId).name}`) : "Vườn chưa có cây — qua tab Vườn gieo hạt nhé",
-      color: TILE.icon,
-      bg: TILE.bg,
-      onPress: waterNow,
-    },
-    {
-      icon: "heart",
-      label: "Gửi yêu thương",
-      desc: "Ôm, hôn gió, tặng hoa, thả sao cho người ấy",
-      color: TILE.icon,
-      bg: TILE.bg,
-      onPress: () => go("/utilities/love-actions"),
-    },
-    {
-      icon: "document-text",
-      label: "Thêm ghi chú",
-      desc: "Dán một lời nhắn nhanh lên Love Notes",
-      color: TILE.icon,
-      bg: TILE.bg,
-      onPress: () => go("/utilities/love-notes"),
-    },
-    {
-      icon: "camera",
-      label: "Thêm kỷ niệm",
-      desc: "Lưu một khoảnh khắc vào Dòng kỷ niệm",
-      color: TILE.icon,
-      bg: TILE.bg,
-      onPress: () => go("/utilities/memories"),
+      icon: "location-outline", title: "Chia sẻ vị trí tạm thời",
+      desc: myShare.active ? "Đang chia sẻ — chạm để xem hoặc dừng" : "Cho người ấy thấy mình đang ở đâu, trong chốc lát",
+      onPress: () => go("/location"),
     },
   ];
 
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
-      <TouchableOpacity style={{ flex: 1, backgroundColor: "rgba(51,39,46,0.42)" }} activeOpacity={1} onPress={onClose} accessibilityLabel="Đóng thực đơn nhanh" />
-      <View style={{ backgroundColor: "#fff", borderTopLeftRadius: RADIUS.sheet, borderTopRightRadius: RADIUS.sheet, padding: SPACE.xl, paddingTop: 10, paddingBottom: 26, gap: SPACE.sm }}>
-        <View style={{ alignSelf: "center", width: 38, height: 5, borderRadius: 3, backgroundColor: "#EBD9D2", marginBottom: 6 }} />
-        <Text style={{ fontFamily: FONT.extrabold, fontSize: 19, color: COLOR.text }}>Làm gì nhanh nào?</Text>
-        {rows.map((r) => (
-          <TouchableOpacity key={r.label} onPress={r.onPress} style={{ flexDirection: "row", alignItems: "center", gap: 12, minHeight: 58, borderRadius: RADIUS.inner, backgroundColor: COLOR.bg, paddingHorizontal: 12, paddingVertical: 8 }}>
-            <View style={{ width: 42, height: 42, borderRadius: 21, backgroundColor: r.bg, alignItems: "center", justifyContent: "center" }}>
-              <Ionicons name={r.icon as never} size={21} color={r.color} />
-            </View>
-            <View style={{ flex: 1, gap: 1 }}>
-              <Text style={{ fontFamily: FONT.semibold, fontSize: 14.5, color: COLOR.text }}>{r.label}</Text>
-              <Text style={{ fontFamily: FONT.medium, fontSize: 12, color: COLOR.textSoft }} numberOfLines={1}>{r.desc}</Text>
-            </View>
-            <Ionicons name="chevron-forward" size={17} color={COLOR.chevron} />
-          </TouchableOpacity>
-        ))}
-        {/* Nút đóng của sheet = nút chữ/ghost lặng (đồng nhất cách đóng sheet
-            trong app) — không còn styled như nút submit viền đậm nữa. */}
-        <TouchableOpacity onPress={onClose} style={{ alignItems: "center", justifyContent: "center", minHeight: 48, marginTop: 2 }} accessibilityRole="button" accessibilityLabel="Đóng">
-          <Text style={{ fontFamily: FONT.bold, fontSize: 14.5, color: COLOR.textSoft }}>Đóng</Text>
-        </TouchableOpacity>
-      </View>
+      <Pressable style={{ flex: 1, backgroundColor: "rgba(51,39,46,0.35)", justifyContent: "flex-end" }} onPress={onClose}>
+        <Pressable
+          onPress={() => {}}
+          style={{ backgroundColor: COLOR.bg, borderTopLeftRadius: RADIUS.sheet, borderTopRightRadius: RADIUS.sheet, paddingHorizontal: SPACE.screenX, paddingTop: 14, paddingBottom: 30 }}
+        >
+          <View style={{ alignSelf: "center", width: 44, height: 5, borderRadius: 3, backgroundColor: COLOR.lineStrong, marginBottom: 14 }} />
+          <Text style={{ fontFamily: FONT.extrabold, fontSize: 19, color: COLOR.text, marginBottom: 4 }}>Làm gì cho nhau nè?</Text>
+          <Text style={{ fontFamily: FONT.regular, fontSize: 13.5, color: COLOR.textSoft, marginBottom: 10 }}>Bốn việc nhỏ, ấm lòng cả ngày.</Text>
+          {rows.map((r) => (
+            <TouchableOpacity
+              key={r.title}
+              onPress={r.onPress}
+              disabled={r.disabled}
+              style={{ flexDirection: "row", alignItems: "center", gap: 12, paddingVertical: 11, opacity: r.disabled ? 0.5 : 1 }}
+              accessibilityRole="button"
+              accessibilityLabel={r.title}
+              accessibilityState={{ disabled: !!r.disabled }}
+            >
+              <Medallion icon={r.icon} color={TILE.icon} bg={TILE.bg} size={46} />
+              <View style={{ flex: 1, minWidth: 0 }}>
+                <Text style={{ fontFamily: FONT.bold, fontSize: 15.5, color: COLOR.text }}>{r.title}</Text>
+                <Text style={{ fontFamily: FONT.regular, fontSize: 13, color: COLOR.textSoft, marginTop: 1 }}>{r.desc}</Text>
+              </View>
+              <Ionicons name="chevron-forward" size={18} color={COLOR.chevron} />
+            </TouchableOpacity>
+          ))}
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 7, marginTop: 12, backgroundColor: ROLE.sharedSoft, borderRadius: RADIUS.tile, paddingHorizontal: 12, paddingVertical: 9 }}>
+            <Ionicons name="information-circle-outline" size={15} color={ROLE.shared} />
+            <Text style={{ flex: 1, fontFamily: FONT.regular, fontSize: 12.5, color: ROLE.sharedDark }}>
+              Mọi thứ ở đây đều đồng bộ với người ấy ngay khi cả hai đang mở app.
+            </Text>
+          </View>
+        </Pressable>
+      </Pressable>
     </Modal>
   );
 }

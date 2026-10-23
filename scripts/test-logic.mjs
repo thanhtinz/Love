@@ -1,18 +1,21 @@
 /**
- * Test logic vòng 2: migration state cũ, khóa cứng ở reducer, merge 2 máy, ngày địa phương.
- * Cách chạy: npm run test-logic (biên dịch lib ra scripts/.build rồi chạy với TZ=Asia/Saigon).
- * Mỗi nhóm test ghi rõ bug nó bảo vệ — test phải FAIL trên code trước khi sửa.
+ * Test logic cho bản REBUILD 5 lõi (đếm ngày · cây · note · nhịp nhớ · định vị tạm).
+ * Chạy: npm run test-logic (biên dịch src/lib ra scripts/.build rồi chạy, TZ=Asia/Saigon).
+ * Mỗi nhóm ghi rõ luật nó bảo vệ — các khóa cứng (cooldown, trần, hết hạn) phải
+ * nằm ở reducer/lib, test này FAIL nếu ai đó gỡ khóa ở tầng logic.
  */
 import { createRequire } from "node:module";
 const require = createRequire(import.meta.url);
 const T = require("./.build/types.js");
-const P = require("./.build/plants.js");
-const D = require("./.build/data.js");
+const TR = require("./.build/tree.js");
+const F = require("./.build/features.js");
+const CT = require("./.build/content.js");
+const MO = require("./.build/model.js");
 const R = require("./.build/reducer.js");
 const M = require("./.build/merge.js");
-const TM = require("./.build/time.js");
 
 const H = 3600000;
+const MIN = 60000;
 let failures = 0;
 let count = 0;
 const check = (label, ok, detail) => {
@@ -23,620 +26,251 @@ const check = (label, ok, detail) => {
 const iso = (ms) => new Date(ms).toISOString();
 const NOW = Date.now();
 const todayStr = T.today();
-
-/* ================= 1) MIGRATION FIXTURES ================= */
-console.log("\n--- Migration: state thời web (V4, cây đơn, daily chung, emoji) ---");
-const webEra = {
-  roomCode: "ABC123", personA: "An", personB: "Bình", startDate: "2024-02-14", currentUser: "A",
-  tree: { xp: 300, water: 55, sun: 66, love: 77, careCount: 40, lastCareAt: "2025-12-20T10:00:00.000Z", lastCareBy: "A", statsAt: "2025-12-20T10:00:00.000Z" },
-  moods: { A: "\u{1F60A}", B: "\u{1F970}", date: "2025-12-20" },
-  notes: [{ id: "n1", author: "An", text: "Ghi chú thời web", color: "bg-pink-100", createdAt: "2025-12-19T09:00:00.000Z" }],
-  bucket: [{ id: "bk1", text: "Đi Đà Lạt", done: false, createdAt: "2025-12-19T09:00:00.000Z" }],
-  answers: { date: "2025-12-20", A: "Đáp án web", B: "" },
-  activities: [{ id: "a1", actor: "An", text: "vừa tưới cây", emoji: "sprout", time: "2025-12-20T10:00:00.000Z" }],
-  letters: [
-    { id: "L1", messageId: 3, rarity: "common", source: "web", opened: true, droppedAt: "2025-12-18T10:00:00.000Z", openedAt: "2025-12-18T11:00:00.000Z", openedBy: "Bình" },
-    { id: "L2", messageId: 20, rarity: "rare", source: "web", opened: false, droppedAt: "2025-12-19T10:00:00.000Z", openedAt: "", openedBy: "" },
-  ],
-  daily: { date: "2025-12-20", water: 5, love: 3, sun: 2, bug: 1, caredA: true, caredB: false, claimed: ["water3"] },
-  streak: { count: 2, lastDate: "2025-12-19" },
-  achievements: ["first"],
-  coins: 123,
-  inventory: ["pot-basic", "scene-auto", "acc-none"],
-  equipped: { pot: "pot-basic", scene: "scene-auto", accessory: "acc-none" },
-  memories: [{ id: "m1", title: "Kỷ niệm web", date: "2025-01-01", desc: "d", imageUrl: "", author: "An", createdAt: "2025-12-19T09:00:00.000Z" }],
-  lastLoveAction: { kind: "hug", emoji: "hug", label: "gửi ôm", by: "A", actor: "An", at: "2025-12-20T09:00:00.000Z" },
-  onboarded: true, everOnboarded: true, gardenName: "Vườn web", avatarA: "svg-a", avatarB: "svg-b",
-};
-const w = P.normalizeStateV5(webEra);
-check("web: cây đơn -> plants[0] loài love-tree", w.plants.length === 1 && w.plants[0].speciesId === "love-tree");
-check("web: giữ nguyên giai đoạn (xp 300 -> giai đoạn 5)", P.stageInfo(w.plants[0], NOW).index === 5, `index=${P.stageInfo(w.plants[0], NOW).index}`);
-check("web: giữ thư + trạng thái đã mở", w.letters.length === 2 && w.letters.find((l) => l.id === "L1").opened === true && w.letters[0].id === "L2");
-check("web: giữ coins 123", w.coins === 123);
-check("web: daily chung -> gán cho người đã chăm (A), claimed vào cả hai", w.daily.A.water === 5 && w.daily.B.water === 0 && w.daily.claimedA.includes("water3") && w.daily.claimedB.includes("water3"));
-check("web: mood emoji -> id chuẩn", w.moods.A === "joy" && w.moods.B === "love");
-check("web: activity emoji -> icon", w.activities[0].icon === "sprout");
-check("web: có đủ trường mobile (games/loveNotes)", Boolean(w.games && w.games.spin && w.loveNotes));
-check("web: giữ memories + bucket + streak", w.memories.length === 1 && w.bucket.length === 1 && w.streak.count === 2);
-
-console.log("\n--- Migration: mobile v1 (plants có sẵn, daily vẫn shape chung) ---");
-const plantRaw = (id, speciesId) => ({ id, speciesId, plantedAt: iso(NOW - 5 * H), growthAt: iso(NOW), statsAt: iso(NOW), growthRecordedMs: 2 * H, totalBoostMs: 0, water: 70, sun: 70, love: 70, careCount: 4, lastCareAt: "", lastCareBy: "", announcedStage: 1, matureAt: "", fruitReadyAt: "", harvestCount: 0 });
-const v1 = P.normalizeStateV5({
-  plants: [plantRaw("p1", "love-tree"), plantRaw("p2", "sunflower")],
-  selectedPlantId: "p2",
-  games: T.defaultGames,
-  daily: { date: todayStr, water: 2, love: 1, sun: 0, bug: 0, caredA: false, caredB: true, claimed: [] },
-  coins: 88,
+const fresh = () => MO.normalizeState(null);
+const mkTree = (over = {}) => TR.normalizeTree({
+  plantedAt: iso(NOW - 1000), growthRecordedMs: 0, growthAt: iso(NOW - 1000), statsAt: iso(NOW - 1000),
+  water: 60, sun: 60, love: 60, totalBoostMs: 0, careCount: 0, lastCareAt: "", lastCareBySlot: "",
+  lastCareAtBy: { A: "", B: "" }, announcedStage: 0, matureAt: "", ...over,
 });
-check("v1: giữ nguyên 2 cây + cây đang chọn", v1.plants.length === 2 && v1.selectedPlantId === "p2");
-check("v1: daily chung -> gán cho B (người đã chăm)", v1.daily.B.love === 1 && v1.daily.A.love === 0);
 
-console.log("\n--- Migration: rỗng / hỏng / thu hết cây ---");
-const empty = P.normalizeStateV5({});
-check("rỗng {}: state hợp lệ, 1 cây mới, coins khởi điểm", empty.plants.length === 1 && empty.coins === T.START_COINS && empty.letters.length === 0);
-let corruptOk = true; let corrupt;
-try {
-  corrupt = P.normalizeStateV5({ coins: NaN, letters: "oops", notes: 42, tree: { xp: NaN, water: "x" }, plants: [{ id: "x" }], games: "no" });
-  P.normalizeStateV5(null); P.normalizeStateV5("chuỗi"); P.normalizeStateV5([1, 2]);
-} catch { corruptOk = false; }
-check("hỏng: không throw với mọi input lạ", corruptOk);
-check("hỏng: coins NaN -> khởi điểm; coins âm -> 0; coins lẻ -> làm tròn", corrupt.coins === T.START_COINS && P.normalizeStateV5({ coins: -30 }).coins === 0 && P.normalizeStateV5({ coins: 99.7 }).coins === 99);
-check("hỏng: letters sai kiểu -> [], plants được chuẩn hoá số hữu hạn", Array.isArray(corrupt.letters) && corrupt.plants.length === 1 && Number.isFinite(corrupt.plants[0].growthRecordedMs) && Number.isFinite(corrupt.plants[0].water));
-const collectedAll = P.normalizeStateV5({
-  plants: [], games: T.defaultGames, updatedAt: iso(NOW),
-  tree: { xp: 500, water: 10, sun: 10, love: 10, careCount: 50, lastCareAt: iso(NOW), lastCareBy: "A", statsAt: iso(NOW) },
-  treeCollection: [{ id: "c1", speciesId: "sunflower", plantedAt: iso(NOW - 100 * H), maturedAt: iso(NOW - 50 * H), collectedAt: iso(NOW - H), careCount: 30 }],
-});
-check("thu hết cây: plants RỖNG được tôn trọng (không hồi sinh cây legacy)", collectedAll.plants.length === 0 && collectedAll.selectedPlantId === "" && collectedAll.treeCollection.length === 1);
-const webEmptyPlants = P.normalizeStateV5({ plants: [], tree: { xp: 500, water: 10, sun: 10, love: 10, careCount: 50, lastCareAt: iso(NOW), lastCareBy: "A", statsAt: iso(NOW) } });
-check("đối chứng: plants [] KHÔNG dấu mobile + tree có tiến độ -> vẫn migration cây legacy", webEmptyPlants.plants.length === 1);
-
-/* ================= 2) REDUCER — khóa cứng tầng store ================= */
-console.log("\n--- Reducer: chăm cây (cooldown + chỉ số đầy) ---");
-const base = () => P.normalizeStateV5({});
+/* ================= A) ĐẾM NGÀY YÊU + CỘT MỐC ================= */
+console.log("\n--- A) Đếm ngày + cột mốc ---");
 {
-  const s0 = base();
-  const pid = s0.plants[0].id;
-  const a1 = R.gardenReducer(s0, { type: "TREE_ACTION", kind: "water", actor: "An", user: "A", plantId: pid });
-  check("chăm lần 1: +Xu, +tiến độ nhiệm vụ của A", a1.coins === s0.coins + 5 && a1.daily.A.water === 1 && a1.plants[0].careCount === 1);
-  const a2 = R.gardenReducer(a1, { type: "TREE_ACTION", kind: "water", actor: "An", user: "A", plantId: pid });
-  check("chăm lần 2 ngay (cooldown 60s): bị chặn ở store", a2 === a1);
-  const b1 = R.gardenReducer(a1, { type: "TREE_ACTION", kind: "water", actor: "Bình", user: "B", plantId: pid });
-  check("người kia chăm cùng cây: được (cooldown theo người)", b1 !== a1 && b1.plants[0].careCount === 2 && b1.daily.B.water === 1);
-  const full = P.normalizeStateV5({ plants: [{ ...plantRaw("pf", "love-tree"), water: 99, sun: 60 }] });
-  const f1 = R.gardenReducer(full, { type: "TREE_ACTION", kind: "water", actor: "An", user: "A", plantId: "pf" });
-  check("chỉ số đã đầy (>=95): chăm vô hiệu ở store", f1 === full);
-  const f2 = R.gardenReducer(full, { type: "TREE_ACTION", kind: "sun", actor: "An", user: "A", plantId: "pf" });
-  check("chỉ số khác chưa đầy: chăm được", f2 !== full);
+  const daysAgo = (n) => { const d = new Date(NOW - n * 24 * H); return T.dayKeyLocal(d); };
+  check("A1 ngày bắt đầu = hôm nay -> Ngày 1", F.dayCount(daysAgo(0)) === 1);
+  check("A2 bắt đầu 99 ngày trước -> Ngày 100", F.dayCount(daysAgo(99)) === 100);
+  check("A3 nextMilestone(1) = 100, còn 99", (() => { const n = F.nextMilestone(1); return n && n.days === 100 && n.remaining === 99; })());
+  check("A4 nextMilestone(100) = 200, còn 100", (() => { const n = F.nextMilestone(100); return n && n.days === 200 && n.remaining === 100; })());
+  check("A5 nextMilestone(10000) = null (hết danh sách)", F.nextMilestone(10000) === null);
+  check("A6 milestoneReached: 99->null, 100->100, 250->200", F.milestoneReached(99) === null && F.milestoneReached(100) === 100 && F.milestoneReached(250) === 200);
+  check("A7 parseDateKey loại ngày không tồn tại 2025-02-31", T.parseDateKey("2025-02-31") === null && !T.isValidDateKey("2025-02-31"));
+  check("A8 năm nhuận: 2024-02-29 hợp lệ, 2025-02-29 không", T.isValidDateKey("2024-02-29") && !T.isValidDateKey("2025-02-29"));
+
+  let st = fresh();
+  const before = st;
+  st = R.gardenReducer(st, { type: "SET_START_DATE", date: daysAgo(30), user: "A", actor: "An" });
+  check("A9 SET_START_DATE ngày quá khứ hợp lệ -> áp dụng + startSetBy + dấu vết", st !== before && st.couple.startDate === daysAgo(30) && st.couple.startSetBy === "A" && st.activities.length === 1);
+  const future = T.dayKeyLocal(new Date(NOW + 24 * H));
+  const stFuture = R.gardenReducer(st, { type: "SET_START_DATE", date: future, user: "A", actor: "An" });
+  check("A10 SET_START_DATE ở tương lai -> bị chặn (giữ nguyên state)", stFuture === st);
+  const stBad = R.gardenReducer(st, { type: "SET_START_DATE", date: "31/02/2025", user: "A", actor: "An" });
+  check("A11 SET_START_DATE sai định dạng -> bị chặn", stBad === st);
+  let sm = R.gardenReducer(fresh(), { type: "MARK_MILESTONE", days: 100, actor: "An" });
+  const actsAfterFirst = sm.activities.length;
+  sm = R.gardenReducer(sm, { type: "MARK_MILESTONE", days: 100, actor: "An" });
+  check("A12 MARK_MILESTONE idempotent: ghi 1 lần, dấu vết 1 lần", sm.couple.celebrated.filter((d) => d === 100).length === 1 && sm.activities.length === actsAfterFirst);
 }
 
-console.log("\n--- Reducer: nhiệm vụ ngày (kiểm tiến độ + thưởng từ bảng, idempotent) ---");
+/* ================= B) CÂY: TĂNG TRƯỞNG / HAO / SỨC KHỎE ================= */
+console.log("\n--- B) Cây — tăng trưởng theo thời gian thật ---");
 {
-  const mkDaily = (waterA) => P.normalizeStateV5({
-    daily: { date: todayStr, A: { water: waterA, love: 0, sun: 0, bug: 0 }, B: { water: 0, love: 0, sun: 0, bug: 0 }, caredA: waterA > 0, caredB: false, claimedA: [], claimedB: [] },
+  const t0 = NOW - 12 * H;
+  const healthy = mkTree({ plantedAt: iso(t0), growthAt: iso(t0), statsAt: iso(t0), water: 100, sun: 100, love: 100 });
+  const mHealthy = TR.materializeTree(healthy, NOW);
+  check("B1 cây khỏe 12 giờ -> lớn ~12 giờ (hệ số x1)", Math.abs(mHealthy.growthRecordedMs - 12 * H) < 20 * MIN, `growth=${(mHealthy.growthRecordedMs / H).toFixed(2)}h`);
+  const weak = mkTree({ plantedAt: iso(NOW - 4 * H), growthAt: iso(NOW - 4 * H), statsAt: iso(NOW - 4 * H), water: 30, sun: 100, love: 100 });
+  const mWeak = TR.materializeTree(weak, NOW);
+  check("B2 cây yếu (min 30) 4 giờ -> lớn ~2 giờ (hệ số x0.5)", Math.abs(mWeak.growthRecordedMs - 2 * H) < 25 * MIN, `growth=${(mWeak.growthRecordedMs / H).toFixed(2)}h`);
+  const wilted = mkTree({ plantedAt: iso(NOW - 24 * H), growthAt: iso(NOW - 24 * H), statsAt: iso(NOW - 24 * H), water: 10, sun: 12, love: 15 });
+  const mWilted = TR.materializeTree(wilted, NOW);
+  check("B3 cây héo (min <20) 24 giờ -> đứng yên", mWilted.growthRecordedMs === 0);
+  const d = TR.decayedStats(mkTree({ water: 100, sun: 100, love: 100, statsAt: iso(NOW - 10 * H), growthAt: iso(NOW - 10 * H) }), NOW);
+  check("B4 hao 10 giờ: Nước -25, Nắng -18, Yêu -12", Math.abs(d.water - 75) < 0.6 && Math.abs(d.sun - 82) < 0.6 && Math.abs(d.love - 88) < 0.6, `${d.water}/${d.sun}/${d.love}`);
+  check("B5 ranh giới giai đoạn: 0h->0, 12h->1, tổng->6 (trưởng thành)", TR.stageIndexForGrowth(0) === 0 && TR.stageIndexForGrowth(12 * H) === 1 && TR.stageIndexForGrowth(TR.totalGrowthMs()) === 6);
+  check("B6 tổng thời gian lớn ~168 giờ (7 ngày)", Math.abs(TR.totalGrowthMs() - 168 * H) < MIN);
+  const absent = TR.materializeTree(mkTree({ plantedAt: iso(NOW - 30 * 24 * H), growthAt: iso(NOW - 30 * 24 * H), statsAt: iso(NOW - 30 * 24 * H) }), NOW);
+  check("B7 vắng 30 ngày: số liệu hữu hạn, không NaN, chỉ số về 0", isFinite(absent.growthRecordedMs) && absent.water === 0 && absent.sun === 0 && absent.love === 0);
+  const healthW = TR.treeHealth({ water: 10, sun: 50, love: 50 });
+  const healthOk = TR.treeHealth({ water: 80, sun: 80, love: 80 });
+  check("B8 treeHealth: min<20 -> wilted, đủ đầy -> happy/ok", healthW.status === "wilted" && (healthOk.status === "happy" || healthOk.status === "ok"));
+}
+
+/* ================= C) CHĂM CÂY: COOLDOWN / ĐẦY / COMBO / THƯ ================= */
+console.log("\n--- C) Chăm cây + combo Song chăm + thư rơi ---");
+{
+  const base = mkTree({ water: 50, sun: 50, love: 50 });
+  const cared = TR.applyCare(base, "water", "A", NOW);
+  check("C1 tưới nước: +30 nước, +30 phút boost, careCount+1, ghi người chăm", cared.water === 80 && cared.totalBoostMs === 30 * MIN && cared.careCount === 1 && cared.lastCareBySlot === "A" && cared.lastCareAtBy.A === iso(NOW));
+  const capped = TR.applyCare(mkTree({ water: 90, sun: 50, love: 50 }), "water", "A", NOW);
+  check("C2 chỉ số cộng dồn bị chặn ở 100", capped.water === 100);
+  const csCool = TR.careStatus(cared, "water", "A", NOW + 30 * 1000);
+  check("C3 cooldown 60s/người: chăm lại sau 30s bị chặn + có lý do", !csCool.ok && csCool.cooldownLeftMs > 0 && csCool.reason.length > 0);
+  const csOther = TR.careStatus(cared, "water", "B", NOW + 30 * 1000);
+  check("C4 cooldown là theo NGƯỜI: người ấy chăm ngay được", csOther.ok);
+  const csAfter = TR.careStatus(cared, "water", "A", NOW + 61 * 1000);
+  check("C5 hết 60s thì chăm lại được", csAfter.ok);
+  const csFull = TR.careStatus(mkTree({ water: 97, sun: 50, love: 50 }), "water", "A", NOW);
+  check("C6 chỉ số >=95%: chăm vô hiệu + UI có lý do (nói rõ 'không có tác dụng')", !csFull.ok && csFull.reason.includes("không có tác dụng"));
+  const csBugFull = TR.careStatus(mkTree({ water: 99, sun: 98, love: 97 }), "bug", "A", NOW);
+  check("C7 bắt sâu khi cây đã rất khỏe (min>=95) cũng bị chặn", !csBugFull.ok);
+
+  let st = fresh();
+  st = { ...st, tree: mkTree({ water: 50, sun: 50, love: 50 }) };
+  const stFull = { ...fresh(), tree: mkTree({ water: 99, sun: 50, love: 50 }) };
+  const blockedRes = R.gardenReducer(stFull, { type: "TREE_CARE", kind: "water", user: "A", actor: "An", drop: null, combo: false });
+  check("C8 reducer khóa cứng: TREE_CARE khi đầy -> no-op nguyên state", blockedRes === stFull);
+  const okRes = R.gardenReducer(st, { type: "TREE_CARE", kind: "water", user: "A", actor: "An", drop: null, combo: false });
+  check("C9 TREE_CARE hợp lệ -> cây được chăm + có dấu vết", okRes.tree.careCount === 1 && okRes.activities.some((a) => a.icon === "water"));
+  const coolRes = R.gardenReducer(okRes, { type: "TREE_CARE", kind: "sun", user: "A", actor: "An", drop: null, combo: false });
+  check("C10 reducer khóa cứng: chăm liên tiếp trong 60s -> no-op", coolRes === okRes);
+
+  const comboState = { ...fresh(), tree: mkTree({ lastCareAtBy: { A: "", B: iso(NOW - 30 * 1000) }, lastCareAt: iso(NOW - 30 * 1000) }) };
+  const comboRes = F.decideCareLetter(comboState, "water", NOW);
+  check("C11 combo: người ấy chăm 30s trước, mình chưa chăm sau đó -> combo + rơi thư", comboRes.combo === true && comboRes.drop !== null && comboRes.drop.source.includes("Song chăm"));
+  const oldComboState = { ...fresh(), tree: mkTree({ lastCareAtBy: { A: "", B: iso(NOW - 120 * 1000) } }) };
+  check("C12 quá cửa sổ 90s -> không combo", F.decideCareLetter(oldComboState, "water", NOW).combo === false);
+  const meAfterState = { ...fresh(), tree: mkTree({ lastCareAtBy: { A: iso(NOW - 10 * 1000), B: iso(NOW - 30 * 1000) } }) };
+  check("C13 mình đã chăm SAU người ấy -> không tính combo", F.decideCareLetter(meAfterState, "water", NOW).combo === false);
+  check("C14 kho thư đúng 36 lá (18 thường / 10 hiếm / 8 huyền thoại)", CT.LOVE_MESSAGES.length === 36
+    && CT.LOVE_MESSAGES.filter((m) => m.rarity === "common").length === 18
+    && CT.LOVE_MESSAGES.filter((m) => m.rarity === "rare").length === 10
+    && CT.LOVE_MESSAGES.filter((m) => m.rarity === "legendary").length === 8);
+  const l1 = CT.makeStageUpLetter(3, false, "A", iso(NOW));
+  const l2 = CT.makeStageUpLetter(3, false, "A", iso(NOW));
+  check("C15 thư lên giai đoạn xác định: cùng giai đoạn -> cùng id (2 máy hội tụ)", l1.id === l2.id && l1.id === "stageup-3" && l1.messageId >= 1 && l1.messageId <= 36);
+  const nearStage = { ...fresh(), tree: mkTree({ growthRecordedMs: 12 * H - 20 * MIN, growthAt: iso(NOW), statsAt: iso(NOW), water: 80, sun: 80, love: 80 }) };
+  const stageUpRes = F.decideCareLetter(nearStage, "water", NOW);
+  check("C16 chăm vượt ngưỡng giai đoạn -> chắc chắn rơi thư", stageUpRes.drop !== null);
+  let ss = fresh();
+  ss = R.gardenReducer(ss, { type: "STAGE_UP", stageIndex: 2, drop: l1 });
+  const ssActs = ss.activities.length;
+  ss = R.gardenReducer(ss, { type: "STAGE_UP", stageIndex: 2, drop: l1 });
+  check("C17 STAGE_UP idempotent: ghi announcedStage 1 lần + thư 1 lần", ss.tree.announcedStage === 2 && ss.activities.length === ssActs && ss.lastLetter && ss.lastLetter.id === l1.id);
+}
+
+/* ================= D) NOTE TÌNH YÊU ================= */
+console.log("\n--- D) Note tình yêu ---");
+{
+  const mkNote = (over = {}) => ({ id: T.uid(), authorSlot: "A", text: "Nhớ em nhiều", mood: "", createdAt: iso(NOW), readAt: "", ...over });
+  let st = fresh();
+  st = R.gardenReducer(st, { type: "NOTE_ADD", note: mkNote(), user: "A" });
+  check("D1 gửi note hợp lệ -> có trong timeline + noteLog được ghi", st.notes.length === 1 && st.noteLog.A !== "");
+  const tooLong = R.gardenReducer(fresh(), { type: "NOTE_ADD", note: mkNote({ text: "x".repeat(301) }), user: "A" });
+  check("D2 note 301 ký tự -> bị chặn ở reducer", tooLong.notes.length === 0);
+  const spam = R.gardenReducer(st, { type: "NOTE_ADD", note: mkNote({ createdAt: iso(NOW + 2000) }), user: "A" });
+  check("D3 giãn cách 5s: note thứ hai sau 2s -> bị chặn", spam.notes.length === 1);
+  const okSecond = R.gardenReducer(st, { type: "NOTE_ADD", note: mkNote({ createdAt: iso(NOW + 6000) }), user: "A" });
+  check("D4 sau 6s -> gửi được", okSecond.notes.length === 2);
+  const mismatch = R.gardenReducer(fresh(), { type: "NOTE_ADD", note: mkNote({ authorSlot: "B" }), user: "A" });
+  check("D5 authorSlot khác người gửi -> bị chặn", mismatch.notes.length === 0);
+  const noteId = st.notes[0].id;
+  const readByAuthor = R.gardenReducer(st, { type: "NOTE_READ", id: noteId, user: "A" });
+  check("D6 tác giả tự đọc note của mình -> no-op", readByAuthor === st);
+  const readByPartner = R.gardenReducer(st, { type: "NOTE_READ", id: noteId, user: "B" });
+  check("D7 người nhận mở note -> readAt được ghi (người viết thấy 'đã xem')", Boolean(readByPartner.notes.find((n) => n.id === noteId)?.readAt));
+  const readAgain = R.gardenReducer(readByPartner, { type: "NOTE_READ", id: noteId, user: "B" });
+  check("D8 đọc lại lần nữa -> no-op", readAgain === readByPartner);
+  const many = Array.from({ length: 250 }, (_, i) => mkNote({ id: `n${i}`, createdAt: iso(NOW - i * 1000) }));
+  const cappedNorm = MO.normalizeState({ notes: many });
+  check("D9 normalize chặn timeline ở 200 note", cappedNorm.notes.length === 200 && cappedNorm.notes[0].id === "n0");
+  const sideA = { ...fresh(), notes: [mkNote({ id: "shared1" })] };
+  const sideB = { ...fresh(), notes: [{ ...mkNote({ id: "shared1" }), readAt: iso(NOW + 5000) }, mkNote({ id: "only-b", authorSlot: "B", createdAt: iso(NOW + 1000) })] };
+  const merged = M.mergeStates(sideA, sideB, "A");
+  const shared = merged.notes.find((n) => n.id === "shared1");
+  check("D10 merge note: readAt từ máy người nhận thắng + union đủ 2 note", Boolean(shared?.readAt) && merged.notes.length === 2);
+}
+
+/* ================= E) NHỊP TIM "NHỚ BẠN" ================= */
+console.log("\n--- E) Nhịp tim Nhớ bạn ---");
+{
+  let st = fresh();
+  st = R.gardenReducer(st, { type: "PING_SEND", user: "A", actor: "An" });
+  check("E1 gửi 1 nhịp: bộ đếm ngày=1, slot total=1, burst=1, có dấu vết", st.pings.day.A === 1 && st.pings.A.total === 1 && st.pings.A.burst === 1 && st.activities.length === 1);
+  const burstAt1 = st.pings.A.lastBurstAt;
+  st = R.gardenReducer(st, { type: "PING_SEND", user: "A", actor: "An" });
+  st = R.gardenReducer(st, { type: "PING_SEND", user: "A", actor: "An" });
+  check("E2 chạm dồn <=5s = 1 chuỗi: burst=3, lastBurstAt giữ mốc đầu chuỗi, dấu vết vẫn 1", st.pings.A.burst === 3 && st.pings.A.lastBurstAt === burstAt1 && st.activities.length === 1);
+  const capped = { ...fresh(), pings: { A: { total: 50, lastAt: "", lastBurstAt: "", burst: 0 }, B: { total: 0, lastAt: "", lastBurstAt: "", burst: 0 }, day: { date: todayStr, A: 50, B: 0 } } };
+  const capRes = R.gardenReducer(capped, { type: "PING_SEND", user: "A", actor: "An" });
+  check("E3 trần cứng 50 nhịp/ngày/người -> nhịp 51 bị chặn ở reducer", capRes === capped);
+  const capB = R.gardenReducer(capped, { type: "PING_SEND", user: "B", actor: "Bình" });
+  check("E4 trần là theo NGƯỜI GỬI: người ấy vẫn gửi được", capB !== capped && capB.pings.day.B === 1);
+  const yesterday = T.dayKeyLocal(new Date(NOW - 24 * H));
+  const stale = { ...fresh(), pings: { A: { total: 9, lastAt: "", lastBurstAt: "", burst: 0 }, B: { total: 0, lastAt: "", lastBurstAt: "", burst: 0 }, day: { date: yesterday, A: 9, B: 0 } } };
+  const rolled = R.gardenReducer(stale, { type: "PING_SEND", user: "A", actor: "An" });
+  check("E5 sang ngày mới: bộ đếm ngày tự reset rồi mới cộng", rolled.pings.day.date === todayStr && rolled.pings.day.A === 1);
+  const tickRolled = R.gardenReducer(stale, { type: "TICK" });
+  check("E6 TICK cũng lăn ngày cho bộ đếm nhịp", tickRolled.pings.day.date === todayStr && tickRolled.pings.day.A === 0);
+  check("E7 hằng số trần/cooldown đúng spec: 50/ngày, burst 5s, pop cooldown 30s", T.PING_DAILY_MAX === 50 && T.PING_BURST_WINDOW_MS === 5000 && T.PING_POP_COOLDOWN_MS === 30000);
+}
+
+/* ================= F) ĐỊNH VỊ TẠM THỜI ================= */
+console.log("\n--- F) Định vị tạm thời ---");
+{
+  let st = fresh();
+  st = R.gardenReducer(st, { type: "PRESENCE_START", user: "A", durationMs: 15 * MIN, actor: "An" });
+  const exp = new Date(st.presence.A.expiresAt).getTime();
+  check("F1 bắt đầu phiên 15 phút: sharing=true, expiresAt ~ +15 phút, toạ độ sạch", st.presence.A.sharing === true && Math.abs(exp - (NOW + 15 * MIN)) < 5000 && st.presence.A.lat === null);
+  st = R.gardenReducer(st, { type: "PRESENCE_SNAPSHOT", user: "A", lat: 21.0285, lng: 105.8542, acc: 12, battery: 77, at: iso(NOW + 1000) });
+  check("F2 snapshot trong phiên -> lưu vị trí + pin + locAt", st.presence.A.lat === 21.0285 && st.presence.A.battery === 77 && st.presence.A.locAt === iso(NOW + 1000));
+  const notSharing = fresh();
+  const snapLate = R.gardenReducer(notSharing, { type: "PRESENCE_SNAPSHOT", user: "A", lat: 1, lng: 2, acc: 5, battery: 50, at: iso(NOW) });
+  check("F3 snapshot khi KHÔNG chia sẻ -> no-op (không hồi sinh phiên)", snapLate === notSharing);
+  let stExp = fresh();
+  stExp = R.gardenReducer(stExp, { type: "PRESENCE_START", user: "A", durationMs: 15 * MIN, actor: "An" });
+  stExp = R.gardenReducer(stExp, { type: "PRESENCE_SNAPSHOT", user: "A", lat: 21, lng: 105, acc: 10, battery: 60, at: iso(NOW + 1000) });
+  const afterExp = R.gardenReducer(stExp, { type: "PRESENCE_SNAPSHOT", user: "A", lat: 21.1, lng: 105.1, acc: 10, battery: 59, at: iso(NOW + 16 * MIN) });
+  check("F4 snapshot tới SAU expiresAt -> phiên tự kết thúc + xoá toạ độ", afterExp.presence.A.sharing === false && afterExp.presence.A.lat === null);
+  const stopped = R.gardenReducer(st, { type: "PRESENCE_STOP", user: "A", actor: "An", reason: "manual" });
+  check("F5 dừng thủ công -> sharing=false + xoá toạ độ khỏi state", stopped.presence.A.sharing === false && stopped.presence.A.lat === null && stopped.presence.A.locAt === "");
+  const ssExpired = F.shareStatus({ sharing: true, expiresAt: iso(NOW - 1000) }, NOW);
+  const ssOpen = F.shareStatus({ sharing: true, expiresAt: "" }, NOW);
+  const ssTimed = F.shareStatus({ sharing: true, expiresAt: iso(NOW + 30 * MIN) }, NOW);
+  check("F6 shareStatus: hết hạn -> expired; không hạn -> active vô hạn; có hạn -> remainingMs", ssExpired.expired === true && ssExpired.active === false && ssOpen.active === true && ssOpen.remainingMs === null && ssTimed.active === true && Math.abs((ssTimed.remainingMs || 0) - 30 * MIN) < 2000);
+  const hnHcm = F.haversineKm({ lat: 21.0285, lng: 105.8542 }, { lat: 10.8231, lng: 106.6297 });
+  check("F7 haversine Hà Nội -> TP.HCM ~ 1.100-1.200 km; cùng điểm = 0", hnHcm > 1100 && hnHcm < 1200 && F.haversineKm({ lat: 21, lng: 105 }, { lat: 21, lng: 105 }) === 0, `${hnHcm.toFixed(0)} km`);
+  check("F8 distanceText: <0.3km thân thiện, 550m, 5,3 km", F.distanceText(0.2) === "Đang ở rất gần nhau" && F.distanceText(0.55) === "550 m" && F.distanceText(5.26) === "5,3 km");
+  check("F9 các mốc thời lượng đúng spec: 15p / 1h / 4h / tự tắt", F.SHARE_DURATIONS.map((d) => d.ms).join(",") === [15 * MIN, 60 * MIN, 4 * H, null].join(","));
+}
+
+/* ================= G) MERGE 2 MÁY + NORMALIZE + STAMP ================= */
+console.log("\n--- G) Merge / normalize / đóng dấu ---");
+{
+  const def = MO.normalizeState(null);
+  check("G1 normalize(null) -> mặc định an toàn", def.couple.startDate === todayStr && def.notes.length === 0 && def.tree.growthRecordedMs === 0 && def.presence.A.sharing === false);
+  let threw = false;
+  try { MO.normalizeState("rác"); MO.normalizeState(42); MO.normalizeState([1, 2]); MO.normalizeState({ couple: "x", tree: 7, notes: "y" }); } catch { threw = true; }
+  check("G2 normalize không bao giờ throw với dữ liệu rác", !threw);
+  const legacy = MO.normalizeState({
+    roomCode: "OLD123", personA: "An", personB: "Bình", startDate: "2024-02-14", currentUser: "B",
+    plants: [{ plantedAt: iso(NOW - 50 * H), growthRecordedMs: 40 * H, growthAt: iso(NOW - H), statsAt: iso(NOW - H), water: 70, sun: 70, love: 70, totalBoostMs: 5 * H, careCount: 12, lastCareAt: "", lastCareBySlot: "", announcedStage: 2, matureAt: "" }],
+    notes: [{ id: "old1", author: "An", text: "note kiểu cũ không có authorSlot" }],
+    presence: { me: { sharing: true } },
+    xu: 9999, level: 5,
   });
-  const sLow = mkDaily(2);
-  const rLow = R.gardenReducer(sLow, { type: "CLAIM_QUEST", questId: "water3", actor: "An", user: "A", rewardXp: 9999 });
-  check("chưa đủ tiến độ (2/3): store từ chối dù UI/truyền rewardXp 9999", rLow === sLow);
-  const sOk = mkDaily(3);
-  const rOk = R.gardenReducer(sOk, { type: "CLAIM_QUEST", questId: "water3", actor: "An", user: "A", rewardXp: 9999 });
-  check("đủ tiến độ: thưởng đúng bảng (15 XP, 20 Xu) — không theo số truyền lên", rOk.tree.xp === sOk.tree.xp + 15 && rOk.coins === sOk.coins + 20);
-  const rAgain = R.gardenReducer(rOk, { type: "CLAIM_QUEST", questId: "water3", actor: "An", user: "A", rewardXp: 15 });
-  check("nhận lần 2 (kể cả sau reload state): no-op", rAgain === rOk);
-  const rBad = R.gardenReducer(sOk, { type: "CLAIM_QUEST", questId: "khong-ton-tai", actor: "An", user: "A", rewardXp: 15 });
-  check("questId lạ: no-op", rBad === sOk);
-  const sBoth = P.normalizeStateV5({ daily: { date: todayStr, A: { water: 0, love: 0, sun: 0, bug: 0 }, B: { water: 0, love: 0, sun: 0, bug: 0 }, caredA: true, caredB: false, claimedA: [], claimedB: [] } });
-  check("nhiệm vụ song chăm: mới 1 người chăm -> chưa nhận được", R.gardenReducer(sBoth, { type: "CLAIM_QUEST", questId: "both", actor: "An", user: "A", rewardXp: 20 }) === sBoth);
+  check("G3 state BẢN CŨ nạp an toàn: cứu ngày bắt đầu + cây ở plants[0], note cũ bị loại, presence cũ về mặc định", legacy.couple.startDate === "2024-02-14" && legacy.tree.careCount === 12 && legacy.notes.length === 0 && legacy.presence.A.sharing === false && legacy.currentUser === "B");
+  const v4 = MO.normalizeState({ tree: { xp: 1234, level: 9 } });
+  check("G4 tree kiểu V4 (không plantedAt) -> cây mới tinh, không crash", v4.tree.growthRecordedMs === 0 && Boolean(v4.tree.plantedAt));
+
+  const baseState = fresh();
+  const mineShared = { ...baseState, presence: { ...baseState.presence, A: { ...baseState.presence.A, sharing: true, startedAt: iso(NOW) } } };
+  const ownerStamped = M.stampSections(baseState, mineShared, "A", iso(NOW));
+  const otherCopy = { ...fresh(), updatedAt: iso(NOW + 60000) };
+  const mergedOwner = M.mergeStates(otherCopy, ownerStamped, "B");
+  check("G5 merge presence: bản do CHÍNH chủ slot đóng dấu thắng bản mới hơn của máy khác", mergedOwner.presence.A.sharing === true);
+  const coupleLocal = { ...fresh(), couple: { ...fresh().couple, startDate: "2024-01-01", startSetAt: iso(NOW - H), startSetBy: "A", celebrated: [100] } };
+  const coupleRemote = { ...fresh(), couple: { ...fresh().couple, startDate: "2024-02-14", startSetAt: iso(NOW), startSetBy: "B", celebrated: [200] } };
+  const mergedCouple = M.mergeStates(coupleLocal, coupleRemote, "A");
+  check("G6 merge ngày bắt đầu: LWW theo startSetAt + celebrated hợp nhất", mergedCouple.couple.startDate === "2024-02-14" && mergedCouple.couple.celebrated.join(",") === "100,200");
+  const tLocal = mkTree({ growthRecordedMs: 10 * H, totalBoostMs: 0, careCount: 3, growthAt: iso(NOW), statsAt: iso(NOW) });
+  const tRemote = mkTree({ growthRecordedMs: 9 * H, totalBoostMs: 2 * H, careCount: 5, growthAt: iso(NOW), statsAt: iso(NOW) });
+  const mergedTree = M.mergeStates({ ...fresh(), tree: tLocal }, { ...fresh(), tree: tRemote }, "A");
+  check("G7 merge cây: cộng bù boost phía kia chưa có (10h + 2h = 12h), careCount lấy max", mergedTree.tree.growthRecordedMs === 12 * H && mergedTree.tree.careCount === 5);
+  const letterOld = { id: "l-old", messageId: 1, rarity: "common", source: "x", at: iso(NOW - H), bySlot: "A" };
+  const letterNew = { id: "l-new", messageId: 2, rarity: "rare", source: "y", at: iso(NOW), bySlot: "B" };
+  const mergedLetter = M.mergeStates({ ...fresh(), lastLetter: letterOld }, { ...fresh(), lastLetter: letterNew }, "A");
+  check("G8 merge thư rơi: lá mới hơn thắng", mergedLetter.lastLetter?.id === "l-new");
+  const actA = { ...fresh(), activities: [{ id: "a1", actor: "An", text: "x", icon: "heart", time: iso(NOW) }] };
+  const actB = { ...fresh(), activities: [{ id: "a2", actor: "Bình", text: "y", icon: "water", time: iso(NOW - 1000) }] };
+  const mergedActs = M.mergeStates(actA, actB, "A");
+  check("G9 merge nhật ký: union theo id, mới nhất trước", mergedActs.activities.length === 2 && mergedActs.activities[0].id === "a1");
+  const stamped = R.dispatchWithStamps(fresh(), { type: "NOTE_ADD", note: { id: "sx1", authorSlot: "A", text: "hi", mood: "", createdAt: iso(NOW), readAt: "" }, user: "A" });
+  check("G10 dispatchWithStamps đóng dấu notes + noteLog:A với by=A", stamped.secTs?.notes?.by === "A" && stamped.secTs?.["noteLog:A"]?.by === "A");
+  const newerState = { ...fresh(), updatedAt: iso(NOW + H) };
+  const olderIncoming = { ...fresh(), updatedAt: iso(NOW - H), personA: "Tên Cũ" };
+  const guarded = R.gardenReducer(newerState, { type: "SET_STATE", state: olderIncoming });
+  check("G11 SET_STATE chống ghi đè ngược: bản cũ hơn updatedAt bị từ chối", guarded === newerState);
 }
 
-console.log("\n--- Reducer: shop / ví / XP ---");
-{
-  const s = P.normalizeStateV5({ coins: 500, inventory: ["pot-basic", "scene-auto", "acc-none", "pot-gold"] });
-  check("equip sai LOẠI (chậu vào ô khung cảnh): store chặn", R.gardenReducer(s, { type: "EQUIP_ITEM", category: "scene", itemId: "pot-gold" }) === s);
-  const eq = R.gardenReducer(s, { type: "EQUIP_ITEM", category: "pot", itemId: "pot-gold" });
-  check("equip đúng loại + đã sở hữu: được", eq !== s && eq.equipped.pot === "pot-gold");
-  check("equip món chưa sở hữu: chặn", R.gardenReducer(s, { type: "EQUIP_ITEM", category: "pot", itemId: "pot-pink" }) === s);
-  check("ADD_COINS NaN: bỏ qua", R.gardenReducer(s, { type: "ADD_COINS", coins: NaN, actor: "x", text: "t" }) === s);
-  check("ADD_COINS âm quá đà: ví không âm", R.gardenReducer(s, { type: "ADD_COINS", coins: -99999, actor: "x", text: "t" }).coins === 0);
-  check("ADD_XP NaN: bỏ qua", R.gardenReducer(s, { type: "ADD_XP", xp: NaN }) === s);
-  const poor = P.normalizeStateV5({ coins: 10 });
-  check("mua khi không đủ Xu: chặn", R.gardenReducer(poor, { type: "BUY_ITEM", itemId: "pot-gold", actor: "An" }) === poor);
-}
-
-console.log("\n--- Reducer: lên giai đoạn nhảy bậc / quiz / vòng quay / niêm phong ---");
-{
-  const nowIso = iso(NOW);
-  const s = P.normalizeStateV5({ plants: [{ id: "sp1", speciesId: "love-tree", plantedAt: nowIso, growthAt: nowIso, statsAt: nowIso, growthRecordedMs: 54 * H, totalBoostMs: 0, water: 80, sun: 80, love: 80, careCount: 3, lastCareAt: "", lastCareBy: "", announcedStage: 0, matureAt: "", fruitReadyAt: "", harvestCount: 0 }] });
-  const up = R.gardenReducer(s, { type: "STAGE_UP", plantId: "sp1" });
-  check("nhảy 3 giai đoạn một lúc: XP cộng đủ 3 x stageXp (60)", up.tree.xp === s.tree.xp + 60, `xp=${up.tree.xp}`);
-  check("STAGE_UP lần 2 cho cùng mốc: no-op", R.gardenReducer(up, { type: "STAGE_UP", plantId: "sp1" }) === up);
-
-  const q0 = base();
-  const q1 = R.gardenReducer(q0, { type: "QUIZ_ANSWER", user: "A", answers: [0, 1, 0, 1], actor: "An" });
-  check("quiz: nộp lần 1 được", q1.games.quiz.A.join() === "0,1,0,1");
-  check("quiz: nộp đè đáp án đã niêm phong -> chặn", R.gardenReducer(q1, { type: "QUIZ_ANSWER", user: "A", answers: [1, 1, 1, 1], actor: "An" }) === q1);
-  check("quiz: đáp án sai định dạng (có số 2 / thiếu câu) -> chặn", R.gardenReducer(q0, { type: "QUIZ_ANSWER", user: "A", answers: [0, 1, 2, 0], actor: "An" }) === q0 && R.gardenReducer(q0, { type: "QUIZ_ANSWER", user: "A", answers: [0, 1], actor: "An" }) === q0);
-  check("quiz: phần của B độc lập với A", R.gardenReducer(q1, { type: "QUIZ_ANSWER", user: "B", answers: [1, 1, 0, 0], actor: "Bình" }).games.quiz.B.join() === "1,1,0,0");
-
-  let sp = base();
-  for (let i = 0; i < 3; i++) sp = R.gardenReducer(sp, { type: "SPIN_USE", user: "A" });
-  check("vòng quay: 3 lượt/người/ngày, lượt 4 bị chặn ở store", sp.games.spin.A === 3 && R.gardenReducer(sp, { type: "SPIN_USE", user: "A" }) === sp);
-  check("vòng quay: lượt của B không bị A dùng hết", R.gardenReducer(sp, { type: "SPIN_USE", user: "B" }).games.spin.B === 1);
-}
-
-console.log("\n--- Reducer: đáp án/mood qua ngày + bucket chống spam + thư + thu hoạch ---");
-{
-  const s = P.normalizeStateV5({ answers: { date: "2020-01-01", A: "cũ của A", B: "cũ của B" }, moods: { date: "2020-01-01", A: "joy", B: "love" } });
-  const a1 = R.gardenReducer(s, { type: "ANSWER", user: "A", text: "mới của A" });
-  check("sang ngày: đáp án A mới được, đáp án B hôm qua KHÔNG mang sang", a1.answers.A === "mới của A" && a1.answers.B === "" && a1.answers.date === todayStr);
-  check("đáp án đã niêm phong: ghi đè bị chặn", R.gardenReducer(a1, { type: "ANSWER", user: "A", text: "sửa lại" }) === a1);
-  const m1 = R.gardenReducer(s, { type: "SET_MOOD", user: "A", mood: "calm" });
-  check("sang ngày: mood A mới được, mood B hôm qua không mang sang", m1.moods.A === "calm" && m1.moods.B === "");
-
-  const b0 = base();
-  const item = (id, text) => ({ id, text, done: false, createdAt: iso(NOW), authorSlot: "A" });
-  const b1 = R.gardenReducer(b0, { type: "ADD_BUCKET", item: item("x1", "Việc một") });
-  check("bucket: thêm lần 1 được", b1.bucket.some((x) => x.id === "x1"));
-  check("bucket: thêm ngay lần 2 (<5s, chống spam): chặn", R.gardenReducer(b1, { type: "ADD_BUCKET", item: item("x2", "Việc hai") }) === b1);
-  const b3 = R.gardenReducer(b1, { type: "ADD_BUCKET", item: item("x3", "Nhiệm vụ vòng quay"), force: true });
-  check("bucket: nhiệm vụ hệ thống (force) không bị cổng 5s nuốt mất", b3.bucket.some((x) => x.id === "x3"));
-
-  const l0 = P.normalizeStateV5({ letters: [{ id: "L1", messageId: 1, rarity: "common", source: "test", opened: false, droppedAt: iso(NOW), openedAt: "", openedBy: "" }] });
-  const l1 = R.gardenReducer(l0, { type: "OPEN_LETTER", id: "L1", opener: "An" });
-  check("mở thư: +10 Xu lần đầu", l1.coins === l0.coins + 10 && l1.letters[0].opened === true);
-  check("mở thư lần 2: không cộng trùng", R.gardenReducer(l1, { type: "OPEN_LETTER", id: "L1", opener: "An" }) === l1);
-  const dup = R.gardenReducer(l0, { type: "ADD_LETTER", letter: l0.letters[0], actor: "An", text: "t" });
-  check("thêm thư trùng id (sự kiện 2 máy): chặn trùng", dup === l0);
-
-  const berry = P.normalizeStateV5({ plants: [{ id: "d1", speciesId: "strawberry", plantedAt: iso(NOW - 200 * H), growthAt: iso(NOW), statsAt: iso(NOW), growthRecordedMs: 96 * H, totalBoostMs: 0, water: 70, sun: 70, love: 70, careCount: 9, lastCareAt: "", lastCareBy: "", announcedStage: 5, matureAt: iso(NOW - 13 * H), fruitReadyAt: iso(NOW - H), harvestCount: 0 }] });
-  const h1 = R.gardenReducer(berry, { type: "HARVEST_FRUIT", plantId: "d1", actor: "An" });
-  check("thu hoạch dâu chín: +25 Xu, đếm 1 lần thu, hẹn quả sau", h1.coins === berry.coins + 25 && h1.plants[0].harvestCount === 1 && new Date(h1.plants[0].fruitReadyAt).getTime() > NOW);
-  check("thu hoạch lần 2 ngay: no-op (quả chưa chín lại)", R.gardenReducer(h1, { type: "HARVEST_FRUIT", plantId: "d1", actor: "An" }) === h1);
-}
-
-/* ================= 3) MERGE 2 MÁY ================= */
-console.log("\n--- Merge: mục theo người (chủ nhân slot thắng) ---");
-{
-  const mkBase = (over) => ({ ...P.normalizeStateV5({}), ...over });
-  const local = mkBase({
-    currentUser: "A", updatedAt: "2026-01-01T10:00:00.000Z",
-    moods: { date: todayStr, A: "joy", B: "" },
-    secTs: { "moods:A": { t: "2026-01-01T09:00:00.000Z", by: "A" }, "moods:B": { t: "2026-01-01T08:00:00.000Z", by: "B" } },
-  });
-  const remote = mkBase({
-    currentUser: "B", updatedAt: "2026-01-01T10:05:00.000Z",
-    moods: { date: todayStr, A: "", B: "calm" },
-    secTs: { "moods:A": { t: "2026-01-01T10:04:00.000Z", by: "B" }, "moods:B": { t: "2026-01-01T10:04:00.000Z", by: "B" } },
-  });
-  const mg = M.mergeStates(local, remote, "A");
-  check("mood của A: bản do A sửa thắng bản reset của máy B (dù stamp cũ hơn)", mg.moods.A === "joy");
-  check("mood của B: lấy bản mới của B", mg.moods.B === "calm");
-  check("merge: currentUser giữ của máy mình, updatedAt lấy max", mg.currentUser === "A" && mg.updatedAt === "2026-01-01T10:05:00.000Z");
-}
-{
-  const dp = (water, love) => ({ water, love, sun: 0, bug: 0 });
-  const local = { ...P.normalizeStateV5({}), daily: { date: todayStr, A: dp(2, 0), B: dp(0, 0), caredA: true, caredB: false, claimedA: ["water3"], claimedB: [] } };
-  const remote = { ...P.normalizeStateV5({}), daily: { date: todayStr, A: dp(1, 0), B: dp(3, 1), caredA: true, caredB: true, claimedA: [], claimedB: ["love2"] } };
-  const mg = M.mergeStates(local, remote, "A");
-  check("daily: tiến độ lấy max từng người, claimed hợp nhất", mg.daily.A.water === 2 && mg.daily.B.water === 3 && mg.daily.claimedA.includes("water3") && mg.daily.claimedB.includes("love2") && mg.daily.caredB === true);
-}
-{
-  const letter = (id, opened, messageId) => ({ id, messageId, rarity: "common", source: "test", opened, droppedAt: iso(NOW - H), openedAt: opened ? iso(NOW) : "", openedBy: opened ? "An" : "" });
-  const local = { ...P.normalizeStateV5({}), letters: [letter("stageup-p1-2", false, 5), letter("Lx", false, 1)] };
-  const remote = { ...P.normalizeStateV5({}), letters: [letter("stageup-p1-2", false, 9), letter("Lx", true, 1), letter("Ly", false, 2)] };
-  const mg = M.mergeStates(local, remote, "A");
-  check("thư: union theo id, thư lên giai đoạn id xác định chỉ còn 1 bản", mg.letters.filter((l) => l.id === "stageup-p1-2").length === 1 && mg.letters.length === 3);
-  check("thư: bản đã mở thắng bản chưa mở", mg.letters.find((l) => l.id === "Lx").opened === true);
-}
-{
-  const plantV = (over) => ({ id: "p1", speciesId: "love-tree", plantedAt: iso(NOW - 30 * H), growthRecordedMs: 10 * H, growthAt: iso(NOW - H), totalBoostMs: 0, water: 50, sun: 50, love: 50, statsAt: iso(NOW - H), careCount: 4, lastCareAt: iso(NOW - 5 * H), lastCareBy: "B", lastCareAtBy: { A: "", B: iso(NOW - 5 * H) }, announcedStage: 1, matureAt: "", fruitReadyAt: "", harvestCount: 0, ...over });
-  const local = { ...P.normalizeStateV5({}), plants: [plantV({ growthRecordedMs: 10 * H, growthAt: iso(NOW - H), totalBoostMs: 30 * 60000, careCount: 5, lastCareAt: iso(NOW - 30 * 60000), lastCareBy: "A" })], selectedPlantId: "p1" };
-  const remote = { ...P.normalizeStateV5({}), plants: [plantV({ growthRecordedMs: 10.2 * H, growthAt: iso(NOW), statsAt: iso(NOW), water: 40 })], selectedPlantId: "p1" };
-  const mg = M.mergeStates(local, remote, "A");
-  check("cây: lần chăm máy kia chưa có được cộng bù boost (+30p)", Math.abs(mg.plants[0].growthRecordedMs - (10.2 * H + 30 * 60000)) < 1000, `growth=${(mg.plants[0].growthRecordedMs / H).toFixed(2)}h`);
-  check("cây: careCount lấy max, lastCareAt lấy lần mới hơn", mg.plants[0].careCount === 5 && mg.plants[0].lastCareBy === "A");
-}
-{
-  const invBase = ["pot-basic", "scene-auto", "acc-none"];
-  const c1 = M.mergeStates({ ...P.normalizeStateV5({}), inventory: [...invBase, "pot-gold"], coins: 20 }, { ...P.normalizeStateV5({}), inventory: invBase, coins: 200 }, "A");
-  check("ví: một phía mua đồ -> lấy số dư của phía đã mua (không hoàn tiền oan)", c1.coins === 20 && c1.inventory.includes("pot-gold"));
-  const c2 = M.mergeStates({ ...P.normalizeStateV5({}), inventory: [...invBase, "pot-gold"], coins: 20 }, { ...P.normalizeStateV5({}), inventory: [...invBase, "scene-night"], coins: 100 }, "A");
-  check("ví: hai phía mua 2 món khác nhau -> lấy số nhỏ hơn (không tạo tiền), kho hợp nhất", c2.coins === 20 && c2.inventory.includes("pot-gold") && c2.inventory.includes("scene-night"));
-  const c3 = M.mergeStates({ ...P.normalizeStateV5({}), inventory: invBase, coins: 300 }, { ...P.normalizeStateV5({}), inventory: invBase, coins: 250 }, "A");
-  check("ví: không ai mua gì -> lấy số lớn hơn (phía đã ghi nhận thu nhập)", c3.coins === 300);
-}
-{
-  // Qua reducer: MERGE_STATE phải áp dụng được mood của người kia mà không đè mood của mình
-  const mine = { ...P.normalizeStateV5({}), currentUser: "A", moods: { date: todayStr, A: "joy", B: "" } };
-  const theirs = { ...P.normalizeStateV5({}), currentUser: "B", moods: { date: todayStr, A: "", B: "calm" } };
-  const out = R.gardenReducer(mine, { type: "MERGE_STATE", state: theirs, mySlot: "A" });
-  check("reducer MERGE_STATE: nhận mood của B, giữ mood của A", out.moods.B === "calm" && out.moods.A === "joy");
-}
-
-/* ================= 4) NGÀY ĐỊA PHƯƠNG & GIỜ SERVER ================= */
-console.log("\n--- Thời gian: ngày địa phương / tuần / offset server ---");
-{
-  const dawn = new Date(2026, 0, 1, 5, 0, 0); // 5h sáng giờ VN = 22h UTC hôm trước
-  check("localDayNumber dùng ngày địa phương, không phải UTC", T.localDayNumber(dawn) === Math.floor(Date.UTC(2026, 0, 1) / 86400000) && T.localDayNumber(dawn) !== Math.floor(dawn.getTime() / 86400000));
-  check("questionOfDay lúc 5h sáng = câu của ngày địa phương", D.questionOfDay(dawn) === D.QUESTIONS[T.localDayNumber(dawn) % D.QUESTIONS.length]);
-  const morning = D.quizOfDay(new Date(2026, 0, 1, 5, 0, 0));
-  const night = D.quizOfDay(new Date(2026, 0, 1, 23, 0, 0));
-  check("quizOfDay nhất quán trong cùng ngày địa phương", JSON.stringify(morning) === JSON.stringify(night));
-  check("weekKey: Chủ nhật và thứ Hai kề nhau thuộc 2 tuần khác nhau", T.weekKey(new Date(2026, 0, 4)) === "2026-W01" && T.weekKey(new Date(2026, 0, 5)) === "2026-W02", `${T.weekKey(new Date(2026, 0, 4))} / ${T.weekKey(new Date(2026, 0, 5))}`);
-  TM.setServerOffsetMs(5000);
-  check("offset giờ server: nowMs lệch đúng offset đã đặt", Math.abs(TM.nowMs() - Date.now() - 5000) < 60);
-  TM.setServerOffsetMs(0);
-}
-
-/* ================= 5) GAME_WIN + BỘ SƯU TẬP THƯ BỀN VỮNG ================= */
-console.log("\n--- GAME_WIN: thưởng ngày khóa cứng ở store ---");
-{
-  const s0 = base();
-  const w1 = R.gardenReducer(s0, { type: "GAME_WIN", game: "memory", user: "A", actor: "An" });
-  check("memory thắng lần 1: +20 Xu, +10 XP vườn, đếm 1", w1.coins === s0.coins + 20 && w1.tree.xp === s0.tree.xp + 10 && w1.games.dailyWins.memory.A === 1);
-  check("memory thắng lần 2 cùng ngày: no-op (cap 1 lần/ngày)", R.gardenReducer(w1, { type: "GAME_WIN", game: "memory", user: "A", actor: "An" }) === w1);
-  const wB = R.gardenReducer(w1, { type: "GAME_WIN", game: "memory", user: "B", actor: "Bình" });
-  check("memory: phần của B độc lập với A", wB !== w1 && wB.games.dailyWins.memory.B === 1 && wB.coins === w1.coins + 20);
-  const d1 = R.gardenReducer(s0, { type: "GAME_WIN", game: "dice", user: "A", actor: "An" });
-  check("dice thắng lần 1: +15 Xu, +10 XP", d1.coins === s0.coins + 15 && d1.tree.xp === s0.tree.xp + 10 && d1.games.dailyWins.dice.A === 1);
-  check("dice lần 2 cùng ngày: no-op", R.gardenReducer(d1, { type: "GAME_WIN", game: "dice", user: "A", actor: "An" }) === d1);
-  const stale = { ...s0, games: { ...s0.games, dailyWins: { date: "2020-01-01", memory: { A: 1, B: 1 }, dice: { A: 1, B: 1 } } } };
-  const wStale = R.gardenReducer(stale, { type: "GAME_WIN", game: "memory", user: "A", actor: "An" });
-  check("dailyWins ngày cũ: rollover reset, thắng lại được", wStale !== stale && wStale.games.dailyWins.date === todayStr && wStale.games.dailyWins.memory.A === 1);
-  const gw = (dw) => ({ ...base(), games: { ...base().games, dailyWins: dw } });
-  const mgw = M.mergeStates(gw({ date: todayStr, memory: { A: 1, B: 0 }, dice: { A: 0, B: 0 } }), gw({ date: todayStr, memory: { A: 0, B: 0 }, dice: { A: 0, B: 1 } }), "A");
-  check("merge dailyWins cùng ngày: max từng game/người", mgw.games.dailyWins.memory.A === 1 && mgw.games.dailyWins.dice.B === 1 && mgw.games.dailyWins.memory.B === 0);
-  const mgw2 = M.mergeStates(gw({ date: "2020-01-01", memory: { A: 1, B: 1 }, dice: { A: 1, B: 1 } }), gw({ date: todayStr, memory: { A: 0, B: 0 }, dice: { A: 0, B: 1 } }), "A");
-  check("merge dailyWins khác ngày: phía ngày mới hơn thắng", mgw2.games.dailyWins.date === todayStr && mgw2.games.dailyWins.memory.A === 0 && mgw2.games.dailyWins.dice.B === 1);
-}
-
-console.log("\n--- Bộ sưu tập thư: bền vững khi xoay vòng + messageId chuỗi ---");
-{
-  const letter = (id, messageId, opened = false) => ({ id, messageId, rarity: "common", source: "test", opened, droppedAt: iso(NOW), openedAt: "", openedBy: "" });
-  const s1 = P.normalizeStateV5({ letters: [letter("c1", 5), letter("c2", 7)] });
-  check("normalize: letterCollection = id các thư hiện có", s1.letterCollection.includes(5) && s1.letterCollection.includes(7));
-  const rotated = P.normalizeStateV5({ ...s1, letters: [letter("c3", 9)] });
-  check("thư bị xoay vòng khỏi hộp thư: collection VẪN giữ id cũ + thêm id mới", rotated.letters.length === 1 && rotated.letterCollection.includes(5) && rotated.letterCollection.includes(7) && rotated.letterCollection.includes(9));
-  const strId = P.normalizeStateV5({ letters: [letter("s1", "12")] });
-  check("messageId dạng chuỗi: ép về số trong thư và collection", strId.letters[0].messageId === 12 && strId.letterCollection.includes(12));
-  const stored = P.normalizeStateV5({ letterCollection: [3, "4"], letters: [] });
-  check("letterCollection đã lưu được giữ lại (kể cả phần tử chuỗi)", stored.letterCollection.includes(3) && stored.letterCollection.includes(4));
-  const o1 = R.gardenReducer(s1, { type: "OPEN_LETTER", id: "c1", opener: "An" });
-  check("OPEN_LETTER: id thư nằm trong collection sau khi mở", o1.letterCollection.includes(5) && o1.letterCollection.includes(7));
-  const a1 = R.gardenReducer(s1, { type: "ADD_LETTER", letter: letter("c9", 21), actor: "An", text: "t" });
-  check("ADD_LETTER: id thư mới được ghi vào collection", a1.letterCollection.includes(21));
-  const mgA = P.normalizeStateV5({ letterCollection: [5], letters: [letter("m1", 5)] });
-  const mgB = P.normalizeStateV5({ letterCollection: [8], letters: [letter("m2", "8")] });
-  const mgc = M.mergeStates(mgA, mgB, "A");
-  check("merge: collection hợp nhất 2 phía + id thư của cả hai (kể cả chuỗi)", mgc.letterCollection.includes(5) && mgc.letterCollection.includes(8) && mgc.letters.length === 2);
-}
-
-/* ================= 6) VÒNG RÀ SOÁT A–J (2026-10-23) ================= */
-console.log("\n--- Ngày chặt: parseDateKey loại ngày không tồn tại ---");
-{
-  check("parseDateKey: 2024-02-29 (năm nhuận) hợp lệ", T.parseDateKey("2024-02-29") !== null);
-  check("parseDateKey: 2025-02-31 bị loại (JS Date tự lăn sang 03-03)", T.parseDateKey("2025-02-31") === null);
-  check("parseDateKey: 2025-13-01 / chữ / rỗng bị loại", T.parseDateKey("2025-13-01") === null && T.parseDateKey("abc") === null && T.parseDateKey("") === null && T.parseDateKey(null) === null);
-  const s = base();
-  check("SETUP_GARDEN với ngày 2025-02-31: store bỏ qua ngày, giữ ngày cũ", R.gardenReducer(s, { type: "SETUP_GARDEN", gardenName: "Vườn", startDate: "2025-02-31" }).startDate === s.startDate);
-  check("SETUP_GARDEN ngày hợp lệ: được nhận", R.gardenReducer(s, { type: "SETUP_GARDEN", gardenName: "Vườn", startDate: "2024-02-14" }).startDate === "2024-02-14");
-  check("SET_START ngày không tồn tại: no-op", R.gardenReducer(s, { type: "SET_START", date: "2025-02-31" }) === s);
-}
-
-console.log("\n--- Normalize fuzz: định danh/ngày/thư/nội dung hỏng ---");
-{
-  const fz = P.normalizeStateV5({
-    currentUser: "X", personA: 42, personB: null, startDate: "2025-02-31",
-    letters: [
-      { id: 7, messageId: "x", rarity: "siêu hiếm", source: 9, opened: "yes", droppedAt: 5, openedAt: null, openedBy: {}, openedBySlot: "C" },
-      { id: "ok2", messageId: 4, rarity: "rare", source: "s", opened: true, droppedAt: "2026-01-02T00:00:00.000Z", openedAt: "", openedBy: "An", openedBySlot: "B" },
-      { id: "ok1", messageId: 3, rarity: "common", source: "s", opened: false, droppedAt: "2026-01-03T00:00:00.000Z", openedAt: "", openedBy: "" },
-    ],
-    notes: [{ id: "n1", author: 5, text: 99, color: null, createdAt: 7 }],
-    bucket: [{ id: "b1", text: false, done: "yes", createdAt: null }],
-    memories: [{ id: "m1", title: 3, date: 4, desc: null, imageUrl: 9, author: [], createdAt: null }],
-    frameRewards: { date: "2026-01-01", claimed: ["days", "hack", 7, "mood"] },
-  });
-  check("fuzz: currentUser lạ -> 'A'; tên không phải chuỗi -> mặc định", fz.currentUser === "A" && typeof fz.personA === "string" && typeof fz.personB === "string");
-  check("fuzz: startDate không tồn tại -> mặc định (hôm nay)", fz.startDate === todayStr);
-  check("fuzz: thư được làm sạch từng trường (id chuỗi, rarity whitelist, opened boolean, slot hợp lệ)", fz.letters.every((l) => typeof l.id === "string" && ["common", "rare", "legendary"].includes(l.rarity) && typeof l.opened === "boolean") && fz.letters.find((l) => l.id === "ok2").openedBySlot === "B");
-  check("fuzz: thư sắp xếp mới nhất trước theo droppedAt", fz.letters[0].id === "ok1" && fz.letters[1].id === "ok2");
-  check("fuzz: notes/bucket/memories có trường lạ -> ép về chuỗi/boolean an toàn", typeof fz.notes[0].text === "string" && fz.bucket[0].done === false && typeof fz.memories[0].title === "string");
-  check("fuzz: frameRewards.claimed chỉ giữ loại khung hợp lệ", JSON.stringify(fz.frameRewards.claimed) === JSON.stringify(["days", "mood"]));
-}
-
-console.log("\n--- Tombstone: xoá là xoá hẳn, không hồi sinh qua merge ---");
-{
-  const note = { id: "tn1", author: "An", authorSlot: "A", text: "ghi chú sẽ xoá", color: "#fff", createdAt: iso(NOW) };
-  const buck = { id: "tb1", text: "việc sẽ xoá", done: false, createdAt: iso(NOW), authorSlot: "A" };
-  const memo = { id: "tm1", title: "kỷ niệm sẽ xoá", date: "2025-01-01", desc: "", imageUrl: "", author: "An", authorSlot: "A", createdAt: iso(NOW) };
-  const withAll = { ...base(), notes: [note], bucket: [buck], memories: [memo] };
-  const delN = R.gardenReducer(withAll, { type: "DEL_NOTE", id: "tn1" });
-  check("DEL_NOTE: mất khỏi danh sách + có tombstone", delN.notes.length === 0 && delN.deletedIds.notes.includes("tn1"));
-  const stale = { ...base(), notes: [note], bucket: [buck], memories: [memo] };
-  const mgN = M.mergeStates(delN, stale, "A");
-  check("merge với bản cũ còn giữ ghi chú: ghi chú ĐÃ XOÁ không hồi sinh", mgN.notes.length === 0 && mgN.deletedIds.notes.includes("tn1"));
-  const delB = R.gardenReducer(withAll, { type: "DEL_BUCKET", id: "tb1" });
-  check("merge bucket: mục đã xoá không hồi sinh", M.mergeStates(delB, stale, "A").bucket.length === 0);
-  const delM = R.gardenReducer(withAll, { type: "DEL_MEMORY", id: "tm1" });
-  check("merge memories: kỷ niệm đã xoá không hồi sinh", M.mergeStates(delM, stale, "A").memories.length === 0);
-  const zombie = P.normalizeStateV5({ notes: [note], deletedIds: { notes: ["tn1"], bucket: [], memories: [] }, games: T.defaultGames });
-  check("normalize: state chứa cả mục lẫn tombstone của nó -> mục bị loại", zombie.notes.length === 0);
-  const reAdd = R.gardenReducer(delN, { type: "ADD_NOTE", note });
-  check("ADD_NOTE với id đã có tombstone: bị chặn", reAdd === delN);
-}
-
-console.log("\n--- SPIN_RESOLVE: trừ lượt + thưởng nguyên tử ---");
-{
-  const s0 = base();
-  const r1 = R.gardenReducer(s0, { type: "SPIN_RESOLVE", user: "A", actor: "An", kind: "coins", amount: 50 });
-  check("spin trúng Xu: lượt +1 VÀ +50 Xu trong cùng một dispatch", r1.games.spin.A === 1 && r1.coins === s0.coins + 50);
-  const r2 = R.gardenReducer(r1, { type: "SPIN_RESOLVE", user: "A", actor: "An", kind: "xp", amount: 10 });
-  check("spin trúng XP: lượt +1 và XP vườn +10", r2.games.spin.A === 2 && r2.tree.xp === s0.tree.xp + 10);
-  const letter = { id: "spinL1", messageId: 2, rarity: "common", source: "Vòng quay yêu thương", opened: false, droppedAt: iso(NOW), openedAt: "", openedBy: "" };
-  const r3 = R.gardenReducer(r2, { type: "SPIN_RESOLVE", user: "A", actor: "An", kind: "letter-common", amount: 0, letter });
-  check("spin trúng thư: lượt +1, thư vào hộp + vào bộ sưu tập", r3.games.spin.A === 3 && r3.letters.some((l) => l.id === "spinL1") && r3.letterCollection.includes(2));
-  const r4 = R.gardenReducer(r3, { type: "SPIN_RESOLVE", user: "A", actor: "An", kind: "coins", amount: 50 });
-  check("spin lần 4 (hết lượt): no-op toàn phần — không trừ, không thưởng", r4 === r3);
-  const free = R.gardenReducer(r3, { type: "SPIN_RESOLVE", user: "A", actor: "An", kind: "again", amount: 1 });
-  check("spin ô Thêm lượt ở trạng thái hết lượt thường: không trừ thêm, không kẹt", free.games.spin.A === 3);
-  const mis = R.gardenReducer(s0, { type: "SPIN_RESOLVE", user: "B", actor: "Bình", kind: "mission", amount: 0, bucketItem: { id: "bm1", text: "Ôm nhau 10 giây", done: false, createdAt: iso(NOW), authorSlot: "B" } });
-  check("spin trúng nhiệm vụ: bucket có nhiệm vụ + lượt của B +1 (không cần cổng 5s)", mis.bucket.some((b) => b.id === "bm1") && mis.games.spin.B === 1);
-  check("SPIN_USE cũ vẫn hoạt động (tương thích)", R.gardenReducer(s0, { type: "SPIN_USE", user: "A" }).games.spin.A === 1);
-}
-
-console.log("\n--- Thư xác định + openedBySlot + hoạt động kèm slot ---");
-{
-  const sA = { ...base(), plants: [{ ...plantRaw("pd1", "sakura"), announcedStage: 0 }], selectedPlantId: "pd1" };
-  const sB = { ...base(), plants: [{ ...plantRaw("pd1", "sakura"), announcedStage: 0 }], selectedPlantId: "pd1" };
-  const dA = R.makeStageUpDrop(sA, "pd1", 1, false);
-  const dB = R.makeStageUpDrop(sB, "pd1", 1, false);
-  const sig = (d) => (d ? `${d.id}|${d.messageId}|${d.rarity}` : "null");
-  check("thư lên giai đoạn: 2 máy độc lập tạo CÙNG id + CÙNG nội dung (hoặc cùng không rơi)", sig(dA) === sig(dB), dA ? `id=${dA.id} msg=${dA.messageId} rarity=${dA.rarity}` : "không rơi");
-  if (dA) check("thư lên giai đoạn: id dạng stageup-<cây>-<giai đoạn>", dA.id === "stageup-pd1-1");
-  const dRepeat = R.makeStageUpDrop(sA, "pd1", 1, false);
-  check("thư lên giai đoạn: gọi lại cùng tham số cho cùng kết quả (không ngẫu nhiên)", sig(dRepeat) === sig(dA));
-  const l0 = P.normalizeStateV5({ letters: [{ id: "L9", messageId: 1, rarity: "common", source: "test", opened: false, droppedAt: iso(NOW), openedAt: "", openedBy: "" }] });
-  const l1 = R.gardenReducer(l0, { type: "OPEN_LETTER", id: "L9", opener: "Tên Trùng", openerSlot: "B" });
-  check("OPEN_LETTER ghi openedBySlot của người mở", l1.letters[0].openedBySlot === "B");
-  const noSlot = { ...l0, letters: [{ ...l0.letters[0], opened: true, openedBy: "Tên Trùng" }] };
-  const withSlot = { ...l0, letters: [{ ...l0.letters[0], opened: true, openedBy: "Tên Trùng", openedBySlot: "B" }] };
-  check("merge 2 bản đã mở: ưu tiên bản có openedBySlot", M.mergeStates(noSlot, withSlot, "A").letters[0].openedBySlot === "B");
-  const la = R.gardenReducer(base(), { type: "LOVE_ACTION", kind: "hug", icon: "people-outline", label: "gửi một cái ôm", actor: "Tên Trùng", user: "B" });
-  check("LOVE_ACTION: hoạt động ghi kèm slot người gửi", la.activities[0].slot === "B" && la.lastLoveAction.by === "B");
-}
-
-console.log("\n--- Wave 2: cây đã thu không hồi sinh / thư rơi vào bộ sưu tập / bucket doneAt ---");
-{
-  const fakeLetter = (id, messageId) => ({ id, messageId, rarity: "common", source: "test", opened: false, droppedAt: iso(NOW), openedAt: "", openedBy: "" });
-  // C1: cây đã thu (có trong treeCollection phía remote) không được merge hồi sinh từ plants phía local
-  const collected = { id: "pX", speciesId: "love-tree", plantedAt: iso(NOW - 9 * 24 * H), maturedAt: iso(NOW - H), collectedAt: iso(NOW), careCount: 30 };
-  const sideWithPlant = { ...base(), plants: [{ ...plantRaw("pX", "love-tree") }], treeCollection: [] };
-  const sideCollected = { ...base(), plants: [], treeCollection: [collected] };
-  check("merge: cây đã thu KHÔNG hồi sinh (local còn cây, remote đã thu)", !M.mergeStates(sideWithPlant, sideCollected, "A").plants.some((p) => p.id === "pX"));
-  check("merge: cây đã thu KHÔNG hồi sinh (chiều ngược lại)", !M.mergeStates(sideCollected, sideWithPlant, "A").plants.some((p) => p.id === "pX"));
-  check("normalize: state chứa cả plants[id] + treeCollection[id] -> plants bị lọc", P.normalizeStateV5({ plants: [plantRaw("pX", "love-tree")], treeCollection: [collected], games: T.defaultGames }).plants.length === 0);
-  // D1: thư rơi từ chăm cây phải vào letterCollection bền vững
-  const s0 = base();
-  const t1 = R.gardenReducer(s0, { type: "TREE_ACTION", kind: "water", actor: "An", user: "A", plantId: s0.plants[0].id, drop: fakeLetter("drop-care", 7) });
-  check("TREE_ACTION: thư rơi có trong hộp + letterCollection", t1.letters.some((l) => l.id === "drop-care") && t1.letterCollection.includes(7));
-  // D1: thư lên giai đoạn
-  const sg = { ...base(), plants: [{ ...plantRaw("psg", "sunflower"), announcedStage: 0, growthRecordedMs: 24 * H }], selectedPlantId: "psg" };
-  const t2 = R.gardenReducer(sg, { type: "STAGE_UP", plantId: "psg", drop: fakeLetter("drop-stage", 9) });
-  check("STAGE_UP: thư rơi có trong hộp + letterCollection", t2.letters.some((l) => l.id === "drop-stage") && t2.letterCollection.includes(9));
-  // D1: thư thưởng nhiệm vụ Song chăm
-  const sq = P.normalizeStateV5({ daily: { date: todayStr, A: { water: 0, love: 0, sun: 0, bug: 0 }, B: { water: 0, love: 0, sun: 0, bug: 0 }, caredA: true, caredB: true, claimedA: [], claimedB: [] } });
-  const t3 = R.gardenReducer(sq, { type: "CLAIM_QUEST", questId: "both", actor: "An", user: "A", rewardXp: 10, drop: fakeLetter("drop-quest", 11) });
-  check("CLAIM_QUEST: thư thưởng có trong hộp + letterCollection", t3.letters.some((l) => l.id === "drop-quest") && t3.letterCollection.includes(11));
-  // F1: bỏ đánh dấu bucket thắng khi doneAt mới hơn (cả 2 chiều); không có doneAt giữ luật cũ
-  const bOn = { id: "b1", text: "x", done: true, createdAt: iso(NOW - 20000), doneAt: iso(NOW - 10000) };
-  const bOff = { id: "b1", text: "x", done: false, createdAt: iso(NOW - 20000), doneAt: iso(NOW) };
-  check("merge bucket: doneAt mới hơn (bỏ đánh dấu) thắng", M.mergeStates({ ...base(), bucket: [bOn] }, { ...base(), bucket: [bOff] }, "A").bucket.find((b) => b.id === "b1").done === false);
-  check("merge bucket: doneAt mới hơn thắng cả chiều ngược", M.mergeStates({ ...base(), bucket: [bOff] }, { ...base(), bucket: [bOn] }, "A").bucket.find((b) => b.id === "b1").done === false);
-  const bLegacyOff = { id: "b1", text: "x", done: false, createdAt: iso(NOW - 20000) };
-  const bLegacyOn = { id: "b1", text: "x", done: true, createdAt: iso(NOW - 20000) };
-  check("merge bucket legacy (không doneAt): done=true vẫn thắng", M.mergeStates({ ...base(), bucket: [bLegacyOff] }, { ...base(), bucket: [bLegacyOn] }, "A").bucket.find((b) => b.id === "b1").done === true);
-  const tb = R.gardenReducer({ ...base(), bucket: [bLegacyOff] }, { type: "TOGGLE_BUCKET", id: "b1" });
-  check("TOGGLE_BUCKET: ghi doneAt mới", tb.bucket[0].done === true && typeof tb.bucket[0].doneAt === "string" && tb.bucket[0].doneAt.length > 0);
-}
-
-console.log("\n--- Wave 2: coins neo chung / thư hội tụ / cap nội dung / no-op / HEART_PLAY ---");
-{
-  const cL = { ...base(), coins: 150, coinsBase: 100 };
-  const cR = { ...base(), coins: 130, coinsBase: 100 };
-  const cm = M.mergeStates(cL, cR, "A");
-  check("merge coins cùng neo: cộng delta CẢ HAI phía (150+130-100=180)", cm.coins === 180 && cm.coinsBase === 180, `coins=${cm.coins}`);
-  check("merge coins cùng neo: đối xứng 2 chiều", M.mergeStates(cR, cL, "A").coins === 180);
-  const buyL = { ...base(), coins: 70, coinsBase: 100 };
-  const earnR = { ...base(), coins: 120, coinsBase: 100 };
-  check("merge coins: một phía mua (-30) + một phía kiếm (+20) -> 90", M.mergeStates(buyL, earnR, "A").coins === 90);
-  const lx = (mid) => ({ id: "LX", messageId: mid, rarity: "common", source: "t", opened: false, droppedAt: iso(NOW), openedAt: "", openedBy: "" });
-  const m1 = M.mergeStates({ ...base(), letters: [lx(5)] }, { ...base(), letters: [lx(9)] }, "A");
-  const m2 = M.mergeStates({ ...base(), letters: [lx(9)] }, { ...base(), letters: [lx(5)] }, "A");
-  check("merge thư cùng id khác nội dung: hội tụ về messageId nhỏ hơn ở CẢ 2 chiều", m1.letters.find((l) => l.id === "LX").messageId === 5 && m2.letters.find((l) => l.id === "LX").messageId === 5);
-  const fullNotes = { ...base(), notes: Array.from({ length: 200 }, (_, i) => ({ id: "n" + i, author: "An", authorSlot: "A", text: "x", color: "#fff", createdAt: iso(NOW - i * 1000) })) };
-  check("ADD_NOTE ở cap 200: no-op (cùng reference)", R.gardenReducer(fullNotes, { type: "ADD_NOTE", note: { id: "n-new", author: "An", authorSlot: "A", text: "mới", color: "#fff", createdAt: iso(NOW) } }) === fullNotes);
-  const fullBucket = { ...base(), bucket: Array.from({ length: 200 }, (_, i) => ({ id: "bk" + i, text: "x", done: false, createdAt: iso(NOW - i * 1000) })) };
-  check("ADD_BUCKET ở cap 200: no-op (cùng reference)", R.gardenReducer(fullBucket, { type: "ADD_BUCKET", item: { id: "bk-new", text: "mới", done: false, createdAt: iso(NOW), authorSlot: "A" }, force: true }) === fullBucket);
-  const sm = { ...base(), moods: { A: "joy", B: "", date: todayStr } };
-  check("SET_MOOD chọn lại mood hiện tại: no-op (cùng reference)", R.gardenReducer(sm, { type: "SET_MOOD", user: "A", mood: "joy" }) === sm);
-  const sl = { ...base(), loveNotes: { A: "abc", B: "" } };
-  check("SET_LOVE_NOTE lưu lại y nguyên: no-op (cùng reference)", R.gardenReducer(sl, { type: "SET_LOVE_NOTE", user: "A", text: "abc" }) === sl);
-  const h1 = R.gardenReducer(base(), { type: "HEART_PLAY", user: "A" });
-  check("HEART_PLAY: ghi 1 lượt chơi ngay khi bắt đầu", h1.games.heartPlays.A === 1 && h1.games.heartPlays.date === todayStr);
-  const h2 = R.gardenReducer(h1, { type: "HEART_SCORE", user: "A", score: 10, actor: "An" });
-  check("HEART_SCORE: KHÔNG cộng thêm lượt (lượt do HEART_PLAY ghi)", h2.games.heartPlays.A === 1);
-}
-
-console.log("\n--- Wave 2: normalize (số dạng chuỗi / rác collection / trùng id cây) + streak + mã vườn ---");
-{
-  check("normalize: coins dạng chuỗi '500' được parse, không reset về 50", P.normalizeStateV5({ coins: "500" }).coins === 500);
-  check("normalize: quiz dạng chuỗi ['0','1'] được giữ thành [0,1]", JSON.stringify(P.normalizeStateV5({ games: { quiz: { date: todayStr, A: ["0", "1"], B: [] } } }).games.quiz.A) === "[0,1]");
-  const junk = P.normalizeStateV5({ letterCollection: [1.5, -5, null, true, "x", 7], letters: [] });
-  check("normalize: letterCollection rác bị lọc, chỉ còn số nguyên >= 1", JSON.stringify(junk.letterCollection) === "[7]", JSON.stringify(junk.letterCollection));
-  check("normalize: 2 cây trùng id bị khử trùng còn 1", P.normalizeStateV5({ plants: [plantRaw("dup", "love-tree"), plantRaw("dup", "sakura")] }).plants.length === 1);
-  check("normalize: messageId thập phân 12.7 được làm tròn xuống 12", P.normalizeStateV5({ letters: [{ id: "LF", messageId: 12.7, rarity: "common", source: "t", opened: false, droppedAt: iso(NOW), openedAt: "", openedBy: "" }] }).letters[0].messageId === 12);
-  check("vườn mới: mood mặc định RỖNG (chưa ai chọn)", base().moods.A === "" && base().moods.B === "");
-  const d3 = T.dayKeyLocal(new Date(NOW - 3 * 86400000));
-  const d1 = T.dayKeyLocal(new Date(NOW - 86400000));
-  check("effectiveStreak: nghỉ 3 ngày -> 0 dù count còn 5", T.effectiveStreak({ count: 5, lastDate: d3 }, NOW) === 0);
-  check("effectiveStreak: chăm hôm qua -> giữ 5; hôm nay -> giữ 5", T.effectiveStreak({ count: 5, lastDate: d1 }, NOW) === 5 && T.effectiveStreak({ count: 5, lastDate: todayStr }, NOW) === 5);
-  let codesOk = true;
-  for (let i = 0; i < 2000; i++) { const c = T.genRoomCode(); if (c.length !== 6) { codesOk = false; break; } }
-  check("genRoomCode: 2000 mã đều đúng 6 ký tự", codesOk);
-}
-
-const F = require("./.build/features.js");
-
-console.log("\n--- Gói tính năng 2026-10-23: normalize mặc định 6 section mới ---");
-{
-  const s = base();
-  check("mặc định: có đủ pings/presence/cycle/decor/pet/events", Boolean(s.pings && s.presence && s.cycle && s.decor && s.pet && Array.isArray(s.events)));
-  check("mặc định: chu kỳ TẮT chia sẻ cả hai slot", s.cycle.A.share === false && s.cycle.B.share === false);
-  check("mặc định: presence pin BẬT, vị trí TẮT, chưa có snapshot", s.presence.A.shareBattery === true && s.presence.A.shareLocation === false && s.presence.A.lat === null);
-  check("mặc định: decor rỗng, pet tên Mochi, 0 ngày chăm", s.decor.owned.length === 0 && s.decor.placed.length === 0 && s.pet.name === "Mochi" && s.pet.careDays.length === 0);
-  const corrupt2 = P.normalizeStateV5({ pings: "x", presence: { A: { lat: 999, battery: -5 } }, cycle: { A: { share: 1, cycleLen: 99, lastStart: "2025-02-31" } }, pet: { careDays: ["2025-13-01", todayStr, todayStr] }, events: [{ id: "e1", title: "x".repeat(80), date: "2025-02-31" }, { id: "e2", title: "Sinh nhật", date: "2026-12-01" }] });
-  check("normalize hỏng: presence lat/pin ngoài miền -> null", corrupt2.presence.A.lat === null && corrupt2.presence.A.battery === null);
-  check("normalize hỏng: cycle share=1 (không phải true) -> vẫn TẮT; cycleLen 99 -> kẹp 35; ngày 31/2 -> rỗng", corrupt2.cycle.A.share === false && corrupt2.cycle.A.cycleLen === 35 && corrupt2.cycle.A.lastStart === "");
-  check("normalize hỏng: pet careDays lọc ngày sai + khử trùng", JSON.stringify(corrupt2.pet.careDays) === JSON.stringify([todayStr]));
-  check("normalize hỏng: events bỏ sự kiện ngày không tồn tại, giữ sự kiện hợp lệ", corrupt2.events.length === 1 && corrupt2.events[0].id === "e2");
-}
-
-console.log("\n--- Gói tính năng: Nhớ bạn nhịp tim (trần ngày + chuỗi nhịp + không Xu) ---");
-{
-  const s = base();
-  const p1 = R.gardenReducer(s, { type: "PING_SEND", user: "A", actor: "An" });
-  check("ping 1: total=1, day=1, burst=1, lastBurstAt có mốc", p1.pings.A.total === 1 && p1.pings.day.A === 1 && p1.pings.A.burst === 1 && p1.pings.A.lastBurstAt !== "");
-  const p2 = R.gardenReducer(p1, { type: "PING_SEND", user: "A", actor: "An" });
-  const p3 = R.gardenReducer(p2, { type: "PING_SEND", user: "A", actor: "An" });
-  check("ping liên tục <=5s: gộp chuỗi burst=3, lastBurstAt KHÔNG đổi", p3.pings.A.burst === 3 && p3.pings.A.lastBurstAt === p1.pings.A.lastBurstAt && p3.pings.A.total === 3);
-  check("ping: nhật ký chỉ 1 dòng cho cả chuỗi", p3.activities.filter((a) => a.text.includes("nhịp tim")).length === 1);
-  check("ping: không gắn Xu (coins giữ nguyên)", p3.coins === s.coins);
-  const old = { ...base(), pings: { A: { total: 10, lastAt: iso(NOW - 10000), lastBurstAt: iso(NOW - 10000), burst: 4 }, B: { total: 0, lastAt: "", lastBurstAt: "", burst: 0 }, day: { date: todayStr, A: 10, B: 0 } } };
-  const pOld = R.gardenReducer(old, { type: "PING_SEND", user: "A", actor: "An" });
-  check("ping sau >5s: chuỗi MỚI burst=1, lastBurstAt cập nhật", pOld.pings.A.burst === 1 && pOld.pings.A.lastBurstAt !== old.pings.A.lastBurstAt);
-  const capped = { ...base(), pings: { ...base().pings, day: { date: todayStr, A: 50, B: 0 } } };
-  check("ping thứ 51 trong ngày: bị chặn ở store (cùng reference)", R.gardenReducer(capped, { type: "PING_SEND", user: "A", actor: "An" }) === capped);
-  check("ping: trần là theo NGƯỜI — người kia vẫn gửi được", R.gardenReducer(capped, { type: "PING_SEND", user: "B", actor: "Bình" }) !== capped);
-}
-
-console.log("\n--- Gói tính năng: Hiện diện (haversine + nhãn + merge ưu tiên chủ slot) ---");
-{
-  const d = F.haversineKm(21.0285, 105.8542, 10.8231, 106.6297);
-  check("haversine Hà Nội - TP.HCM ~1138 km", d > 1100 && d < 1180, `d=${Math.round(d)}`);
-  check("haversine cùng điểm = 0", F.haversineKm(21, 105, 21, 105) === 0);
-  check("nhãn khoảng cách: <0,5 km = cùng một nơi; <0,1 km = rất gần", F.distanceLabel(0.3).includes("cùng một nơi") && F.distanceLabel(0.05).includes("rất gần"));
-  check("formatKm: 2,34 -> '2,3 km'; 0,85 -> '850 m'", F.formatKm(2.34) === "2,3 km" && F.formatKm(0.85) === "850 m");
-  const s0 = base();
-  const okSet = R.gardenReducer(s0, { type: "PRESENCE_SET", user: "A", patch: { lat: 21.02, lng: 105.85, battery: 55, at: iso(NOW) } });
-  check("PRESENCE_SET: ghi snapshot của A", okSet.presence.A.lat === 21.02 && okSet.presence.A.battery === 55);
-  check("PRESENCE_SET: lat ngoài miền -> từ chối (cùng reference)", R.gardenReducer(s0, { type: "PRESENCE_SET", user: "A", patch: { lat: 999 } }) === s0);
-  check("PRESENCE_SET: patch y nguyên -> no-op", R.gardenReducer(okSet, { type: "PRESENCE_SET", user: "A", patch: { lat: 21.02, lng: 105.85, battery: 55, at: iso(NOW) } }) === okSet);
-  const locState = (lat, stamps) => ({ ...base(), presence: { A: { shareBattery: true, shareLocation: true, lat, lng: 105.85, acc: 10, battery: 50, at: iso(NOW) }, B: base().presence.B }, secTs: stamps, updatedAt: iso(NOW) });
-  const mine = locState(21.01, { "presence:A": { t: iso(NOW - 60000), by: "A" } });
-  const notOwner = locState(10.5, { "presence:A": { t: iso(NOW), by: "B" } });
-  check("merge presence: bản do CHÍNH chủ slot ghi thắng bản đóng dấu mới hơn nhưng không phải chủ", M.mergeStates(mine, notOwner, "A").presence.A.lat === 21.01);
-  const ownerNewer = locState(21.55, { "presence:A": { t: iso(NOW + 60000), by: "A" } });
-  check("merge presence: hai bản cùng chủ slot -> bản mới hơn thắng", M.mergeStates(mine, ownerNewer, "A").presence.A.lat === 21.55);
-}
-
-console.log("\n--- Gói tính năng: Chu kỳ (giai đoạn + sửa ngày tối đa 1 lần/ngày) ---");
-{
-  const cyc = { share: true, lastStart: "2026-10-01", cycleLen: 28, periodLen: 5, startEditDate: "", updatedAt: "" };
-  const at = (dd) => new Date(2026, 9, dd, 12).getTime();
-  check("chu kỳ: 3/10 (ngày 2) -> Kỳ kinh", F.cycleInfo(cyc, at(3))?.phase === "period");
-  check("chu kỳ: 8/10 (ngày 7) -> Nang trứng", F.cycleInfo(cyc, at(8))?.phase === "follicular");
-  check("chu kỳ: 15/10 (ngày 14 = 28-14) -> Rụng trứng", F.cycleInfo(cyc, at(15))?.phase === "ovulation");
-  check("chu kỳ: 20/10 (ngày 19) -> Hoàng thể", F.cycleInfo(cyc, at(20))?.phase === "luteal");
-  const info = F.cycleInfo(cyc, at(20));
-  check("chu kỳ: kỳ tới 29/10, còn 9 ngày tính từ 20/10", info?.nextStart === "2026-10-29" && info?.daysUntilNext === 9, JSON.stringify(info && { n: info.nextStart, d: info.daysUntilNext }));
-  check("chu kỳ: nhạy cảm khi trong kỳ + <=3 ngày trước kỳ tới; giữa kỳ thì không", F.cycleInfo(cyc, at(3))?.sensitive === true && F.cycleInfo(cyc, at(27))?.sensitive === true && F.cycleInfo(cyc, at(8))?.sensitive === false);
-  check("chu kỳ: lastStart cách 75 ngày (nhiều chu kỳ) vẫn suy đúng ngày 19", F.cycleInfo({ ...cyc, lastStart: "2026-08-06" }, at(20))?.dayInCycle === 19);
-  check("chu kỳ: chưa đặt ngày bắt đầu -> null", F.cycleInfo({ ...cyc, lastStart: "" }, at(20)) === null);
-  const s = base();
-  const c1 = R.gardenReducer(s, { type: "CYCLE_SET", user: "A", patch: { share: true, lastStart: "2026-10-01" } });
-  check("CYCLE_SET lần 1: đặt ngày bắt đầu + bật chia sẻ + ghi startEditDate", c1.cycle.A.lastStart === "2026-10-01" && c1.cycle.A.share === true && c1.cycle.A.startEditDate === todayStr);
-  const c2 = R.gardenReducer(c1, { type: "CYCLE_SET", user: "A", patch: { lastStart: "2026-10-05" } });
-  check("CYCLE_SET lần 2 trong ngày: ngày bắt đầu bị GIỮ (tối đa 1 lần/ngày)", c2.cycle.A.lastStart === "2026-10-01");
-  const c3 = R.gardenReducer(c1, { type: "CYCLE_SET", user: "A", patch: { cycleLen: 99 } });
-  check("CYCLE_SET: cycleLen 99 bị kẹp về 35 ở store", c3.cycle.A.cycleLen === 35);
-}
-
-console.log("\n--- Gói tính năng: Thú cưng (lớn theo ngày khác nhau + cooldown + trần thưởng) ---");
-{
-  const s0 = base();
-  const f1 = R.gardenReducer(s0, { type: "PET_CARE", kind: "feed", user: "A", actor: "An" });
-  check("pet cho ăn lần 1: +3 Xu, careDays có hôm nay, careCount A=1", f1.coins === s0.coins + 3 && f1.pet.careDays.length === 1 && f1.pet.careCount.A === 1);
-  check("pet chăm ngay lần 2 (cooldown 60s/người): bị chặn ở store", R.gardenReducer(f1, { type: "PET_CARE", kind: "feed", user: "A", actor: "An" }) === f1);
-  const f2 = R.gardenReducer(f1, { type: "PET_CARE", kind: "play", user: "B", actor: "Bình" });
-  check("pet: người kia chăm được ngay (cooldown theo người)", f2 !== f1 && f2.pet.careCount.B === 1);
-  check("pet: chăm nhiều trong 1 ngày — careDays vẫn 1 ngày, giai đoạn vẫn 0", f2.pet.careDays.length === 1 && F.petStageIndex(f2.pet) === 0);
-  const days = (n) => Array.from({ length: n }, (_, i) => `2026-10-${String(i + 1).padStart(2, "0")}`);
-  check("pet giai đoạn theo ngày chăm: 2 ngày -> 0; 3 ngày -> 1; 7 ngày -> 2", F.petStageIndex({ ...base().pet, careDays: days(2) }) === 0 && F.petStageIndex({ ...base().pet, careDays: days(3) }) === 1 && F.petStageIndex({ ...base().pet, careDays: days(7) }) === 2);
-  const rich = { ...base(), pet: { ...base().pet, rewardDay: { date: todayStr, A: 5, B: 0 }, hunger: 40, joy: 40, statsAt: iso(NOW) } };
-  const f3 = R.gardenReducer(rich, { type: "PET_CARE", kind: "feed", user: "A", actor: "An" });
-  check("pet: hết lượt thưởng ngày (5) — vẫn chăm được nhưng KHÔNG cộng Xu", f3 !== rich && f3.coins === rich.coins && f3.pet.careCount.A === 1);
-  const full = { ...base(), pet: { ...base().pet, hunger: 100, joy: 100, statsAt: iso(NOW) } };
-  check("pet: đói/vui đã đầy (>=95) — chăm vô hiệu ở store", R.gardenReducer(full, { type: "PET_CARE", kind: "feed", user: "A", actor: "An" }) === full);
-  const mPet = M.mergeStates({ ...base(), pet: { ...base().pet, careDays: ["2026-10-01"] } }, { ...base(), pet: { ...base().pet, careDays: ["2026-10-02"] } }, "A");
-  check("merge pet: careDays hợp nhất 2 máy (không mất ngày chăm)", mPet.pet.careDays.length === 2);
-}
-
-console.log("\n--- Gói tính năng: Ngày đặc biệt (lần tới + lặp năm + tombstone) ---");
-{
-  const at = (y, m, d) => new Date(y, m - 1, d, 12).getTime();
-  const yearly = { id: "ev1", title: "Kỷ niệm yêu nhau", date: "2024-12-25", repeat: "yearly", createdBy: "A", createdAt: iso(NOW), updatedAt: iso(NOW) };
-  const occ = F.nextOccurrence(yearly, at(2026, 10, 23));
-  check("sự kiện lặp năm: 25/12 -> lần tới 25/12/2026, còn 63 ngày từ 23/10", occ?.dateKey === "2026-12-25" && occ?.daysUntil === 63, JSON.stringify(occ));
-  check("sự kiện lặp năm: đã qua trong năm -> sang năm sau", F.nextOccurrence(yearly, at(2026, 12, 26))?.dateKey === "2027-12-25");
-  check("sự kiện lặp năm đúng hôm nay: còn 0 ngày", F.nextOccurrence(yearly, at(2026, 12, 25))?.daysUntil === 0);
-  const leap = { ...yearly, id: "ev2", date: "2024-02-29" };
-  check("sự kiện 29/2 lặp năm: năm không nhuận hiện 28/2", F.nextOccurrence(leap, at(2026, 10, 23))?.dateKey === "2027-02-28");
-  const once = { ...yearly, id: "ev3", repeat: "once", date: "2026-11-01" };
-  check("sự kiện một lần: còn 9 ngày từ 23/10; đã qua -> null", F.nextOccurrence(once, at(2026, 10, 23))?.daysUntil === 9 && F.nextOccurrence(once, at(2026, 11, 2)) === null);
-  const nxt = F.nextEvent([yearly, once], at(2026, 10, 23));
-  check("nextEvent: chọn sự kiện GẦN NHẤT (1/11 trước 25/12)", nxt?.event.id === "ev3" && nxt?.daysUntil === 9);
-  const s = base();
-  const evNew = { id: "evt1", title: "Đi Đà Lạt", date: "2026-12-01", repeat: "once", createdBy: "A", createdAt: iso(NOW), updatedAt: iso(NOW) };
-  const a1 = R.gardenReducer(s, { type: "EVENT_ADD", event: evNew });
-  check("EVENT_ADD: thêm được sự kiện", a1.events.length === 1 && a1.events[0].title === "Đi Đà Lạt");
-  check("EVENT_ADD trùng id: no-op", R.gardenReducer(a1, { type: "EVENT_ADD", event: evNew }) === a1);
-  check("EVENT_ADD tiêu đề 61 ký tự: bị chặn ở store", R.gardenReducer(s, { type: "EVENT_ADD", event: { ...evNew, id: "evt2", title: "x".repeat(61) } }) === s);
-  check("EVENT_ADD ngày không tồn tại (31/2): bị chặn ở store", R.gardenReducer(s, { type: "EVENT_ADD", event: { ...evNew, id: "evt3", date: "2026-02-31" } }) === s);
-  const e1 = R.gardenReducer(a1, { type: "EVENT_EDIT", event: { ...evNew, title: "Đi Đà Lạt 2", date: "2026-12-05" } });
-  check("EVENT_EDIT: sửa tiêu đề + ngày, giữ người tạo", e1.events[0].title === "Đi Đà Lạt 2" && e1.events[0].date === "2026-12-05" && e1.events[0].createdBy === "A");
-  const d1 = R.gardenReducer(a1, { type: "EVENT_DEL", id: "evt1" });
-  check("EVENT_DEL: xoá khỏi danh sách + ghi tombstone", d1.events.length === 0 && (d1.deletedIds?.events ?? []).includes("evt1"));
-  const reAdd = { ...d1, contentLog: { A: "", B: "" } };
-  check("EVENT_ADD lại id đã xoá: tombstone chặn hồi sinh", R.gardenReducer(reAdd, { type: "EVENT_ADD", event: evNew }) === reAdd);
-  check("merge events: máy còn bản cũ không hồi sinh sự kiện đã xoá", M.mergeStates(a1, d1, "A").events.length === 0);
-}
-
-console.log("\n--- Gói tính năng: Trang trí (mua/trang bị + trần 3 vật đặt + merge owned) ---");
-{
-  const rich = { ...base(), coins: 2000 };
-  const b1 = R.gardenReducer(rich, { type: "BUY_DECOR", itemId: "decor-scene-spring", actor: "An" });
-  check("BUY_DECOR cảnh xuân: -350 Xu, owned có món, tự trang bị sceneBg", b1.coins === 1650 && b1.decor.owned.includes("decor-scene-spring") && b1.decor.sceneBg === "decor-scene-spring");
-  check("BUY_DECOR trùng món: no-op", R.gardenReducer(b1, { type: "BUY_DECOR", itemId: "decor-scene-spring", actor: "An" }) === b1);
-  const poor = { ...base(), coins: 100 };
-  check("BUY_DECOR không đủ Xu: no-op", R.gardenReducer(poor, { type: "BUY_DECOR", itemId: "decor-scene-spring", actor: "An" }) === poor);
-  check("BUY_DECOR id không có trong catalog: no-op", R.gardenReducer(rich, { type: "BUY_DECOR", itemId: "decor-khong-co", actor: "An" }) === rich);
-  let s = rich;
-  for (const id of ["decor-item-lantern", "decor-item-mushroom", "decor-item-pond"]) s = R.gardenReducer(s, { type: "BUY_DECOR", itemId: id, actor: "An" });
-  check("BUY_DECOR 3 vật đặt: tự đặt đủ 3 khe theo thứ tự mua", s.decor.placed.length === 3 && s.decor.placed[0] === "decor-item-lantern");
-  const b4 = R.gardenReducer(s, { type: "BUY_DECOR", itemId: "decor-item-pinwheel", actor: "An" });
-  check("BUY_DECOR vật thứ 4: vào owned nhưng KHÔNG tự đặt (đã đủ 3 khe)", b4.decor.owned.includes("decor-item-pinwheel") && b4.decor.placed.length === 3 && !b4.decor.placed.includes("decor-item-pinwheel"));
-  const e1 = R.gardenReducer(b4, { type: "EQUIP_DECOR", itemId: "decor-item-pinwheel" });
-  check("EQUIP_DECOR khi đầy 3 khe: thay khe CUỐI, vẫn đúng 3 vật", e1.decor.placed.length === 3 && e1.decor.placed[2] === "decor-item-pinwheel" && !e1.decor.placed.includes("decor-item-pond"));
-  const e2 = R.gardenReducer(e1, { type: "EQUIP_DECOR", itemId: "decor-item-pinwheel" });
-  check("EQUIP_DECOR món đang đặt: gỡ ra khỏi vườn", e2.decor.placed.length === 2 && !e2.decor.placed.includes("decor-item-pinwheel"));
-  check("EQUIP_DECOR món chưa sở hữu: no-op", R.gardenReducer(rich, { type: "EQUIP_DECOR", itemId: "decor-item-swing" }) === rich);
-  const eScene = R.gardenReducer(b1, { type: "EQUIP_DECOR", itemId: "decor-scene-spring" });
-  check("EQUIP_DECOR cảnh đang dùng: gỡ về nền mặc định", eScene.decor.sceneBg === "");
-  const mDec = M.mergeStates(b1, { ...base(), decor: { owned: ["decor-fence-wood"], sceneBg: "", fence: "decor-fence-wood", path: "", placed: [] } }, "A");
-  check("merge decor: owned hợp nhất 2 máy, không mất món nào", mDec.decor.owned.includes("decor-scene-spring") && mDec.decor.owned.includes("decor-fence-wood"));
-}
-
-console.log(`\n${count - failures}/${count} test đạt`);
-console.log(failures === 0 ? "TẤT CẢ TEST LOGIC ĐẠT" : `CÓ ${failures} TEST CHƯA ĐẠT`);
-process.exit(failures === 0 ? 0 : 1);
+console.log(`\n===== TỔNG: ${count - failures}/${count} PASS =====`);
+if (failures > 0) { console.log(`CÓ ${failures} TEST FAIL`); process.exit(1); }

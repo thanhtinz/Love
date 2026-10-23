@@ -4,17 +4,13 @@ import { Tabs } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { COLOR, FONT, ROLE, SHADOW_FLOAT } from "../../components/theme";
 import { QuickActions } from "../../components/QuickActions";
+import { useLove } from "../../lib/store";
 
 /**
- * Tab bar — hệ "Vườn giấy ấm" (mockup vòng 2): 4 tab + nút giữa, luôn có icon + nhãn.
- * Nhà · Vườn · (+) giữa mở sheet hành động nhanh · Hai đứa (hub dẫn tới
- * Trò chơi / Tiện ích / Khung màn hình / Tài khoản / Thư đã lưu — các màn đó là
- * route Stack gốc ở cấp app: /games, /utilities, /frames, /account, /letters).
- * Thư KHÔNG còn là tab (user chốt 2026-10-23: thư chỉ là tính năng phụ) — nó là
- * route Stack /letters với lối vào duy nhất ở hub Hai đứa.
- * Trình bày theo mockup: thanh trắng mờ, bóng mềm từ dưới lên, KHÔNG viền cứng phía
- * trên; tab đang chọn có pill hồng mềm nằm SAU icon + nhãn đậm màu primary; đĩa "+"
- * 56px màu primary nổi lên trên với viền màu canvas và bóng rose.
+ * Tab bar của bản rebuild — Nhà · Cây · (+) · Note · Hai đứa.
+ * - Note là TAB (note tình yêu là lõi 3) với badge số note CHƯA ĐỌC của người ấy gửi.
+ * - Thư tình KHÔNG phải tab/tính năng riêng: thư chỉ là khoảnh khắc bật lên khi chăm cây.
+ * - Nút "+" giữa mở sheet hành động nhanh (QuickActions), không điều hướng.
  * TUYỆT ĐỐI không khai báo màn trong nhóm (tabs) rồi ẩn bằng href: null:
  * expo-router 58 (TabsClient processScreens) đổi href:null thành options.hidden=true,
  * và useVisibleTabsWithRedirect sẽ router.replace về tab đầu tiên NGAY khi một route
@@ -30,6 +26,9 @@ function TabIcon({ name, focused }: { name: string; focused: boolean }) {
 
 export default function TabsLayout() {
   const [quickOpen, setQuickOpen] = useState(false);
+  const { state } = useLove();
+  const me = state.currentUser;
+  const unread = state.notes.filter((n) => n.authorSlot !== me && !n.readAt).length;
 
   return (
     <>
@@ -56,7 +55,7 @@ export default function TabsLayout() {
         }}
       >
         <Tabs.Screen name="index" options={{ title: "Nhà", tabBarIcon: ({ focused }) => <TabIcon name={focused ? "home" : "home-outline"} focused={focused} /> }} />
-        <Tabs.Screen name="garden" options={{ title: "Vườn", tabBarIcon: ({ focused }) => <TabIcon name={focused ? "leaf" : "leaf-outline"} focused={focused} /> }} />
+        <Tabs.Screen name="tree" options={{ title: "Cây", tabBarIcon: ({ focused }) => <TabIcon name={focused ? "leaf" : "leaf-outline"} focused={focused} /> }} />
         <Tabs.Screen
           name="quick"
           options={{
@@ -71,6 +70,15 @@ export default function TabsLayout() {
                 <Ionicons name="add" size={28} color="#fff" />
               </TouchableOpacity>
             ),
+          }}
+        />
+        <Tabs.Screen
+          name="notes"
+          options={{
+            title: "Note",
+            tabBarIcon: ({ focused }) => <TabIcon name={focused ? "document-text" : "document-text-outline"} focused={focused} />,
+            tabBarBadge: unread > 0 ? unread : undefined,
+            tabBarBadgeStyle: { backgroundColor: COLOR.primary, color: "#fff", fontFamily: FONT.bold, fontSize: 10 },
           }}
         />
         <Tabs.Screen name="couple" options={{ title: "Hai đứa", tabBarIcon: ({ focused }) => <TabIcon name={focused ? "people" : "people-outline"} focused={focused} /> }} />

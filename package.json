@@ -45,7 +45,7 @@
     "ios": "expo run:ios",
     "web": "expo start --web",
     "typecheck": "tsc --noEmit",
-    "simulate": "tsc --ignoreConfig --ignoreDeprecations 6.0 src/lib/plants.ts src/lib/types.ts --outDir scripts/.build --module commonjs --target es2020 --moduleResolution node10 --skipLibCheck --esModuleInterop && node scripts/simulate-growth.mjs",
+    "simulate": "tsc --ignoreConfig --ignoreDeprecations 6.0 src/lib/tree.ts src/lib/types.ts --outDir scripts/.build --module commonjs --target es2020 --moduleResolution node10 --skipLibCheck --esModuleInterop && node scripts/simulate-core.mjs",
     "test-logic": "tsc --ignoreConfig --ignoreDeprecations 6.0 src/lib/reducer.ts src/lib/merge.ts src/lib/time.ts --outDir scripts/.build --module commonjs --target es2020 --moduleResolution node10 --skipLibCheck --esModuleInterop && TZ=Asia/Saigon node scripts/test-logic.mjs",
     "lint": "expo lint",
     "icons": "node scripts/generate-icons.mjs",
