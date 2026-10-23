@@ -68,7 +68,9 @@ const PLANT_ART: Record<string, number[]> = {
 const EMPTY_PLOT_ART = require("../../assets/art/plants/empty-plot.webp");
 
 /**
- * Cây vẽ thật theo loài/giai đoạn. Trạng thái yếu/héo thể hiện bằng opacity + lớp phủ xám
+ * Cây vẽ thật theo loài/giai đoạn. Tranh cây đã có nền TRONG SUỐT thật (key từ
+ * nền trắng gốc, 2026-10-23) nên đặt trực tiếp lên mọi bề mặt — không hộp trắng.
+ * Trạng thái yếu/héo thể hiện bằng opacity + lớp phủ xám
  * (héo: 0.55 + phủ xám; yếu "need": 0.8) — không vẽ SVG đè lên tranh.
  */
 export function PlantImage({ speciesId, stageIndex, size, status }: { speciesId: string; stageIndex: number; size: number; status?: string }) {
@@ -77,17 +79,17 @@ export function PlantImage({ speciesId, stageIndex, size, status }: { speciesId:
   const wilted = status === "wilted";
   const weak = status === "need";
   return (
-    <View style={{ width: size, height: size, backgroundColor: "#fff", overflow: "hidden", borderRadius: 12 }}>
+    <View style={{ width: size, height: size, overflow: "hidden", borderRadius: 12 }}>
       <Image source={src} style={{ width: "100%", height: "100%", opacity: wilted ? 0.55 : weak ? 0.8 : 1 }} contentFit="contain" accessibilityLabel="Cây trong vườn" />
       {wilted && <View style={{ position: "absolute", top: 0, left: 0, right: 0, bottom: 0, backgroundColor: "rgba(105,105,105,0.20)" }} />}
     </View>
   );
 }
 
-// Ô đất trống — tranh vẽ thật empty-plot.
+// Ô đất trống — tranh vẽ thật empty-plot (nền trong suốt).
 export function EmptyPlotImage({ size = 62 }: { size?: number }) {
   return (
-    <View style={{ width: size, height: size, backgroundColor: "#fff", overflow: "hidden", borderRadius: 12 }}>
+    <View style={{ width: size, height: size, overflow: "hidden", borderRadius: 12 }}>
       <Image source={EMPTY_PLOT_ART} style={{ width: "100%", height: "100%" }} contentFit="contain" accessibilityLabel="Ô đất trống" />
     </View>
   );
@@ -95,9 +97,9 @@ export function EmptyPlotImage({ size = 62 }: { size?: number }) {
 
 /**
  * BỆ CẢNH cây — trình bày "tranh là cảnh" của hệ Vườn giấy ấm (thay ô trắng vuông):
- * ellipse đất #E9D8BE ở đáy + tranh cây contain đứng trên đất. Nền tranh trắng được
- * hoà vào nền cảnh bằng mixBlendMode "multiply" (hiệu lực trên bản web; native bỏ qua
- * thuộc tính này và tranh hiện nguyên khung — chấp nhận được, không vỡ bố cục).
+ * ellipse đất #E9D8BE ở đáy + tranh cây contain đứng trên đất. Tranh đã trong suốt
+ * thật nên đứng trực tiếp trên đất ở CẢ web và native (trước đây phải dùng
+ * mixBlendMode "multiply" để giấu nền trắng — đã gỡ khi tranh có alpha thật).
  * Trạng thái yếu/héo vẫn bằng opacity + phủ xám như PlantImage.
  */
 export function PlantScene({ speciesId, stageIndex, status, height, imgHeight, soilRatio = 0.16 }: {
@@ -117,7 +119,7 @@ export function PlantScene({ speciesId, stageIndex, status, height, imgHeight, s
       <View style={{ position: "absolute", bottom: 2, alignSelf: "center", width: "82%", height: Math.round(height * soilRatio), backgroundColor: COLOR.soil, borderRadius: 999, opacity: 0.85 }} />
       <Image
         source={src}
-        style={{ height: imgHeight, width: imgHeight, mixBlendMode: "multiply", opacity: wilted ? 0.55 : weak ? 0.8 : 1 } as never}
+        style={{ height: imgHeight, width: imgHeight, opacity: wilted ? 0.55 : weak ? 0.8 : 1 }}
         contentFit="contain"
         accessibilityLabel="Cây trong vườn"
       />
@@ -130,7 +132,7 @@ export function PlantScene({ speciesId, stageIndex, status, height, imgHeight, s
 export function EmptyPlotScene({ height, imgHeight }: { height: number; imgHeight: number }) {
   return (
     <View style={{ height, alignItems: "center", justifyContent: "flex-end", position: "relative" }}>
-      <Image source={EMPTY_PLOT_ART} style={{ height: imgHeight, width: imgHeight, mixBlendMode: "multiply" } as never} contentFit="contain" accessibilityLabel="Ô đất trống" />
+      <Image source={EMPTY_PLOT_ART} style={{ height: imgHeight, width: imgHeight }} contentFit="contain" accessibilityLabel="Ô đất trống" />
     </View>
   );
 }
@@ -184,15 +186,55 @@ const HEART_GAME_ART = require("../../assets/art/misc/heart-game.webp");
 const MEMORIES_EMPTY_ART = require("../../assets/art/misc/memories-empty.webp");
 const BUCKET_EMPTY_ART = require("../../assets/art/misc/bucket-empty.webp");
 
-// Phong bì thư vẽ thật — thư rơi trong vườn + minh hoạ trong sheet đọc thư.
-// mixBlendMode multiply: nền trắng của tranh hoà vào giấy thư (hiệu lực trên web).
-export function LetterEnvelopeImage({ size = 58 }: { size?: number }) {
-  return <Image source={LETTER_ENVELOPE_ART} style={{ width: size, height: size, mixBlendMode: "multiply" } as never} contentFit="contain" accessibilityLabel="Phong bì thư" />;
+// ===== TRANH TRANG TRÍ GÓI 1 + THÚ CƯNG (2026-10-23) =====
+// Cảnh mùa: full-frame (không alpha) phủ kín cảnh vườn. Rào/lối đi/vật đặt/pet:
+// nền trắng gốc được tách thành TRONG SUỐT bằng flood-key từ mép (như tranh cây).
+export const DECOR_SCENE_ART: Record<string, number> = {
+  "decor-scene-spring": require("../../assets/art/decor/decor-scene-spring.webp"),
+  "decor-scene-summer": require("../../assets/art/decor/decor-scene-summer.webp"),
+  "decor-scene-autumn": require("../../assets/art/decor/decor-scene-autumn.webp"),
+  "decor-scene-winter": require("../../assets/art/decor/decor-scene-winter.webp"),
+  "decor-scene-festival": require("../../assets/art/decor/decor-scene-festival.webp"),
+};
+export const DECOR_FENCE_ART: Record<string, number> = {
+  "decor-fence-wood": require("../../assets/art/decor/decor-fence-wood.webp"),
+  "decor-fence-bamboo": require("../../assets/art/decor/decor-fence-bamboo.webp"),
+};
+export const DECOR_PATH_ART: Record<string, number> = {
+  "decor-path-stone": require("../../assets/art/decor/decor-path-stone.webp"),
+  "decor-path-flower": require("../../assets/art/decor/decor-path-flower.webp"),
+};
+export const DECOR_ITEM_ART: Record<string, number> = {
+  "decor-item-lantern": require("../../assets/art/decor/decor-item-lantern.webp"),
+  "decor-item-mushroom": require("../../assets/art/decor/decor-item-mushroom.webp"),
+  "decor-item-swing": require("../../assets/art/decor/decor-item-swing.webp"),
+  "decor-item-bench": require("../../assets/art/decor/decor-item-bench.webp"),
+  "decor-item-pond": require("../../assets/art/decor/decor-item-pond.webp"),
+  "decor-item-pinwheel": require("../../assets/art/decor/decor-item-pinwheel.webp"),
+};
+/** Mọi tranh decor theo id món (dùng cho thumbnail cửa hàng). */
+export const DECOR_ART: Record<string, number> = { ...DECOR_SCENE_ART, ...DECOR_FENCE_ART, ...DECOR_PATH_ART, ...DECOR_ITEM_ART };
+
+const PET_ART: number[] = [
+  require("../../assets/art/pet/pet-s1.webp"),
+  require("../../assets/art/pet/pet-s2.webp"),
+  require("../../assets/art/pet/pet-s3.webp"),
+];
+
+/** Thú cưng chung theo giai đoạn 0/1/2 (bé con / thiếu niên / trưởng thành) — nền trong suốt. */
+export function PetImage({ stage, size }: { stage: number; size: number }) {
+  const src = PET_ART[Math.max(0, Math.min(stage, PET_ART.length - 1))];
+  return <Image source={src} style={{ width: size, height: size }} contentFit="contain" accessibilityLabel="Thú cưng trong vườn" />;
 }
 
-// Trái tim vẽ thật — tâm vòng quay Vòng quay yêu thương + mặt sau lá bài Ghép cặp ký ức.
+// Phong bì thư vẽ thật (nền trong suốt) — thư rơi trong vườn + minh hoạ trong sheet đọc thư.
+export function LetterEnvelopeImage({ size = 58 }: { size?: number }) {
+  return <Image source={LETTER_ENVELOPE_ART} style={{ width: size, height: size }} contentFit="contain" accessibilityLabel="Phong bì thư" />;
+}
+
+// Trái tim vẽ thật (nền trong suốt) — tâm vòng quay Vòng quay yêu thương + mặt sau lá bài Ghép cặp ký ức.
 export function HeartGameImage({ size = 44 }: { size?: number }) {
-  return <Image source={HEART_GAME_ART} style={{ width: size, height: size, mixBlendMode: "multiply" } as never} contentFit="contain" accessibilityLabel="Trái tim" />;
+  return <Image source={HEART_GAME_ART} style={{ width: size, height: size }} contentFit="contain" accessibilityLabel="Trái tim" />;
 }
 
 // Trạng thái trống Kỷ niệm — khung nền kem khớp màu nền tranh (#fbecdd đo từ góc tranh).

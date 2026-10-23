@@ -180,6 +180,45 @@ export const SHOP_ITEMS: ShopItem[] = [
 ];
 export const shopItem = (id: string) => SHOP_ITEMS.find((i) => i.id === id) || SHOP_ITEMS[0];
 
+/* ---------- Trang trí gói 1 (section decor — mua bằng Xu Tim trong cùng cửa hàng) ----------
+ * Khác SHOP_ITEMS (đồ gắn theo CÂY đang chọn), đồ decor gắn vào CẢNH VƯỜN chung:
+ * cảnh nền theo mùa, hàng rào, lối đi và tối đa 3 vật đặt cạnh cây. Nguyên tắc cứng:
+ * chỉ mua-và-dùng — KHÔNG tiến độ sưu tập, KHÔNG khung "hoàn thành bộ". */
+export type DecorCategory = "scene" | "fence" | "path" | "item";
+export interface DecorItem { id: string; category: DecorCategory; name: string; price: number; desc: string }
+export const DECOR_ITEMS: DecorItem[] = [
+  { id: "decor-scene-spring", category: "scene", name: "Cảnh vườn mùa xuân", price: 350, desc: "Anh đào hồng, cánh hoa bay và nắng xuân dịu" },
+  { id: "decor-scene-summer", category: "scene", name: "Cảnh vườn mùa hạ", price: 350, desc: "Trời xanh, hướng dương xa và cỏ xanh mướt" },
+  { id: "decor-scene-autumn", category: "scene", name: "Cảnh vườn mùa thu", price: 400, desc: "Lá phong vàng cam trong nắng chiều ấm" },
+  { id: "decor-scene-winter", category: "scene", name: "Cảnh vườn mùa đông", price: 400, desc: "Tuyết phủ êm đềm, yên tĩnh và ấm cúng" },
+  { id: "decor-scene-festival", category: "scene", name: "Đêm hội đèn lồng", price: 500, desc: "Đèn lồng rực rỡ, đom đóm bay trong hoàng hôn tím" },
+  { id: "decor-fence-wood", category: "fence", name: "Rào gỗ trắng", price: 220, desc: "Hàng rào gỗ trắng điểm hoa hồng leo" },
+  { id: "decor-fence-bamboo", category: "fence", name: "Rào tre xanh", price: 220, desc: "Hàng rào tre mộc mạc buộc dây thừng" },
+  { id: "decor-path-stone", category: "path", name: "Lối đi đá cuội", price: 200, desc: "Đá bước tròn giữa thảm cỏ điểm hoa" },
+  { id: "decor-path-flower", category: "path", name: "Thảm cỏ hoa", price: 200, desc: "Lối cỏ mềm rải hoa hồng trắng li ti" },
+  { id: "decor-item-lantern", category: "item", name: "Đèn đá phát sáng", price: 180, desc: "Đèn đá kiểu Nhật thắp ánh ấm bên cây" },
+  { id: "decor-item-mushroom", category: "item", name: "Nấm dạ quang", price: 160, desc: "Cụm nấm pastel phát sáng lấp lánh" },
+  { id: "decor-item-swing", category: "item", name: "Xích đu đôi mini", price: 250, desc: "Xích đu gỗ nhỏ cho hai đứa ngồi hóng gió" },
+  { id: "decor-item-bench", category: "item", name: "Ghế băng đôi", price: 200, desc: "Ghế gỗ khắc tim với hai gối pastel" },
+  { id: "decor-item-pond", category: "item", name: "Hồ cá nhỏ", price: 220, desc: "Hồ tròn có cá koi và hoa sen hồng" },
+  { id: "decor-item-pinwheel", category: "item", name: "Chong chóng gió", price: 120, desc: "Chong chóng pastel quay trong gió nhẹ" },
+];
+export const decorItem = (id: string): DecorItem | undefined => DECOR_ITEMS.find((i) => i.id === id);
+export const DECOR_CATS: { id: DecorCategory; label: string }[] = [
+  { id: "scene", label: "Cảnh theo mùa" },
+  { id: "fence", label: "Hàng rào" },
+  { id: "path", label: "Lối đi" },
+  { id: "item", label: "Vật đặt" },
+];
+/** Nhuốm màu dải vườn Trang chủ theo cảnh mùa đang trang bị ("" = gardenWash mặc định). */
+export const DECOR_SEASON_TINT: Record<string, string> = {
+  "decor-scene-spring": "#FDE9F1",
+  "decor-scene-summer": "#E3F3E4",
+  "decor-scene-autumn": "#FBEEDD",
+  "decor-scene-winter": "#E8F1F8",
+  "decor-scene-festival": "#F1E7F6",
+};
+
 export function timeSky(hour: number): { sky: string; night: boolean; label: string } {
   if (hour >= 5 && hour < 10) return { sky: "#fef3c7", night: false, label: "Buổi sáng" };
   if (hour >= 10 && hour < 16) return { sky: "#bae6fd", night: false, label: "Ban ngày" };

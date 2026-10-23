@@ -151,9 +151,86 @@ export interface GamesState {
 /** Chống spam hành động yêu thương: nghỉ 30 giây giữa 2 lần gửi, tối đa 20 lần/ngày/người */
 export const LOVE_ACTION_COOLDOWN_MS = 30000;
 export const LOVE_ACTION_DAILY_MAX = 20;
+/** "Nhớ bạn" nhịp tim: trần 50 nhịp/ngày/người gửi; chạm cách nhau <= 5 giây gộp thành 1 chuỗi nhịp */
+export const PING_DAILY_MAX = 50;
+export const PING_BURST_WINDOW_MS = 5000;
+/** Ngày đặc biệt: tối đa 50 sự kiện, tiêu đề tối đa 60 ký tự (như kỷ niệm) */
+export const EVENTS_MAX = 50;
+export const EVENT_TITLE_MAX = 60;
 /** Khoảng cách tối thiểu giữa 2 lần thêm ghi chú/bucket/kỷ niệm liên tiếp của cùng một người */
 export const CONTENT_ADD_MIN_INTERVAL_MS = 5000;
 export const CONTENT_LIMITS = { note: 200, bucket: 120, memoryTitle: 60, memoryDesc: 300 };
+
+/** Một người trong tính năng "Nhớ bạn" nhịp tim: tổng nhịp đã gửi, mốc nhịp gần nhất,
+ *  mốc BẮT ĐẦU chuỗi nhịp hiện tại và độ dài chuỗi (chạm liên tục <= 5 giây). */
+export interface PingSlotState { total: number; lastAt: string; lastBurstAt: string; burst: number }
+/** Section `pings` — ghi bởi chính chủ slot; bộ đếm ngày chống spam trần 50/người. */
+export interface PingsState { A: PingSlotState; B: PingSlotState; day: { date: string; A: number; B: number } }
+
+/**
+ * Ảnh chụp hiện diện NHẸ của một người (kế hoạch Hạng 2): chỉ chụp khi mở app /
+ * bấm cập nhật tay — KHÔNG theo dõi nền, KHÔNG lưu lịch sử, snapshot mới ghi đè cũ.
+ * shareBattery mặc định BẬT (pin không nhạy cảm); shareLocation mặc định TẮT và
+ * chỉ có ý nghĩa khi hệ điều hành đã cấp quyền vị trí foreground.
+ */
+export interface PresenceSlotState {
+  shareBattery: boolean;
+  shareLocation: boolean;
+  lat: number | null; lng: number | null; acc: number | null;
+  /** % pin 0..100; null = máy không đọc được (web không hỗ trợ Battery API) */
+  battery: number | null;
+  /** Mốc chụp snapshot gần nhất (ISO) */
+  at: string;
+}
+export interface PresenceState { A: PresenceSlotState; B: PresenceSlotState }
+export const defaultPresenceSlot = (): PresenceSlotState => ({ shareBattery: true, shareLocation: false, lat: null, lng: null, acc: null, battery: null, at: "" });
+
+/**
+ * Chia sẻ chu kỳ (Meet You for Partners — Hạng 3): OPT-IN, mặc định TẮT.
+ * Khi share=false, phía người ấy KHÔNG suy ra được gì từ section này.
+ * Chỉ lưu ngày bắt đầu kỳ gần nhất + độ dài chu kỳ/kỳ — giai đoạn tính ở client.
+ * KHÔNG log triệu chứng/y tế chi tiết. startEditDate: ngày bắt đầu chỉ sửa 1 lần/ngày.
+ */
+export interface CycleSlotState {
+  share: boolean;
+  lastStart: string;
+  cycleLen: number;
+  periodLen: number;
+  startEditDate: string;
+  updatedAt: string;
+}
+export interface CycleState { A: CycleSlotState; B: CycleSlotState }
+export const defaultCycleSlot = (): CycleSlotState => ({ share: false, lastStart: "", cycleLen: 28, periodLen: 5, startEditDate: "", updatedAt: "" });
+
+/**
+ * Trang trí gói 1 (section `decor` dùng chung): mua bằng Xu Tim qua shop như đồ thường.
+ * owned hợp nhất 2 máy khi merge; sceneBg/fence/path là id món đang trang bị ("" = mặc định);
+ * placed tối đa 3 món theo thứ tự khe trái/giữa/phải. CHỈ mua-và-dùng — không tiến độ sưu tập.
+ */
+export interface DecorState { owned: string[]; sceneBg: string; fence: string; path: string; placed: string[] }
+
+/**
+ * Thú cưng chung sống trong vườn (Hạng 4): MỘT pet cho cả hai.
+ * hunger/joy lưu kèm statsAt và hao dần theo giờ (suy ra khi hiển thị/chăm).
+ * Lớn theo SỐ NGÀY KHÁC NHAU có chăm (careDays) — chăm nhiều trong 1 ngày không lớn nhanh hơn.
+ */
+export interface PetState {
+  name: string;
+  bornAt: string;
+  hunger: number; joy: number; statsAt: string;
+  careDays: string[];
+  lastCareAt: string;
+  lastCareAtBy: { A: string; B: string };
+  careCount: { A: number; B: number };
+  /** Số lần chăm ĐÃ ĐƯỢC THƯỞNG Xu trong ngày của từng người (trần thưởng/ngày) */
+  rewardDay: { date: string; A: number; B: number };
+}
+
+/** Ngày đặc biệt dùng chung (Hạng 5): lặp hằng năm hoặc một lần; xoá bằng tombstone. */
+export interface SpecialEvent {
+  id: string; title: string; date: string; repeat: "yearly" | "once";
+  createdBy: PersonId; createdAt: string; updatedAt: string;
+}
 
 export interface AppState {
   roomCode: string; personA: string; personB: string; startDate: string; currentUser: PersonId;
@@ -200,11 +277,23 @@ export interface AppState {
    * theo id sẽ "hồi sinh" mục đã xoá nếu máy kia còn giữ bản cũ — tombstone hợp nhất
    * ở cả 2 phía và lọc mọi danh sách trong normalize/merge nên mục đã xoá là xoá hẳn.
    */
-  deletedIds?: { notes: string[]; bucket: string[]; memories: string[] };
+  deletedIds?: { notes: string[]; bucket: string[]; memories: string[]; events: string[] };
   /** Mốc thời gian (ISO) của lần ghi trạng thái gần nhất — dùng chống ghi đè realtime cũ */
   updatedAt?: string;
   /** Mốc sửa gần nhất theo từng mục trạng thái (khoá "daily:A", "moods:B", "letters"...) — phục vụ merge 2 máy, xem lib/merge.ts */
   secTs?: Record<string, SecStamp>;
+  /** "Nhớ bạn" nhịp tim (Hạng 1) — per-slot, chủ slot ghi */
+  pings: PingsState;
+  /** Hiện diện nhẹ (Hạng 2) — per-slot, snapshot khi mở app/cập nhật tay */
+  presence: PresenceState;
+  /** Chia sẻ chu kỳ (Hạng 3) — per-slot, opt-in mặc định tắt */
+  cycle: CycleState;
+  /** Trang trí gói 1 — shared, mua qua shop */
+  decor: DecorState;
+  /** Thú cưng chung (Hạng 4) — shared */
+  pet: PetState;
+  /** Ngày đặc biệt (Hạng 5) — shared, tombstone trong deletedIds.events */
+  events: SpecialEvent[];
 }
 
 export const STAGES = [
@@ -357,8 +446,22 @@ export const defaultState: AppState = {
   frameRewards: { date: today(), claimed: [] },
   loveLimits: { date: today(), counts: { A: 0, B: 0 }, lastAt: { A: "", B: "" } },
   contentLog: { A: "", B: "" },
-  deletedIds: { notes: [], bucket: [], memories: [] },
+  deletedIds: { notes: [], bucket: [], memories: [], events: [] },
   updatedAt: "",
+  pings: {
+    A: { total: 0, lastAt: "", lastBurstAt: "", burst: 0 },
+    B: { total: 0, lastAt: "", lastBurstAt: "", burst: 0 },
+    day: { date: today(), A: 0, B: 0 },
+  },
+  presence: { A: defaultPresenceSlot(), B: defaultPresenceSlot() },
+  cycle: { A: defaultCycleSlot(), B: defaultCycleSlot() },
+  decor: { owned: [], sceneBg: "", fence: "", path: "", placed: [] },
+  pet: {
+    name: "Mochi", bornAt: new Date().toISOString(), hunger: 80, joy: 80, statsAt: new Date().toISOString(),
+    careDays: [], lastCareAt: "", lastCareAtBy: { A: "", B: "" }, careCount: { A: 0, B: 0 },
+    rewardDay: { date: today(), A: 0, B: 0 },
+  },
+  events: [],
 };
 
 /** Bỏ ký tự emoji khỏi chuỗi (dữ liệu state dùng chung với bản web cũ có thể còn sót). */
@@ -451,10 +554,90 @@ export function normalizeState(rawInput: Partial<AppState>): AppState {
     notes: saneDeleted(isPlainObject(raw.deletedIds) ? raw.deletedIds.notes : undefined),
     bucket: saneDeleted(isPlainObject(raw.deletedIds) ? raw.deletedIds.bucket : undefined),
     memories: saneDeleted(isPlainObject(raw.deletedIds) ? raw.deletedIds.memories : undefined),
+    events: saneDeleted(isPlainObject(raw.deletedIds) ? raw.deletedIds.events : undefined),
   };
   const notes = notesAll.filter((n) => !deletedIds.notes.includes(n.id));
   const bucket = bucketAll.filter((b) => !deletedIds.bucket.includes(b.id));
   const memories = memoriesAll.filter((m) => !deletedIds.memories.includes(m.id));
+  /* --- 6 section của gói tính năng 2026-10-23: làm sạch TỪNG TRƯỜNG như các section cũ,
+     state cũ (chưa có các khoá này) nạp lên phải nhận giá trị mặc định sạch --- */
+  const cnt0 = (v: unknown): number => Math.max(0, Math.floor(finiteNum(v, 0)));
+  const numOrNull = (v: unknown, min: number, max: number): number | null => {
+    const n = finiteNum(v, Number.NaN);
+    return Number.isFinite(n) && n >= min && n <= max ? n : null;
+  };
+  const sanePingSlot = (v: unknown): PingSlotState => {
+    const o = isPlainObject(v) ? v : {};
+    return { total: cnt0(o.total), lastAt: strOr(o.lastAt), lastBurstAt: strOr(o.lastBurstAt), burst: cnt0(o.burst) };
+  };
+  const pingsRaw = (isPlainObject(raw.pings) ? raw.pings : {}) as Partial<PingsState>;
+  const pingsDayRaw = (isPlainObject(pingsRaw.day) ? pingsRaw.day : {}) as Partial<PingsState["day"]>;
+  const pings: PingsState = {
+    A: sanePingSlot(pingsRaw.A), B: sanePingSlot(pingsRaw.B),
+    day: { date: strOr(pingsDayRaw.date) || today(), A: cnt0(pingsDayRaw.A), B: cnt0(pingsDayRaw.B) },
+  };
+  const sanePresenceSlot = (v: unknown): PresenceSlotState => {
+    const o = isPlainObject(v) ? v : {};
+    return {
+      // Pin mặc định BẬT (chỉ tắt khi chủ slot chủ động tắt); vị trí mặc định TẮT (chỉ bật khi chủ động bật).
+      shareBattery: o.shareBattery !== false,
+      shareLocation: o.shareLocation === true,
+      lat: numOrNull(o.lat, -90, 90), lng: numOrNull(o.lng, -180, 180),
+      acc: numOrNull(o.acc, 0, 1000000),
+      battery: numOrNull(o.battery, 0, 100),
+      at: strOr(o.at),
+    };
+  };
+  const presenceRaw = (isPlainObject(raw.presence) ? raw.presence : {}) as Partial<PresenceState>;
+  const presence: PresenceState = { A: sanePresenceSlot(presenceRaw.A), B: sanePresenceSlot(presenceRaw.B) };
+  const saneCycleSlot = (v: unknown): CycleSlotState => {
+    const o = isPlainObject(v) ? v : {};
+    const clampInt = (n: unknown, lo: number, hi: number, fb: number) => Math.max(lo, Math.min(hi, Math.round(finiteNum(n, fb))));
+    return {
+      share: o.share === true, // mặc định TẮT tuyệt đối — chỉ true khi chủ slot đã bật rõ ràng
+      lastStart: isValidDateKey(o.lastStart) ? (o.lastStart as string) : "",
+      cycleLen: clampInt(o.cycleLen, 21, 35, 28),
+      periodLen: clampInt(o.periodLen, 3, 8, 5),
+      startEditDate: strOr(o.startEditDate),
+      updatedAt: strOr(o.updatedAt),
+    };
+  };
+  const cycleRaw = (isPlainObject(raw.cycle) ? raw.cycle : {}) as Partial<CycleState>;
+  const cycle: CycleState = { A: saneCycleSlot(cycleRaw.A), B: saneCycleSlot(cycleRaw.B) };
+  const decorRaw = (isPlainObject(raw.decor) ? raw.decor : {}) as Partial<DecorState>;
+  const decorOwned = [...new Set(strArray(decorRaw.owned))].slice(0, 100);
+  const decor: DecorState = {
+    owned: decorOwned,
+    sceneBg: typeof decorRaw.sceneBg === "string" && decorOwned.includes(decorRaw.sceneBg) ? decorRaw.sceneBg : "",
+    fence: typeof decorRaw.fence === "string" && decorOwned.includes(decorRaw.fence) ? decorRaw.fence : "",
+    path: typeof decorRaw.path === "string" && decorOwned.includes(decorRaw.path) ? decorRaw.path : "",
+    placed: [...new Set(strArray(decorRaw.placed))].filter((id) => decorOwned.includes(id)).slice(0, 3),
+  };
+  const petRaw = (isPlainObject(raw.pet) ? raw.pet : {}) as Partial<PetState>;
+  const petCareRaw = (isPlainObject(petRaw.careCount) ? petRaw.careCount : {}) as Partial<PetState["careCount"]>;
+  const petLastRaw = (isPlainObject(petRaw.lastCareAtBy) ? petRaw.lastCareAtBy : {}) as Partial<PetState["lastCareAtBy"]>;
+  const petRewardRaw = (isPlainObject(petRaw.rewardDay) ? petRaw.rewardDay : {}) as Partial<PetState["rewardDay"]>;
+  const pet: PetState = {
+    name: (typeof petRaw.name === "string" && petRaw.name.trim() ? petRaw.name.trim().slice(0, 20) : "Mochi"),
+    bornAt: strOr(petRaw.bornAt) || new Date().toISOString(),
+    hunger: Math.max(0, Math.min(100, finiteNum(petRaw.hunger, 80))),
+    joy: Math.max(0, Math.min(100, finiteNum(petRaw.joy, 80))),
+    statsAt: strOr(petRaw.statsAt) || new Date().toISOString(),
+    careDays: [...new Set(strArray(petRaw.careDays).filter((d) => isValidDateKey(d)))].sort().slice(-90),
+    lastCareAt: strOr(petRaw.lastCareAt),
+    lastCareAtBy: { A: strOr(petLastRaw.A), B: strOr(petLastRaw.B) },
+    careCount: { A: cnt0(petCareRaw.A), B: cnt0(petCareRaw.B) },
+    rewardDay: { date: strOr(petRewardRaw.date) || today(), A: cnt0(petRewardRaw.A), B: cnt0(petRewardRaw.B) },
+  };
+  const events = objArray<SpecialEvent>(raw.events).map((e, i) => ({
+    id: typeof e.id === "string" && e.id ? e.id : `event-${i}`,
+    title: strOr(e.title).slice(0, EVENT_TITLE_MAX),
+    date: strOr(e.date),
+    repeat: e.repeat === "yearly" ? "yearly" as const : "once" as const,
+    createdBy: slotOrUndef(e.createdBy) ?? "A" as PersonId,
+    createdAt: strOr(e.createdAt),
+    updatedAt: strOr(e.updatedAt),
+  })).filter((e) => isValidDateKey(e.date) && e.title.length > 0 && !deletedIds.events.includes(e.id)).slice(0, EVENTS_MAX);
   const rawActivities = objArray<Activity>(raw.activities);
   const treeRaw: Partial<TreeState> = isPlainObject(raw.tree) ? (raw.tree as Partial<TreeState>) : {};
   const hasHistory = Boolean(finiteNum(treeRaw.careCount, 0) > 0 || letters.length > 0 || notes.length > 1);
@@ -537,6 +720,7 @@ export function normalizeState(rawInput: Partial<AppState>): AppState {
     contentLog: { A: typeof raw.contentLog?.A === "string" ? raw.contentLog.A : "", B: typeof raw.contentLog?.B === "string" ? raw.contentLog.B : "" },
     updatedAt: typeof raw.updatedAt === "string" ? raw.updatedAt : "",
     secTs: sanitizeSecTs(raw.secTs),
+    pings, presence, cycle, decor, pet, events,
   };
 }
 

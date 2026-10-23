@@ -486,6 +486,157 @@ console.log("\n--- Wave 2: normalize (số dạng chuỗi / rác collection / tr
   check("genRoomCode: 2000 mã đều đúng 6 ký tự", codesOk);
 }
 
+const F = require("./.build/features.js");
+
+console.log("\n--- Gói tính năng 2026-10-23: normalize mặc định 6 section mới ---");
+{
+  const s = base();
+  check("mặc định: có đủ pings/presence/cycle/decor/pet/events", Boolean(s.pings && s.presence && s.cycle && s.decor && s.pet && Array.isArray(s.events)));
+  check("mặc định: chu kỳ TẮT chia sẻ cả hai slot", s.cycle.A.share === false && s.cycle.B.share === false);
+  check("mặc định: presence pin BẬT, vị trí TẮT, chưa có snapshot", s.presence.A.shareBattery === true && s.presence.A.shareLocation === false && s.presence.A.lat === null);
+  check("mặc định: decor rỗng, pet tên Mochi, 0 ngày chăm", s.decor.owned.length === 0 && s.decor.placed.length === 0 && s.pet.name === "Mochi" && s.pet.careDays.length === 0);
+  const corrupt2 = P.normalizeStateV5({ pings: "x", presence: { A: { lat: 999, battery: -5 } }, cycle: { A: { share: 1, cycleLen: 99, lastStart: "2025-02-31" } }, pet: { careDays: ["2025-13-01", todayStr, todayStr] }, events: [{ id: "e1", title: "x".repeat(80), date: "2025-02-31" }, { id: "e2", title: "Sinh nhật", date: "2026-12-01" }] });
+  check("normalize hỏng: presence lat/pin ngoài miền -> null", corrupt2.presence.A.lat === null && corrupt2.presence.A.battery === null);
+  check("normalize hỏng: cycle share=1 (không phải true) -> vẫn TẮT; cycleLen 99 -> kẹp 35; ngày 31/2 -> rỗng", corrupt2.cycle.A.share === false && corrupt2.cycle.A.cycleLen === 35 && corrupt2.cycle.A.lastStart === "");
+  check("normalize hỏng: pet careDays lọc ngày sai + khử trùng", JSON.stringify(corrupt2.pet.careDays) === JSON.stringify([todayStr]));
+  check("normalize hỏng: events bỏ sự kiện ngày không tồn tại, giữ sự kiện hợp lệ", corrupt2.events.length === 1 && corrupt2.events[0].id === "e2");
+}
+
+console.log("\n--- Gói tính năng: Nhớ bạn nhịp tim (trần ngày + chuỗi nhịp + không Xu) ---");
+{
+  const s = base();
+  const p1 = R.gardenReducer(s, { type: "PING_SEND", user: "A", actor: "An" });
+  check("ping 1: total=1, day=1, burst=1, lastBurstAt có mốc", p1.pings.A.total === 1 && p1.pings.day.A === 1 && p1.pings.A.burst === 1 && p1.pings.A.lastBurstAt !== "");
+  const p2 = R.gardenReducer(p1, { type: "PING_SEND", user: "A", actor: "An" });
+  const p3 = R.gardenReducer(p2, { type: "PING_SEND", user: "A", actor: "An" });
+  check("ping liên tục <=5s: gộp chuỗi burst=3, lastBurstAt KHÔNG đổi", p3.pings.A.burst === 3 && p3.pings.A.lastBurstAt === p1.pings.A.lastBurstAt && p3.pings.A.total === 3);
+  check("ping: nhật ký chỉ 1 dòng cho cả chuỗi", p3.activities.filter((a) => a.text.includes("nhịp tim")).length === 1);
+  check("ping: không gắn Xu (coins giữ nguyên)", p3.coins === s.coins);
+  const old = { ...base(), pings: { A: { total: 10, lastAt: iso(NOW - 10000), lastBurstAt: iso(NOW - 10000), burst: 4 }, B: { total: 0, lastAt: "", lastBurstAt: "", burst: 0 }, day: { date: todayStr, A: 10, B: 0 } } };
+  const pOld = R.gardenReducer(old, { type: "PING_SEND", user: "A", actor: "An" });
+  check("ping sau >5s: chuỗi MỚI burst=1, lastBurstAt cập nhật", pOld.pings.A.burst === 1 && pOld.pings.A.lastBurstAt !== old.pings.A.lastBurstAt);
+  const capped = { ...base(), pings: { ...base().pings, day: { date: todayStr, A: 50, B: 0 } } };
+  check("ping thứ 51 trong ngày: bị chặn ở store (cùng reference)", R.gardenReducer(capped, { type: "PING_SEND", user: "A", actor: "An" }) === capped);
+  check("ping: trần là theo NGƯỜI — người kia vẫn gửi được", R.gardenReducer(capped, { type: "PING_SEND", user: "B", actor: "Bình" }) !== capped);
+}
+
+console.log("\n--- Gói tính năng: Hiện diện (haversine + nhãn + merge ưu tiên chủ slot) ---");
+{
+  const d = F.haversineKm(21.0285, 105.8542, 10.8231, 106.6297);
+  check("haversine Hà Nội - TP.HCM ~1138 km", d > 1100 && d < 1180, `d=${Math.round(d)}`);
+  check("haversine cùng điểm = 0", F.haversineKm(21, 105, 21, 105) === 0);
+  check("nhãn khoảng cách: <0,5 km = cùng một nơi; <0,1 km = rất gần", F.distanceLabel(0.3).includes("cùng một nơi") && F.distanceLabel(0.05).includes("rất gần"));
+  check("formatKm: 2,34 -> '2,3 km'; 0,85 -> '850 m'", F.formatKm(2.34) === "2,3 km" && F.formatKm(0.85) === "850 m");
+  const s0 = base();
+  const okSet = R.gardenReducer(s0, { type: "PRESENCE_SET", user: "A", patch: { lat: 21.02, lng: 105.85, battery: 55, at: iso(NOW) } });
+  check("PRESENCE_SET: ghi snapshot của A", okSet.presence.A.lat === 21.02 && okSet.presence.A.battery === 55);
+  check("PRESENCE_SET: lat ngoài miền -> từ chối (cùng reference)", R.gardenReducer(s0, { type: "PRESENCE_SET", user: "A", patch: { lat: 999 } }) === s0);
+  check("PRESENCE_SET: patch y nguyên -> no-op", R.gardenReducer(okSet, { type: "PRESENCE_SET", user: "A", patch: { lat: 21.02, lng: 105.85, battery: 55, at: iso(NOW) } }) === okSet);
+  const locState = (lat, stamps) => ({ ...base(), presence: { A: { shareBattery: true, shareLocation: true, lat, lng: 105.85, acc: 10, battery: 50, at: iso(NOW) }, B: base().presence.B }, secTs: stamps, updatedAt: iso(NOW) });
+  const mine = locState(21.01, { "presence:A": { t: iso(NOW - 60000), by: "A" } });
+  const notOwner = locState(10.5, { "presence:A": { t: iso(NOW), by: "B" } });
+  check("merge presence: bản do CHÍNH chủ slot ghi thắng bản đóng dấu mới hơn nhưng không phải chủ", M.mergeStates(mine, notOwner, "A").presence.A.lat === 21.01);
+  const ownerNewer = locState(21.55, { "presence:A": { t: iso(NOW + 60000), by: "A" } });
+  check("merge presence: hai bản cùng chủ slot -> bản mới hơn thắng", M.mergeStates(mine, ownerNewer, "A").presence.A.lat === 21.55);
+}
+
+console.log("\n--- Gói tính năng: Chu kỳ (giai đoạn + sửa ngày tối đa 1 lần/ngày) ---");
+{
+  const cyc = { share: true, lastStart: "2026-10-01", cycleLen: 28, periodLen: 5, startEditDate: "", updatedAt: "" };
+  const at = (dd) => new Date(2026, 9, dd, 12).getTime();
+  check("chu kỳ: 3/10 (ngày 2) -> Kỳ kinh", F.cycleInfo(cyc, at(3))?.phase === "period");
+  check("chu kỳ: 8/10 (ngày 7) -> Nang trứng", F.cycleInfo(cyc, at(8))?.phase === "follicular");
+  check("chu kỳ: 15/10 (ngày 14 = 28-14) -> Rụng trứng", F.cycleInfo(cyc, at(15))?.phase === "ovulation");
+  check("chu kỳ: 20/10 (ngày 19) -> Hoàng thể", F.cycleInfo(cyc, at(20))?.phase === "luteal");
+  const info = F.cycleInfo(cyc, at(20));
+  check("chu kỳ: kỳ tới 29/10, còn 9 ngày tính từ 20/10", info?.nextStart === "2026-10-29" && info?.daysUntilNext === 9, JSON.stringify(info && { n: info.nextStart, d: info.daysUntilNext }));
+  check("chu kỳ: nhạy cảm khi trong kỳ + <=3 ngày trước kỳ tới; giữa kỳ thì không", F.cycleInfo(cyc, at(3))?.sensitive === true && F.cycleInfo(cyc, at(27))?.sensitive === true && F.cycleInfo(cyc, at(8))?.sensitive === false);
+  check("chu kỳ: lastStart cách 75 ngày (nhiều chu kỳ) vẫn suy đúng ngày 19", F.cycleInfo({ ...cyc, lastStart: "2026-08-06" }, at(20))?.dayInCycle === 19);
+  check("chu kỳ: chưa đặt ngày bắt đầu -> null", F.cycleInfo({ ...cyc, lastStart: "" }, at(20)) === null);
+  const s = base();
+  const c1 = R.gardenReducer(s, { type: "CYCLE_SET", user: "A", patch: { share: true, lastStart: "2026-10-01" } });
+  check("CYCLE_SET lần 1: đặt ngày bắt đầu + bật chia sẻ + ghi startEditDate", c1.cycle.A.lastStart === "2026-10-01" && c1.cycle.A.share === true && c1.cycle.A.startEditDate === todayStr);
+  const c2 = R.gardenReducer(c1, { type: "CYCLE_SET", user: "A", patch: { lastStart: "2026-10-05" } });
+  check("CYCLE_SET lần 2 trong ngày: ngày bắt đầu bị GIỮ (tối đa 1 lần/ngày)", c2.cycle.A.lastStart === "2026-10-01");
+  const c3 = R.gardenReducer(c1, { type: "CYCLE_SET", user: "A", patch: { cycleLen: 99 } });
+  check("CYCLE_SET: cycleLen 99 bị kẹp về 35 ở store", c3.cycle.A.cycleLen === 35);
+}
+
+console.log("\n--- Gói tính năng: Thú cưng (lớn theo ngày khác nhau + cooldown + trần thưởng) ---");
+{
+  const s0 = base();
+  const f1 = R.gardenReducer(s0, { type: "PET_CARE", kind: "feed", user: "A", actor: "An" });
+  check("pet cho ăn lần 1: +3 Xu, careDays có hôm nay, careCount A=1", f1.coins === s0.coins + 3 && f1.pet.careDays.length === 1 && f1.pet.careCount.A === 1);
+  check("pet chăm ngay lần 2 (cooldown 60s/người): bị chặn ở store", R.gardenReducer(f1, { type: "PET_CARE", kind: "feed", user: "A", actor: "An" }) === f1);
+  const f2 = R.gardenReducer(f1, { type: "PET_CARE", kind: "play", user: "B", actor: "Bình" });
+  check("pet: người kia chăm được ngay (cooldown theo người)", f2 !== f1 && f2.pet.careCount.B === 1);
+  check("pet: chăm nhiều trong 1 ngày — careDays vẫn 1 ngày, giai đoạn vẫn 0", f2.pet.careDays.length === 1 && F.petStageIndex(f2.pet) === 0);
+  const days = (n) => Array.from({ length: n }, (_, i) => `2026-10-${String(i + 1).padStart(2, "0")}`);
+  check("pet giai đoạn theo ngày chăm: 2 ngày -> 0; 3 ngày -> 1; 7 ngày -> 2", F.petStageIndex({ ...base().pet, careDays: days(2) }) === 0 && F.petStageIndex({ ...base().pet, careDays: days(3) }) === 1 && F.petStageIndex({ ...base().pet, careDays: days(7) }) === 2);
+  const rich = { ...base(), pet: { ...base().pet, rewardDay: { date: todayStr, A: 5, B: 0 }, hunger: 40, joy: 40, statsAt: iso(NOW) } };
+  const f3 = R.gardenReducer(rich, { type: "PET_CARE", kind: "feed", user: "A", actor: "An" });
+  check("pet: hết lượt thưởng ngày (5) — vẫn chăm được nhưng KHÔNG cộng Xu", f3 !== rich && f3.coins === rich.coins && f3.pet.careCount.A === 1);
+  const full = { ...base(), pet: { ...base().pet, hunger: 100, joy: 100, statsAt: iso(NOW) } };
+  check("pet: đói/vui đã đầy (>=95) — chăm vô hiệu ở store", R.gardenReducer(full, { type: "PET_CARE", kind: "feed", user: "A", actor: "An" }) === full);
+  const mPet = M.mergeStates({ ...base(), pet: { ...base().pet, careDays: ["2026-10-01"] } }, { ...base(), pet: { ...base().pet, careDays: ["2026-10-02"] } }, "A");
+  check("merge pet: careDays hợp nhất 2 máy (không mất ngày chăm)", mPet.pet.careDays.length === 2);
+}
+
+console.log("\n--- Gói tính năng: Ngày đặc biệt (lần tới + lặp năm + tombstone) ---");
+{
+  const at = (y, m, d) => new Date(y, m - 1, d, 12).getTime();
+  const yearly = { id: "ev1", title: "Kỷ niệm yêu nhau", date: "2024-12-25", repeat: "yearly", createdBy: "A", createdAt: iso(NOW), updatedAt: iso(NOW) };
+  const occ = F.nextOccurrence(yearly, at(2026, 10, 23));
+  check("sự kiện lặp năm: 25/12 -> lần tới 25/12/2026, còn 63 ngày từ 23/10", occ?.dateKey === "2026-12-25" && occ?.daysUntil === 63, JSON.stringify(occ));
+  check("sự kiện lặp năm: đã qua trong năm -> sang năm sau", F.nextOccurrence(yearly, at(2026, 12, 26))?.dateKey === "2027-12-25");
+  check("sự kiện lặp năm đúng hôm nay: còn 0 ngày", F.nextOccurrence(yearly, at(2026, 12, 25))?.daysUntil === 0);
+  const leap = { ...yearly, id: "ev2", date: "2024-02-29" };
+  check("sự kiện 29/2 lặp năm: năm không nhuận hiện 28/2", F.nextOccurrence(leap, at(2026, 10, 23))?.dateKey === "2027-02-28");
+  const once = { ...yearly, id: "ev3", repeat: "once", date: "2026-11-01" };
+  check("sự kiện một lần: còn 9 ngày từ 23/10; đã qua -> null", F.nextOccurrence(once, at(2026, 10, 23))?.daysUntil === 9 && F.nextOccurrence(once, at(2026, 11, 2)) === null);
+  const nxt = F.nextEvent([yearly, once], at(2026, 10, 23));
+  check("nextEvent: chọn sự kiện GẦN NHẤT (1/11 trước 25/12)", nxt?.event.id === "ev3" && nxt?.daysUntil === 9);
+  const s = base();
+  const evNew = { id: "evt1", title: "Đi Đà Lạt", date: "2026-12-01", repeat: "once", createdBy: "A", createdAt: iso(NOW), updatedAt: iso(NOW) };
+  const a1 = R.gardenReducer(s, { type: "EVENT_ADD", event: evNew });
+  check("EVENT_ADD: thêm được sự kiện", a1.events.length === 1 && a1.events[0].title === "Đi Đà Lạt");
+  check("EVENT_ADD trùng id: no-op", R.gardenReducer(a1, { type: "EVENT_ADD", event: evNew }) === a1);
+  check("EVENT_ADD tiêu đề 61 ký tự: bị chặn ở store", R.gardenReducer(s, { type: "EVENT_ADD", event: { ...evNew, id: "evt2", title: "x".repeat(61) } }) === s);
+  check("EVENT_ADD ngày không tồn tại (31/2): bị chặn ở store", R.gardenReducer(s, { type: "EVENT_ADD", event: { ...evNew, id: "evt3", date: "2026-02-31" } }) === s);
+  const e1 = R.gardenReducer(a1, { type: "EVENT_EDIT", event: { ...evNew, title: "Đi Đà Lạt 2", date: "2026-12-05" } });
+  check("EVENT_EDIT: sửa tiêu đề + ngày, giữ người tạo", e1.events[0].title === "Đi Đà Lạt 2" && e1.events[0].date === "2026-12-05" && e1.events[0].createdBy === "A");
+  const d1 = R.gardenReducer(a1, { type: "EVENT_DEL", id: "evt1" });
+  check("EVENT_DEL: xoá khỏi danh sách + ghi tombstone", d1.events.length === 0 && (d1.deletedIds?.events ?? []).includes("evt1"));
+  const reAdd = { ...d1, contentLog: { A: "", B: "" } };
+  check("EVENT_ADD lại id đã xoá: tombstone chặn hồi sinh", R.gardenReducer(reAdd, { type: "EVENT_ADD", event: evNew }) === reAdd);
+  check("merge events: máy còn bản cũ không hồi sinh sự kiện đã xoá", M.mergeStates(a1, d1, "A").events.length === 0);
+}
+
+console.log("\n--- Gói tính năng: Trang trí (mua/trang bị + trần 3 vật đặt + merge owned) ---");
+{
+  const rich = { ...base(), coins: 2000 };
+  const b1 = R.gardenReducer(rich, { type: "BUY_DECOR", itemId: "decor-scene-spring", actor: "An" });
+  check("BUY_DECOR cảnh xuân: -350 Xu, owned có món, tự trang bị sceneBg", b1.coins === 1650 && b1.decor.owned.includes("decor-scene-spring") && b1.decor.sceneBg === "decor-scene-spring");
+  check("BUY_DECOR trùng món: no-op", R.gardenReducer(b1, { type: "BUY_DECOR", itemId: "decor-scene-spring", actor: "An" }) === b1);
+  const poor = { ...base(), coins: 100 };
+  check("BUY_DECOR không đủ Xu: no-op", R.gardenReducer(poor, { type: "BUY_DECOR", itemId: "decor-scene-spring", actor: "An" }) === poor);
+  check("BUY_DECOR id không có trong catalog: no-op", R.gardenReducer(rich, { type: "BUY_DECOR", itemId: "decor-khong-co", actor: "An" }) === rich);
+  let s = rich;
+  for (const id of ["decor-item-lantern", "decor-item-mushroom", "decor-item-pond"]) s = R.gardenReducer(s, { type: "BUY_DECOR", itemId: id, actor: "An" });
+  check("BUY_DECOR 3 vật đặt: tự đặt đủ 3 khe theo thứ tự mua", s.decor.placed.length === 3 && s.decor.placed[0] === "decor-item-lantern");
+  const b4 = R.gardenReducer(s, { type: "BUY_DECOR", itemId: "decor-item-pinwheel", actor: "An" });
+  check("BUY_DECOR vật thứ 4: vào owned nhưng KHÔNG tự đặt (đã đủ 3 khe)", b4.decor.owned.includes("decor-item-pinwheel") && b4.decor.placed.length === 3 && !b4.decor.placed.includes("decor-item-pinwheel"));
+  const e1 = R.gardenReducer(b4, { type: "EQUIP_DECOR", itemId: "decor-item-pinwheel" });
+  check("EQUIP_DECOR khi đầy 3 khe: thay khe CUỐI, vẫn đúng 3 vật", e1.decor.placed.length === 3 && e1.decor.placed[2] === "decor-item-pinwheel" && !e1.decor.placed.includes("decor-item-pond"));
+  const e2 = R.gardenReducer(e1, { type: "EQUIP_DECOR", itemId: "decor-item-pinwheel" });
+  check("EQUIP_DECOR món đang đặt: gỡ ra khỏi vườn", e2.decor.placed.length === 2 && !e2.decor.placed.includes("decor-item-pinwheel"));
+  check("EQUIP_DECOR món chưa sở hữu: no-op", R.gardenReducer(rich, { type: "EQUIP_DECOR", itemId: "decor-item-swing" }) === rich);
+  const eScene = R.gardenReducer(b1, { type: "EQUIP_DECOR", itemId: "decor-scene-spring" });
+  check("EQUIP_DECOR cảnh đang dùng: gỡ về nền mặc định", eScene.decor.sceneBg === "");
+  const mDec = M.mergeStates(b1, { ...base(), decor: { owned: ["decor-fence-wood"], sceneBg: "", fence: "decor-fence-wood", path: "", placed: [] } }, "A");
+  check("merge decor: owned hợp nhất 2 máy, không mất món nào", mDec.decor.owned.includes("decor-scene-spring") && mDec.decor.owned.includes("decor-fence-wood"));
+}
+
 console.log(`\n${count - failures}/${count} test đạt`);
 console.log(failures === 0 ? "TẤT CẢ TEST LOGIC ĐẠT" : `CÓ ${failures} TEST CHƯA ĐẠT`);
 process.exit(failures === 0 ? 0 : 1);

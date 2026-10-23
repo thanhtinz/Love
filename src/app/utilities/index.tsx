@@ -2,6 +2,7 @@ import React from "react";
 import { ScrollView, View } from "react-native";
 import { useLove } from "../../lib/store";
 import { QUESTS } from "../../lib/data";
+import { countdownLabel, nextEvent } from "../../lib/features";
 import { today } from "../../lib/types";
 import { C, FeatureCard, ScreenHeader, s } from "../../components/ui";
 
@@ -21,6 +22,7 @@ export default function UtilitiesHubScreen() {
   const dailyToday = state.daily.date === today() ? state.daily : null;
   const myClaimed = dailyToday ? (me === "A" ? dailyToday.claimedA : dailyToday.claimedB) : [];
   const unclaimedQuests = QUESTS.filter((q) => !myClaimed.includes(q.id)).length;
+  const nextEv = nextEvent(state.events);
 
   return (
     <View style={s.screen}>
@@ -34,6 +36,7 @@ export default function UtilitiesHubScreen() {
         <FeatureCard icon="list" title="Bucket List" desc="Những việc muốn làm cùng nhau" color={C.green} bg="#dcfce7" route="/utilities/bucket-list" />
         <FeatureCard icon="compass" title="Gợi ý hẹn hò" desc="Ý tưởng hẹn hò ngẫu nhiên — lưu vào Bucket List" color="#ea580c" bg="#ffedd5" route="/utilities/date-ideas" />
         <FeatureCard icon="camera" title="Dòng kỷ niệm" desc="Kỷ niệm hai bạn lưu giữ + cây trưởng thành đã thu" color={C.pink} bg={C.pinkSoft} route="/utilities/memories" />
+        <FeatureCard icon="calendar" title="Ngày đặc biệt" desc={nextEv ? `${nextEv.event.title} — ${countdownLabel(nextEv.daysUntil)}` : "Kỷ niệm, sinh nhật, chuyến đi — đếm ngược cùng nhau"} color={C.violet} bg="#ede9fe" route="/utilities/events" badge={nextEv && nextEv.daysUntil <= 7 ? countdownLabel(nextEv.daysUntil) : undefined} />
         <FeatureCard icon="trophy" title="Nhiệm vụ & huy hiệu" desc={unclaimedQuests > 0 ? `Nhiệm vụ riêng của bạn + huy hiệu chung (${unclaimedQuests} chưa nhận)` : "Bạn đã nhận hết thưởng nhiệm vụ hôm nay"} color={C.amber} bg="#fef3c7" route="/utilities/quests" />
         <FeatureCard icon="bag-handle" title="Cửa hàng trang trí" desc="Chậu, khung cảnh, phụ kiện bằng Xu Tim chung" color={C.amber} bg="#fef3c7" route="/utilities/shop" />
         <FeatureCard icon="image" title="Khung màn hình" desc="3 khung kỷ niệm xuất ảnh PNG: đếm ngày, cây hôm nay, mood" color={C.sky} bg="#D9F4F0" route="/frames" />

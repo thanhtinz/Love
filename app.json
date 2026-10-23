@@ -29,6 +29,12 @@
       "expo-router",
       "expo-sharing",
       [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "Khu Vườn Tình Yêu chỉ dùng vị trí khi bạn mở app và đã tự bật chia sẻ vị trí trong mục Hiện diện, để người ấy biết hai bạn đang cách nhau bao xa. App không theo dõi vị trí khi chạy nền."
+        }
+      ],
+      [
         "expo-media-library",
         {
           "isAccessMediaLocationEnabled": false,

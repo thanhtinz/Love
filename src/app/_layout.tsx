@@ -14,6 +14,7 @@ import {
 } from "@expo-google-fonts/be-vietnam-pro";
 import { AuthProvider } from "../lib/auth";
 import { GardenProvider } from "../lib/store";
+import { PresenceSync } from "../components/PresenceSync";
 import { COLOR } from "../components/theme";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 
@@ -26,6 +27,9 @@ function Navigator() {
       <Stack.Screen name="auth" />
       <Stack.Screen name="pair" />
       <Stack.Screen name="(tabs)" />
+      <Stack.Screen name="letters" />
+      <Stack.Screen name="presence" />
+      <Stack.Screen name="cycle" />
       <Stack.Screen name="games/index" />
       <Stack.Screen name="utilities/index" />
       <Stack.Screen name="account" />
@@ -40,6 +44,7 @@ function Navigator() {
       <Stack.Screen name="utilities/date-ideas" />
       <Stack.Screen name="utilities/memories" />
       <Stack.Screen name="utilities/love-actions" />
+      <Stack.Screen name="utilities/events" />
       <Stack.Screen name="utilities/shop" />
       <Stack.Screen name="utilities/quests" />
       <Stack.Screen name="frames/index" />
@@ -79,6 +84,7 @@ export default function RootLayout() {
               <Navigator />
             </View>
           </View>
+          <PresenceSync />
         </GardenProvider>
       </AuthProvider>
       </SafeAreaProvider>
@@ -90,6 +96,7 @@ export default function RootLayout() {
       <GardenProvider>
         <StatusBar style="dark" />
         <Navigator />
+        <PresenceSync />
       </GardenProvider>
     </AuthProvider>
     </SafeAreaProvider>

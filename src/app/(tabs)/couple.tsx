@@ -5,6 +5,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { useLove } from "../../lib/store";
 import { MAX_DAILY_SPINS, quizOfDay } from "../../lib/data";
+import { countdownLabel, distanceKmBetween, distanceLabel, nextEvent, relativeTimeVi } from "../../lib/features";
 import { daysTogether, effectiveStreak, nextMilestone, today } from "../../lib/types";
 import Avatar from "../../components/Avatar";
 import { partnerOf, selfOf } from "../../components/PersonChip";
@@ -18,8 +19,10 @@ import { Medallion, s } from "../../components/ui";
  *   (tên vườn · Ngày N) và đường tiến tới cột mốc ngày tiếp theo.
  * - Nhóm "Chơi cùng nhau": MỘT bề mặt điều hướng duy nhất dẫn vào /games, kèm
  *   dòng trạng thái game hôm nay (không còn thẻ game riêng lẻ ở đây).
- * - Nhóm "Không gian của hai đứa": MỘT bề mặt trắng chứa 3 hàng (Tiện ích ·
- *   Khung màn hình · Tài khoản) ngăn bằng hairline — không phải 3 card rời.
+ * - Nhóm "Không gian của hai đứa": MỘT bề mặt trắng chứa các hàng (Tiện ích ·
+ *   Hiện diện · Chu kỳ & quan tâm · Khung màn hình · Tài khoản · Thư đã lưu)
+ *   ngăn bằng hairline — không phải các card rời. Thư đã lưu là hàng yên tĩnh
+ *   cuối nhóm (thư chỉ là tính năng phụ, không còn là tab — chỉ đạo user 2026-10-23).
  * - Cụm chân trang nền #FBEFE7: Xu Tim + chuỗi ngày + chú thích quy ước màu.
  * Mọi tính năng đều tới được trong tối đa 2 lần chạm từ tab bar.
  */
@@ -60,6 +63,17 @@ export default function CoupleHubScreen() {
   const quizBothDone = qz.A.length >= quizOfDay().length && qz.B.length >= quizOfDay().length;
   const gamesStatus = `Vòng quay còn ${spinsLeft} lượt · Hiểu ý nhau ${quizBothDone ? "đã mở kết quả" : "chưa xong hôm nay"}`;
 
+  // Ngày đặc biệt gần nhất: 1 dòng đếm ngược trong thẻ hồ sơ chung (kế hoạch Hạng 5).
+  const nextEv = nextEvent(state.events);
+  // Tóm tắt hiện diện cho hàng điều hướng: chỉ dùng dữ kiện người ấy ĐANG bật chia sẻ.
+  const partnerPresence = state.presence[partner.slot];
+  const distKm = partnerPresence.shareLocation ? distanceKmBetween(state.presence[me.slot], partnerPresence) : null;
+  const presenceDesc = distKm != null
+    ? `${partner.name} ${distanceLabel(distKm)} · cập nhật ${relativeTimeVi(partnerPresence.at)}`
+    : partnerPresence.shareBattery && partnerPresence.battery != null
+      ? `Pin của ${partner.name}: ${partnerPresence.battery}% · cập nhật ${relativeTimeVi(partnerPresence.at)}`
+      : "Khoảng cách và pin của hai đứa — chỉ chụp khi mở app";
+
   return (
     <ScrollView style={s.screen} contentContainerStyle={[s.scroll, { paddingTop: insets.top + 14, gap: SPACE.sectionGap }]}>
       {/* HỒ SƠ CHUNG — navy "Chúng mình" */}
@@ -91,6 +105,14 @@ export default function CoupleHubScreen() {
         <View style={{ height: 6, borderRadius: 99, backgroundColor: "rgba(255,255,255,0.22)", overflow: "hidden", marginTop: 7 }}>
           <View style={{ height: "100%", width: `${Math.min(100, (days / milestone.target) * 100)}%`, backgroundColor: "#fff", borderRadius: 99 }} />
         </View>
+        {nextEv && (
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 6, marginTop: 11 }}>
+            <Ionicons name="calendar" size={14} color="#fff" />
+            <Text style={{ fontFamily: FONT.semibold, fontSize: 13, color: "#fff" }} numberOfLines={1}>
+              {nextEv.event.title} — {countdownLabel(nextEv.daysUntil)}
+            </Text>
+          </View>
+        )}
       </View>
 
       {/* NHÓM: CHƠI CÙNG NHAU */}
@@ -106,8 +128,11 @@ export default function CoupleHubScreen() {
         <Text style={{ fontFamily: FONT.extrabold, fontSize: 16, color: COLOR.text, marginBottom: 9 }}>Không gian của hai đứa</Text>
         <View style={{ backgroundColor: "#fff", borderRadius: RADIUS.card, borderWidth: 1, borderColor: COLOR.border, overflow: "hidden" }}>
           <NavRow icon="heart-circle" color={ROLE.partnerDark} bg={ROLE.partnerSoft} title="Tiện ích đôi mình" desc="Nhật ký, kỷ niệm và những việc nhỏ của hai đứa" route="/utilities" />
+          <NavRow icon="location" color={ROLE.partnerDark} bg={ROLE.partnerSoft} title="Hiện diện" desc={presenceDesc} route="/presence" divider />
+          <NavRow icon="flower" color={ROLE.selfDark} bg={ROLE.selfSoft} title="Chu kỳ & quan tâm" desc="Chia sẻ giai đoạn chu kỳ để quan tâm nhau đúng lúc" route="/cycle" divider />
           <NavRow icon="image" color={ROLE.shared} bg={ROLE.sharedSoft} title="Khung màn hình" desc="Khung đếm ngày và cột mốc của hai đứa" route="/frames" divider />
           <NavRow icon="person" color={ROLE.selfDark} bg={ROLE.selfSoft} title="Tài khoản" desc={`Hồ sơ của ${firstName(me.name)}, mã mời và đăng xuất`} route="/account" divider />
+          <NavRow icon="mail" color={COLOR.primary} bg={ROLE.selfSoft} title="Thư đã lưu" desc={state.letters.length > 0 ? `Đang lưu ${state.letters.length} lá thư — mở ra đọc lại khi nhớ nhau` : "Thư rơi khi hai đứa chăm cây, sẽ lưu ở đây"} route="/letters" divider />
         </View>
       </View>
 

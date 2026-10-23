@@ -1,13 +1,15 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { Animated, Modal, ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import { Animated, Modal, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
 import { router } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
+import { Image } from "expo-image";
 import { useLove, decideCareDrop, makeStageUpDrop, myName, type CareKind } from "../../lib/store";
 import { useAuth } from "../../lib/auth";
 import { SPECIES, careStatus, decayedPlantStats, formatDuration, fruitPending, growthFactor, speciesById, stageInfo, totalGrowthMs, totalMaturedCount } from "../../lib/plants";
+import { PET_STAGE_LABEL, petCareStatus, petNeedsAt, petStageIndex, type PetCareKind } from "../../lib/features";
 import { dayKeyLocal, treeHealth, type AppState, type LoveLetter, type PersonId, type PlantState } from "../../lib/types";
-import { EmptyPlotScene, LetterEnvelopeImage, MascotArt, PlantScene } from "../../components/Art";
+import { DECOR_FENCE_ART, DECOR_ITEM_ART, DECOR_PATH_ART, DECOR_SCENE_ART, EmptyPlotScene, LetterEnvelopeImage, MascotArt, PetImage, PlantScene } from "../../components/Art";
 import Avatar from "../../components/Avatar";
 import { partnerOf, selfOf } from "../../components/PersonChip";
 import { COLOR, FONT, RADIUS, ROLE, SHADOW_FLOAT, SPACE, TYPE } from "../../components/theme";
@@ -152,6 +154,99 @@ function PlantCarePanel({ plant, state, onCare, careMsg, onHarvest, onCollect }:
   );
 }
 
+/** 3 hành động chăm pet — cùng ngôn ngữ medallion với nút chăm cây. */
+const PET_BTNS: { kind: PetCareKind; icon: string; label: string; color: string; bg: string }[] = [
+  { kind: "feed", icon: "restaurant", label: "Cho ăn", color: COLOR.warningText, bg: COLOR.warningSoft },
+  { kind: "pet", icon: "heart", label: "Vuốt ve", color: ROLE.selfDark, bg: ROLE.selfSoft },
+  { kind: "play", icon: "football", label: "Chơi cùng", color: ROLE.partnerDark, bg: ROLE.partnerSoft },
+];
+
+/**
+ * Panel thú cưng chung — pet sống trong cảnh vườn (xem dải sân trước), panel này
+ * là nơi chăm: 2 chỉ số No/Vui hao theo giờ, 3 hành động chăm với cooldown 60s/
+ * người như chăm cây (khóa cứng ở reducer qua petCareStatus), lớn theo NGÀY chăm
+ * khác nhau. Đổi tên pet: chạm vào ô tên, sửa rồi bấm xong.
+ */
+function PetPanel({ state, meName }: { state: AppState; meName: string }) {
+  const { dispatch } = useLove();
+  const now = useNow(1000);
+  const pet = state.pet;
+  const me = state.currentUser;
+  const needs = petNeedsAt(pet, now);
+  const stage = petStageIndex(pet);
+  const [careMsg, setCareMsg] = useState("");
+  const [nameText, setNameText] = useState(pet.name);
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- đồng bộ ô tên khi tên pet đổi từ máy người ấy
+  useEffect(() => { setNameText(pet.name); }, [pet.name]);
+
+  function onCare(kind: PetCareKind) {
+    const cs = petCareStatus(pet, kind, me, now);
+    if (!cs.ok) { setCareMsg(cs.reason); return; }
+    setCareMsg("");
+    dispatch({ type: "PET_CARE", kind, user: me, actor: meName });
+  }
+  function saveName() {
+    const v = nameText.trim();
+    if (v && v !== pet.name) dispatch({ type: "PET_RENAME", name: v });
+    else setNameText(pet.name);
+  }
+  const firstBlocked = PET_BTNS.map((b) => petCareStatus(pet, b.kind, me, now)).find((cs) => !cs.ok)?.reason || "";
+  const statusText = needs.hunger < 25 ? `${pet.name} đang đói lắm — cho bé ăn nhé` : needs.joy < 25 ? `${pet.name} đang buồn — vuốt ve hay chơi cùng bé đi` : needs.hunger < 55 ? `${pet.name} hơi đói rồi` : needs.joy < 55 ? `${pet.name} muốn được chơi cùng` : `${pet.name} đang no và vui vẻ`;
+
+  return (
+    <View style={s.card}>
+      <View style={{ flexDirection: "row", gap: 14 }}>
+        <View style={{ alignItems: "center", width: 96 }}>
+          <PetImage stage={stage} size={92} />
+          <View style={{ backgroundColor: ROLE.selfSoft, borderRadius: 999, paddingVertical: 3, paddingHorizontal: 9, marginTop: 2 }}>
+            <Text style={{ fontSize: 11, fontFamily: FONT.extrabold, color: ROLE.selfDark }}>{PET_STAGE_LABEL[stage]}</Text>
+          </View>
+        </View>
+        <View style={{ flex: 1, minWidth: 0, gap: 5 }}>
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 7 }}>
+            <TextInput
+              style={{ fontFamily: FONT.extrabold, fontSize: 18, color: COLOR.text, flexShrink: 1, minWidth: 60, paddingVertical: 0 }}
+              value={nameText}
+              onChangeText={setNameText}
+              onBlur={saveName}
+              onSubmitEditing={saveName}
+              maxLength={20}
+              accessibilityLabel="Tên thú cưng — sửa rồi bấm xong để lưu"
+            />
+            <Ionicons name="create-outline" size={15} color={COLOR.textFaint} />
+          </View>
+          <Text style={{ fontFamily: FONT.semibold, fontSize: 14, color: COLOR.text }}>{statusText}</Text>
+          <Text style={s.sub}>
+            Đã chăm {pet.careCount.A + pet.careCount.B} lần · {pet.careDays.length} ngày có chăm · Lớn theo ngày chăm, không theo số lần trong ngày
+          </Text>
+        </View>
+      </View>
+
+      <View style={{ backgroundColor: COLOR.bg, borderRadius: RADIUS.tile, paddingHorizontal: 14, paddingTop: 13, paddingBottom: 5, marginTop: 12, gap: 11 }}>
+        <StatBar label="Độ no" value={needs.hunger} color={COLOR.warning} />
+        <StatBar label="Niềm vui" value={needs.joy} color={COLOR.primary} />
+      </View>
+
+      <View style={{ flexDirection: "row", marginTop: 14 }}>
+        {PET_BTNS.map((b) => {
+          const cs = petCareStatus(pet, b.kind, me, now);
+          return (
+            <TouchableOpacity key={b.kind} disabled={!cs.ok} onPress={() => onCare(b.kind)} accessibilityLabel={`${b.label} ${pet.name}`} accessibilityState={{ disabled: !cs.ok }} style={{ flex: 1, alignItems: "center", gap: 6, opacity: cs.ok ? 1 : 0.45, paddingVertical: 2 }}>
+              <View style={{ width: 50, height: 50, borderRadius: 25, backgroundColor: b.bg, alignItems: "center", justifyContent: "center" }}>
+                <Ionicons name={b.icon as never} size={24} color={b.color} />
+              </View>
+              <Text style={{ fontFamily: FONT.semibold, fontSize: 12.5, color: COLOR.text }}>{b.label}</Text>
+            </TouchableOpacity>
+          );
+        })}
+      </View>
+      {careMsg ? <Text style={{ textAlign: "center", color: COLOR.warningText, fontFamily: FONT.bold, fontSize: 12.5, marginTop: 9 }}>{careMsg}</Text> : null}
+      {!careMsg && firstBlocked ? <Text style={{ textAlign: "center", color: COLOR.warningText, fontFamily: FONT.bold, fontSize: 12.5, marginTop: 9 }}>{firstBlocked}</Text> : null}
+      <Text style={[s.small, { textAlign: "center", marginTop: 8 }]}>Chăm pet nhận +3 Xu Tim, tối đa 5 lần được thưởng mỗi ngày cho mỗi người.</Text>
+    </View>
+  );
+}
+
 export default function GardenScreen() {
   const { state, dispatch, hydrated } = useLove();
   const { couple } = useAuth();
@@ -215,7 +310,7 @@ export default function GardenScreen() {
   }
 
   const gardenActs = useMemo(
-    () => state.activities.filter((a) => ["leaf", "water", "sunny", "heart", "bug", "gift", "trophy", "mail", "sparkles"].includes(a.icon)).slice(0, 5),
+    () => state.activities.filter((a) => ["leaf", "water", "sunny", "heart", "bug", "gift", "trophy", "mail", "sparkles", "paw"].includes(a.icon)).slice(0, 5),
     [state.activities],
   );
 
@@ -284,10 +379,38 @@ export default function GardenScreen() {
           </View>
         </View>
 
-        {/* CẢNH VƯỜN CHUNG — 4 bệ đất trên một nền gardenWash duy nhất */}
+        {/* CẢNH VƯỜN CHUNG — nền mùa (nếu đã trang bị cảnh decor) + lối đi giữa +
+            4 bệ đất + dải sân trước (vật đặt + thú cưng) + hàng rào viền dưới */}
         <View style={styles.scene}>
+          {state.decor.sceneBg && DECOR_SCENE_ART[state.decor.sceneBg] ? (
+            <Image source={DECOR_SCENE_ART[state.decor.sceneBg]} style={StyleSheet.absoluteFill} contentFit="cover" accessibilityLabel="Cảnh vườn theo mùa" />
+          ) : null}
+          {state.decor.path && DECOR_PATH_ART[state.decor.path] ? (
+            <View style={{ position: "absolute", top: 6, bottom: 34, left: "50%", width: 76, marginLeft: -38 }}>
+              <Image source={DECOR_PATH_ART[state.decor.path]} style={{ width: "100%", height: "100%" }} contentFit="cover" accessibilityLabel="Lối đi trong vườn" />
+            </View>
+          ) : null}
           <View style={{ flexDirection: "row", gap: 10 }}>{plotCell(0)}{plotCell(1)}</View>
           <View style={{ flexDirection: "row", gap: 10 }}>{plotCell(2)}{plotCell(3)}</View>
+          {/* Dải sân trước: 3 khe vật đặt (trái/giữa/phải) + pet đứng ở góc phải */}
+          <View style={styles.yard}>
+            {[0, 1, 2].map((i) => (
+              <View key={i} style={styles.yardSlot}>
+                {state.decor.placed[i] && DECOR_ITEM_ART[state.decor.placed[i]] ? (
+                  <Image source={DECOR_ITEM_ART[state.decor.placed[i]]} style={{ width: 54, height: 54 }} contentFit="contain" accessibilityLabel="Vật trang trí trong vườn" />
+                ) : null}
+              </View>
+            ))}
+            <View style={styles.yardPet}>
+              <PetImage stage={petStageIndex(state.pet)} size={56} />
+              <Text style={{ fontSize: 10.5, fontFamily: FONT.extrabold, color: COLOR.text, marginTop: -2 }} numberOfLines={1}>{state.pet.name}</Text>
+            </View>
+          </View>
+          {state.decor.fence && DECOR_FENCE_ART[state.decor.fence] ? (
+            <View style={{ position: "absolute", left: 0, right: 0, bottom: 0, height: 26, zIndex: 3 }} pointerEvents="none">
+              <Image source={DECOR_FENCE_ART[state.decor.fence]} style={{ width: "100%", height: "100%" }} contentFit="cover" accessibilityLabel="Hàng rào vườn" />
+            </View>
+          ) : null}
         </View>
 
         {/* PANEL CHĂM — card trắng duy nhất của màn */}
@@ -308,6 +431,9 @@ export default function GardenScreen() {
             <TouchableOpacity style={[s.btn, { marginTop: 4 }]} onPress={() => setSeedOpen(true)}><Ionicons name="add" size={17} color="#fff" /><Text style={s.btnText}>Gieo hạt ngay</Text></TouchableOpacity>
           </View>
         )}
+
+        {/* THÚ CƯNG CHUNG — panel chăm pet (pet đứng ở dải sân trước trong cảnh) */}
+        <PetPanel state={state} meName={meName} />
 
         {/* DẤU VẾT CHĂM VƯỜN — avatar-first, tối đa 5 dòng */}
         <View>
@@ -348,10 +474,10 @@ export default function GardenScreen() {
         </TouchableOpacity>
       </ScrollView>
 
-      {/* Thư rơi — thẻ giấy thư nổi E2, đồng bộ ngôn ngữ với tab Thư */}
+      {/* Thư rơi — thẻ giấy thư nổi E2, đồng bộ ngôn ngữ với trang Thư đã lưu (/letters) */}
       {falling && (
         <Animated.View style={{ position: "absolute", left: 0, right: 0, alignItems: "center", transform: [{ translateY: fallAnim.interpolate({ inputRange: [0, 1], outputRange: [-140, 130] }) }, { rotate: fallAnim.interpolate({ inputRange: [0, 1], outputRange: ["-8deg", "3deg"] }) }] }}>
-          <TouchableOpacity style={styles.fallingCard} onPress={() => { setFalling(null); router.push("/(tabs)/letters"); }}>
+          <TouchableOpacity style={styles.fallingCard} onPress={() => { setFalling(null); router.push("/letters"); }}>
             <LetterEnvelopeImage size={58} />
             <Text style={{ fontFamily: FONT.black, fontSize: 15, color: COLOR.text }}>Một lá thư vừa rơi!</Text>
             <Text style={s.small}>Chạm để vào Hộp thư mở đọc</Text>
@@ -407,7 +533,10 @@ export default function GardenScreen() {
 }
 
 const styles = StyleSheet.create({
-  scene: { backgroundColor: COLOR.gardenWash, borderRadius: RADIUS.scene, borderWidth: 1, borderColor: "rgba(47,191,174,0.14)", paddingHorizontal: 16, paddingTop: 18, paddingBottom: 14, gap: 12 },
+  scene: { backgroundColor: COLOR.gardenWash, borderRadius: RADIUS.scene, borderWidth: 1, borderColor: "rgba(47,191,174,0.14)", paddingHorizontal: 16, paddingTop: 18, paddingBottom: 14, gap: 12, overflow: "hidden", position: "relative" },
+  yard: { flexDirection: "row", alignItems: "flex-end", backgroundColor: "rgba(255,255,255,0.38)", borderRadius: RADIUS.inner, paddingHorizontal: 10, paddingTop: 4, paddingBottom: 8, marginBottom: 14, zIndex: 1 },
+  yardSlot: { flex: 1, alignItems: "center", justifyContent: "flex-end", minHeight: 56 },
+  yardPet: { width: 72, alignItems: "center", justifyContent: "flex-end" },
   plot: { flex: 1, alignItems: "center", borderRadius: RADIUS.inner, borderWidth: 2, borderColor: "transparent", paddingTop: 8, paddingBottom: 8, paddingHorizontal: 4, position: "relative" },
   plotSel: { borderColor: ROLE.partner, backgroundColor: "rgba(255,255,255,0.45)" },
   selTag: { position: "absolute", top: 6, right: 6, zIndex: 2, backgroundColor: ROLE.partner, borderRadius: 999, paddingVertical: 3, paddingHorizontal: 8 },

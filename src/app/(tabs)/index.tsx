@@ -1,17 +1,19 @@
-import React from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { ScrollView, Text, TouchableOpacity, View } from "react-native";
 import { router } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useLove } from "../../lib/store";
-import { MOODS, QUESTS, questionOfDay } from "../../lib/data";
-import { daysTogether, effectiveStreak, today, treeHealth } from "../../lib/types";
+import { DECOR_SEASON_TINT, MOODS, QUESTS, questionOfDay } from "../../lib/data";
+import { countdownLabel, cycleInfo, distanceKmBetween, distanceLabel, nextEvent, petStageIndex, petStatusLine, relativeTimeVi } from "../../lib/features";
+import { PING_DAILY_MAX, daysTogether, effectiveStreak, today, treeHealth } from "../../lib/types";
 import { decayedPlantStats, stageInfo } from "../../lib/plants";
 import Avatar from "../../components/Avatar";
 import { MoodFace } from "../../components/FaceIcon";
-import { EmptyPlotScene, HeroBand, PlantScene } from "../../components/Art";
+import { EmptyPlotScene, HeartGameImage, HeroBand, PetImage, PlantScene } from "../../components/Art";
 import { partnerOf, selfOf } from "../../components/PersonChip";
-import { COLOR, FONT, RADIUS, ROLE, SHADOW, SPACE, TYPE } from "../../components/theme";
+import { COLOR, FONT, RADIUS, ROLE, SHADOW, SHADOW_FLOAT, SPACE, TYPE } from "../../components/theme";
 import { ProgressBar, SkeletonCard, s } from "../../components/ui";
 
 /**
@@ -33,11 +35,59 @@ const firstName = (name: string) => name.trim().split(/\s+/).pop() || name;
 const pad2 = (n: number) => String(n).padStart(2, "0");
 
 export default function HomeScreen() {
-  const { state, hydrated } = useLove();
+  const { state, dispatch, hydrated } = useLove();
   const insets = useSafeAreaInsets();
   const days = daysTogether(state.startDate);
   const me = selfOf(state);
   const partner = partnerOf(state);
+
+  /* --- "Nhớ bạn" nhịp tim: nút ở hero + pop-up phía người nhận (kênh pop-up kiểu
+   * thư rơi). Hiệu ứng phía người nhận có cooldown 30 giây: chuỗi nhịp tới trong
+   * cửa sổ đó vẫn cộng dồn vào state nhưng không bật pop-up lại. Mốc chuỗi đã xử
+   * lý lưu ở AsyncStorage theo vườn để mở app không bật lại chuỗi cũ. --- */
+  const pingsToday = state.pings.day.date === today() ? state.pings.day : { A: 0, B: 0 };
+  const myPingCount = pingsToday[me.slot];
+  const partnerPing = state.pings[partner.slot];
+  const pingCapReached = myPingCount >= PING_DAILY_MAX;
+  const [pingPop, setPingPop] = useState<number | null>(null);
+  const seenKey = `love-ping-seen-${state.roomCode}-${me.slot}`;
+  const seenRef = useRef<string | null>(null);
+  const lastShownRef = useRef(0);
+  useEffect(() => {
+    let live = true;
+    AsyncStorage.getItem(seenKey).then((v) => { if (live) seenRef.current = v ?? ""; }).catch(() => { if (live) seenRef.current = ""; });
+    return () => { live = false; };
+  }, [seenKey]);
+  useEffect(() => {
+    if (seenRef.current === null) return;
+    const burstAt = partnerPing.lastBurstAt;
+    if (!burstAt || burstAt === seenRef.current) return;
+    seenRef.current = burstAt;
+    AsyncStorage.setItem(seenKey, burstAt).catch(() => {});
+    if (Date.now() - new Date(burstAt).getTime() > 120000) return; // chuỗi cũ — không bật lại
+    if (Date.now() - lastShownRef.current < 30000) return; // cooldown hiệu ứng 30s phía người nhận
+    lastShownRef.current = Date.now();
+    setPingPop(partnerPing.burst);
+    const t = setTimeout(() => setPingPop(null), 6000);
+    return () => clearTimeout(t);
+  }, [partnerPing.lastBurstAt, partnerPing.burst, seenKey]);
+
+  /* --- Các dòng dấu vết yên tĩnh trong hero: mỗi dòng CHỈ hiện khi có dữ kiện
+   * thật (người ấy đang chia sẻ / đang trong cửa sổ nhạy cảm / có ngày đặc biệt). --- */
+  const myPresence = state.presence[me.slot];
+  const partnerPresence = state.presence[partner.slot];
+  const presenceKm = partnerPresence.shareLocation ? distanceKmBetween(myPresence, partnerPresence) : null;
+  const presenceLine = presenceKm != null
+    ? `${partner.name} ${distanceLabel(presenceKm)} · cập nhật ${relativeTimeVi(partnerPresence.at)}`
+    : partnerPresence.shareBattery && partnerPresence.battery != null
+      ? `Pin của ${partner.name}: ${partnerPresence.battery}% · cập nhật ${relativeTimeVi(partnerPresence.at)}`
+      : null;
+  const partnerCycleInfo = state.cycle[partner.slot].share ? cycleInfo(state.cycle[partner.slot]) : null;
+  const cycleLine = partnerCycleInfo?.sensitive
+    ? `${partner.name} đang trong những ngày nhạy cảm — quan tâm bạn ấy nhiều hơn nhé (kỳ tới ${countdownLabel(partnerCycleInfo.daysUntilNext)})`
+    : null;
+  const nextEv = nextEvent(state.events);
+  const eventLine = nextEv ? `Ngày đặc biệt: ${nextEv.event.title} — ${countdownLabel(nextEv.daysUntil)}` : null;
 
   const answersToday = state.answers.date === today() ? state.answers : { A: "", B: "" };
   const moodsToday = state.moods.date === today() ? state.moods : { A: "", B: "" };
@@ -130,6 +180,7 @@ export default function HomeScreen() {
   const firstHealth = firstPlant ? treeHealth(decayedPlantStats(firstPlant)).status : null;
 
   return (
+    <View style={{ flex: 1, backgroundColor: COLOR.bg }}>
     <ScrollView style={s.screen} contentContainerStyle={[s.scroll, { paddingTop: insets.top + 14, gap: SPACE.sectionGap }]}>
       {/* (0) DÒNG CHÀO */}
       <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
@@ -170,6 +221,54 @@ export default function HomeScreen() {
               {state.personA} & {state.personB}
             </Text>
           </View>
+
+          {/* DẤU VẾT: hiện diện / chu kỳ nhạy cảm / ngày đặc biệt — dòng nào có dữ kiện mới hiện */}
+          {(presenceLine || cycleLine || eventLine) && (
+            <View style={{ marginTop: 10, gap: 5 }}>
+              {presenceLine && (
+                <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+                  <Ionicons name="location" size={13} color={ROLE.partnerDark} />
+                  <Text style={{ flex: 1, ...TYPE.caption, color: COLOR.textSoft }} numberOfLines={1}>{presenceLine}</Text>
+                </View>
+              )}
+              {cycleLine && (
+                <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+                  <Ionicons name="flower" size={13} color={ROLE.selfDark} />
+                  <Text style={{ flex: 1, ...TYPE.caption, color: COLOR.textSoft }} numberOfLines={2}>{cycleLine}</Text>
+                </View>
+              )}
+              {eventLine && (
+                <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+                  <Ionicons name="calendar" size={13} color={ROLE.shared} />
+                  <Text style={{ flex: 1, ...TYPE.caption, color: COLOR.textSoft }} numberOfLines={1}>{eventLine}</Text>
+                </View>
+              )}
+            </View>
+          )}
+
+          {/* NHỚ BẠN — nút tim gửi nhịp ngay (không phải CTA chính của màn; CTA chính
+              vẫn là nút trong thẻ Hôm nay). Trần 50 nhịp/ngày/người khóa ở reducer. */}
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 12, marginTop: 12, paddingTop: 12, borderTopWidth: 1, borderTopColor: COLOR.border }}>
+            <TouchableOpacity
+              disabled={pingCapReached}
+              onPress={() => dispatch({ type: "PING_SEND", user: me.slot, actor: me.name })}
+              accessibilityLabel={`Gửi nhịp nhớ ${partner.name}`}
+              style={{ width: 52, height: 52, borderRadius: 26, backgroundColor: ROLE.selfSoft, alignItems: "center", justifyContent: "center", opacity: pingCapReached ? 0.45 : 1 }}
+            >
+              <Ionicons name="heart" size={26} color={COLOR.primary} />
+            </TouchableOpacity>
+            <View style={{ flex: 1, minWidth: 0 }}>
+              <Text style={{ fontFamily: FONT.bold, fontSize: 14.5, color: COLOR.text }} numberOfLines={1}>Nhớ {firstName(partner.name)}? Chạm vào tim</Text>
+              <Text style={{ ...TYPE.caption, color: COLOR.textSoft, marginTop: 2 }} numberOfLines={2}>
+                {pingCapReached
+                  ? `Đã đủ ${PING_DAILY_MAX} nhịp hôm nay — để dành tới mai nhé`
+                  : partnerPing.lastAt
+                    ? `${partner.name} vừa gửi nhịp nhớ ${relativeTimeVi(partnerPing.lastAt)} · Hôm nay hai đứa đã nhớ nhau ${pingsToday.A + pingsToday.B} nhịp`
+                    : `Hôm nay hai đứa đã nhớ nhau ${pingsToday.A + pingsToday.B} nhịp`}
+              </Text>
+            </View>
+            <Text style={{ ...TYPE.caption, color: COLOR.textFaint }}>{myPingCount}/{PING_DAILY_MAX}</Text>
+          </View>
         </View>
       </View>
 
@@ -200,7 +299,7 @@ export default function HomeScreen() {
       <TouchableOpacity
         onPress={() => router.push("/(tabs)/garden")}
         accessibilityLabel="Vào vườn"
-        style={{ backgroundColor: COLOR.gardenWash, borderRadius: RADIUS.card, padding: 16, flexDirection: "row", gap: 14, alignItems: "center" }}
+        style={{ backgroundColor: DECOR_SEASON_TINT[state.decor.sceneBg] ?? COLOR.gardenWash, borderRadius: RADIUS.card, padding: 16, flexDirection: "row", gap: 14, alignItems: "center" }}
       >
         <View style={{ width: 96 }}>
           {firstPlant && firstInfo ? (
@@ -224,6 +323,10 @@ export default function HomeScreen() {
               {firstPlant ? "Hôm nay chưa ai ghé vườn" : "Vườn đang trống — vào gieo hạt nhé"}
             </Text>
           )}
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+            <PetImage stage={petStageIndex(state.pet)} size={26} />
+            <Text style={{ flex: 1, ...TYPE.caption, color: COLOR.textSoft }} numberOfLines={1}>{petStatusLine(state.pet)}</Text>
+          </View>
           <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
             <Text style={{ fontFamily: FONT.bold, fontSize: 13.5, color: ROLE.partnerDark }}>Vào vườn</Text>
             <Ionicons name="arrow-forward" size={14} color={ROLE.partnerDark} />
@@ -231,5 +334,22 @@ export default function HomeScreen() {
         </View>
       </TouchableOpacity>
     </ScrollView>
+
+    {/* POP-UP NHỊP TIM — kênh pop-up kiểu thư rơi: hiện khi người ấy vừa gửi một
+        chuỗi nhịp mới (cooldown hiệu ứng 30 giây xử lý ở effect phía trên). */}
+    {pingPop !== null && (
+      <View style={{ position: "absolute", top: insets.top + 10, left: 0, right: 0, alignItems: "center", zIndex: 10 }} pointerEvents="box-none">
+        <TouchableOpacity
+          onPress={() => setPingPop(null)}
+          accessibilityLabel="Đóng thông báo nhớ bạn"
+          style={{ backgroundColor: COLOR.letterPaper, borderRadius: RADIUS.card, borderWidth: 1, borderColor: COLOR.letterLine, paddingHorizontal: 22, paddingVertical: 13, alignItems: "center", gap: 2, ...SHADOW_FLOAT }}
+        >
+          <HeartGameImage size={46} />
+          <Text style={{ fontFamily: FONT.black, fontSize: 15, color: COLOR.text }}>{partner.name} đang nhớ bạn</Text>
+          <Text style={s.small}>{pingPop > 1 ? `Một chuỗi ${pingPop} nhịp tim vừa tới` : "Một nhịp tim vừa tới"} — chạm để đóng</Text>
+        </TouchableOpacity>
+      </View>
+    )}
+    </View>
   );
 }

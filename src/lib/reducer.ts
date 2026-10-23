@@ -1,6 +1,7 @@
-import { AppState, CARE_COINS, CARE_MILESTONES, CONTENT_ADD_MIN_INTERVAL_MS, CONTENT_LIMITS, FRAME_XP_REWARD, LETTER_COINS, LOVE_ACTION_COOLDOWN_MS, LOVE_ACTION_DAILY_MAX, LoveLetter, MemoryItem, PersonId, ShopCategory, dayKeyLocal, defaultState, freshDailyState, isValidDateKey, today, uid, weekKey, type FrameKind } from "./types";
+import { AppState, CARE_COINS, CARE_MILESTONES, CONTENT_ADD_MIN_INTERVAL_MS, CONTENT_LIMITS, EVENT_TITLE_MAX, EVENTS_MAX, FRAME_XP_REWARD, LETTER_COINS, LOVE_ACTION_COOLDOWN_MS, LOVE_ACTION_DAILY_MAX, LoveLetter, MemoryItem, PING_BURST_WINDOW_MS, PING_DAILY_MAX, PersonId, PresenceSlotState, CycleSlotState, ShopCategory, SpecialEvent, dayKeyLocal, defaultState, freshDailyState, isValidDateKey, today, uid, weekKey, type FrameKind } from "./types";
 import { CARE_BOOST_MS, MAX_PLOTS, careStatus, createPlant, materializePlant, normalizeStateV5, speciesById, stageInfo, totalCareCount, totalMaturedCount, type Species } from "./plants";
-import { MAX_DAILY_SPINS, QUESTS, moodLabel, pickMessage, pickMessageSeeded, quizOfDay, seeded01, shopItem, type SpinKind } from "./data";
+import { MAX_DAILY_SPINS, QUESTS, decorItem, moodLabel, pickMessage, pickMessageSeeded, quizOfDay, seeded01, shopItem, type SpinKind } from "./data";
+import { PET_CARE_REWARD_COINS, PET_CARE_REWARD_DAILY_MAX, petCareStatus, petNeedsAt, petStageIndex, type PetCareKind } from "./features";
 import { mergeStates, stampSections } from "./merge";
 import { nowIso } from "./time";
 
@@ -50,7 +51,18 @@ export type Action =
   | { type: "GAME_WIN"; game: "memory" | "dice"; user: "A" | "B"; actor: string }
   | { type: "SPIN_USE"; user: "A" | "B" }
   | { type: "SPIN_RESOLVE"; user: "A" | "B"; actor: string; kind: SpinKind; amount: number; letter?: LoveLetter | null; bucketItem?: AppState["bucket"][0] | null }
-  | { type: "QUIZ_ANSWER"; user: "A" | "B"; answers: number[]; actor: string };
+  | { type: "QUIZ_ANSWER"; user: "A" | "B"; answers: number[]; actor: string }
+  // --- gói tính năng 2026-10-23 ---
+  | { type: "PING_SEND"; user: "A" | "B"; actor: string }
+  | { type: "PRESENCE_SET"; user: "A" | "B"; patch: Partial<PresenceSlotState> }
+  | { type: "CYCLE_SET"; user: "A" | "B"; patch: Partial<CycleSlotState> }
+  | { type: "BUY_DECOR"; itemId: string; actor: string }
+  | { type: "EQUIP_DECOR"; itemId: string }
+  | { type: "PET_CARE"; kind: PetCareKind; user: "A" | "B"; actor: string }
+  | { type: "PET_RENAME"; name: string }
+  | { type: "EVENT_ADD"; event: SpecialEvent }
+  | { type: "EVENT_EDIT"; event: SpecialEvent }
+  | { type: "EVENT_DEL"; id: string };
 
 function pushAct(s: AppState, actor: string, text: string, icon: string): AppState["activities"] {
   return [{ id: uid(), actor, text, icon, time: new Date().toISOString() }, ...s.activities].slice(0, 40);
@@ -74,6 +86,7 @@ function rollDay(s: AppState): AppState {
   if (out.games.dailyWins.date !== t) out = { ...out, games: { ...out.games, dailyWins: { date: t, memory: { A: 0, B: 0 }, dice: { A: 0, B: 0 } } } };
   if (out.frameRewards.date !== t) out = { ...out, frameRewards: { date: t, claimed: [] } };
   if (out.loveLimits.date !== t) out = { ...out, loveLimits: { date: t, counts: { A: 0, B: 0 }, lastAt: { A: "", B: "" } } };
+  if (out.pings.day.date !== t) out = { ...out, pings: { ...out.pings, day: { date: t, A: 0, B: 0 } } };
   return out;
 }
 /** Chống spam thêm nội dung: cùng một người không thêm ghi chú/bucket/kỷ niệm 2 lần quá sát nhau. Trả về true nếu được phép. */
@@ -177,8 +190,8 @@ export function decideCareDrop(state: AppState, plantId: string, kind: CareKind)
 }
 
 /** Thêm id vào tombstone của một danh sách (khử trùng, tối đa 500 id gần nhất). */
-function withTombstone(s: AppState, key: "notes" | "bucket" | "memories", id: string): AppState["deletedIds"] {
-  const cur = s.deletedIds ?? { notes: [], bucket: [], memories: [] };
+function withTombstone(s: AppState, key: "notes" | "bucket" | "memories" | "events", id: string): AppState["deletedIds"] {
+  const cur = s.deletedIds ?? { notes: [], bucket: [], memories: [], events: [] };
   if (cur[key].includes(id)) return cur;
   return { ...cur, [key]: [...cur[key], id].slice(-500) };
 }
@@ -589,6 +602,174 @@ export function gardenReducer(state: AppState, action: Action): AppState {
       if (qz[action.user].length >= need) return state;
       if (!Array.isArray(action.answers) || action.answers.length !== need || action.answers.some((a) => a !== 0 && a !== 1)) return state;
       return { ...state, games: { ...state.games, quiz: { ...qz, [action.user]: action.answers } }, activities: pushAct(state, action.actor, "đã trả lời trắc nghiệm Hiểu ý nhau hôm nay", "help-circle") };
+    }
+    case "PING_SEND": {
+      // "Nhớ bạn" nhịp tim — khóa cứng TRẦN 50 nhịp/ngày/người tại store (như LOVE_ACTION);
+      // KHÔNG gắn Xu/XP: ping là cảm xúc thuần, gắn thưởng là bị farm ngay (kế hoạch Hạng 1).
+      const t = today();
+      const day = state.pings.day.date === t ? state.pings.day : { date: t, A: 0, B: 0 };
+      if (day[action.user] >= PING_DAILY_MAX) return state;
+      const nowMs = Date.now();
+      const nowStr = new Date(nowMs).toISOString();
+      const prev = state.pings[action.user];
+      // Chạm liên tục <= 5 giây = cùng một CHUỖI nhịp (chất Jagat Miss You); chuỗi mới
+      // cập nhật lastBurstAt — phía người nhận chỉ bật hiệu ứng theo lastBurstAt + cooldown 30s.
+      const chained = Boolean(prev.lastAt) && nowMs - new Date(prev.lastAt).getTime() <= PING_BURST_WINDOW_MS;
+      const burst = chained ? prev.burst + 1 : 1;
+      const slot = { total: prev.total + 1, lastAt: nowStr, lastBurstAt: burst === 1 ? nowStr : prev.lastBurstAt, burst };
+      const pings = { ...state.pings, day: { ...day, [action.user]: day[action.user] + 1 }, [action.user]: slot };
+      // Nhật ký hoạt động chỉ ghi khi BẮT ĐẦU chuỗi (chạm dồn 20 lần không spam 20 dòng).
+      const activities = burst === 1 ? pushAct(state, action.actor, "vừa gửi một nhịp tim nhớ bạn", "heart") : state.activities;
+      return { ...state, pings, activities };
+    }
+    case "PRESENCE_SET": {
+      // Snapshot hiện diện của CHÍNH chủ slot: chỉ nhận số hữu hạn trong miền hợp lệ;
+      // patch không đổi gì -> no-op (mở app chụp lại cùng toạ độ/pin không phát đồng bộ thừa).
+      const cur = state.presence[action.user];
+      const patch = action.patch;
+      const next = { ...cur };
+      if (typeof patch.shareBattery === "boolean") next.shareBattery = patch.shareBattery;
+      if (typeof patch.shareLocation === "boolean") next.shareLocation = patch.shareLocation;
+      if (patch.lat !== undefined) {
+        if (patch.lat !== null && (!Number.isFinite(patch.lat) || patch.lat < -90 || patch.lat > 90)) return state;
+        next.lat = patch.lat === null ? null : Math.round(patch.lat * 100000) / 100000;
+      }
+      if (patch.lng !== undefined) {
+        if (patch.lng !== null && (!Number.isFinite(patch.lng) || patch.lng < -180 || patch.lng > 180)) return state;
+        next.lng = patch.lng === null ? null : Math.round(patch.lng * 100000) / 100000;
+      }
+      if (patch.acc !== undefined) next.acc = patch.acc === null || !Number.isFinite(patch.acc) || patch.acc < 0 ? null : Math.round(patch.acc);
+      if (patch.battery !== undefined) next.battery = patch.battery === null || !Number.isFinite(patch.battery) ? null : Math.max(0, Math.min(100, Math.round(patch.battery)));
+      if (typeof patch.at === "string") next.at = patch.at;
+      if (JSON.stringify(next) === JSON.stringify(cur)) return state;
+      return { ...state, presence: { ...state.presence, [action.user]: next } };
+    }
+    case "CYCLE_SET": {
+      // Chu kỳ của CHÍNH chủ slot. Điều kiện cứng của kế hoạch Hạng 3: ngày bắt đầu kỳ
+      // chỉ sửa tối đa 1 LẦN/NGÀY (dự đoán không bị nhiễu bởi sửa liên tục); độ dài
+      // bị kẹp trong miền hợp lệ ở store, không tin UI.
+      const cur = state.cycle[action.user];
+      const patch: Partial<CycleSlotState> = { ...action.patch };
+      const t = today();
+      if (patch.lastStart !== undefined && patch.lastStart !== cur.lastStart) {
+        if (patch.lastStart !== "" && !isValidDateKey(patch.lastStart)) return state;
+        if (cur.startEditDate === t) delete patch.lastStart; // đã sửa hôm nay rồi — bỏ qua riêng trường này
+        else patch.startEditDate = t;
+      }
+      if (patch.cycleLen !== undefined) patch.cycleLen = Math.max(21, Math.min(35, Math.round(patch.cycleLen) || cur.cycleLen));
+      if (patch.periodLen !== undefined) patch.periodLen = Math.max(3, Math.min(8, Math.round(patch.periodLen) || cur.periodLen));
+      if (patch.share !== undefined) patch.share = patch.share === true;
+      const next: CycleSlotState = { ...cur, ...patch, updatedAt: new Date().toISOString() };
+      const { updatedAt: _u1, ...nextCmp } = next;
+      const { updatedAt: _u2, ...curCmp } = cur;
+      if (JSON.stringify(nextCmp) === JSON.stringify(curCmp)) return state;
+      return { ...state, cycle: { ...state.cycle, [action.user]: next } };
+    }
+    case "BUY_DECOR": {
+      // Mua đồ decor bằng Xu Tim — cùng luật BUY_ITEM (đã sở hữu/không đủ tiền -> từ chối);
+      // mua xong TRANG BỊ NGAY như đồ shop thường; vật đặt chỉ tự đặt khi còn khe trống.
+      const item = decorItem(action.itemId);
+      if (!item || state.decor.owned.includes(item.id) || state.coins < item.price) return state;
+      const decor = { ...state.decor, owned: [...state.decor.owned, item.id], placed: [...state.decor.placed] };
+      if (item.category === "scene") decor.sceneBg = item.id;
+      else if (item.category === "fence") decor.fence = item.id;
+      else if (item.category === "path") decor.path = item.id;
+      else if (decor.placed.length < 3) decor.placed = [...decor.placed, item.id];
+      return {
+        ...state,
+        coins: state.coins - item.price,
+        decor,
+        activities: pushAct(state, action.actor, `đã mua trang trí "${item.name}" cho vườn (-${item.price} Xu Tim)`, "bag-handle"),
+      };
+    }
+    case "EQUIP_DECOR": {
+      // Trang bị/gỡ đồ decor đã sở hữu. Cảnh/rào/lối đi: chạm lại món đang dùng = gỡ về mặc định.
+      // Vật đặt: đang đặt -> gỡ ra; chưa đặt và đủ 3 khe -> thêm; đã đầy 3 khe -> THAY khe cuối
+      // (xác định, UI báo trước) để không bao giờ vượt trần 3 vật.
+      const item = decorItem(action.itemId);
+      if (!item || !state.decor.owned.includes(item.id)) return state;
+      const decor = { ...state.decor, placed: [...state.decor.placed] };
+      if (item.category === "scene") decor.sceneBg = decor.sceneBg === item.id ? "" : item.id;
+      else if (item.category === "fence") decor.fence = decor.fence === item.id ? "" : item.id;
+      else if (item.category === "path") decor.path = decor.path === item.id ? "" : item.id;
+      else if (decor.placed.includes(item.id)) decor.placed = decor.placed.filter((x) => x !== item.id);
+      else if (decor.placed.length < 3) decor.placed = [...decor.placed, item.id];
+      else decor.placed = [decor.placed[0], decor.placed[1], item.id];
+      if (JSON.stringify(decor) === JSON.stringify(state.decor)) return state;
+      return { ...state, decor };
+    }
+    case "PET_CARE": {
+      // Chăm pet dùng CHUNG triết lý chăm cây: cooldown 60s/người + chỉ số đầy thì vô hiệu
+      // (petCareStatus ở lib/features). Lớn theo NGÀY CHĂM KHÁC NHAU (careDays) — chăm dồn
+      // trong ngày chỉ no/vui thêm chứ không lên giai đoạn. Thưởng +3 Xu, trần 5 lần/ngày/người.
+      const nowMs = Date.now();
+      if (!petCareStatus(state.pet, action.kind, action.user, nowMs).ok) return state;
+      const needs = petNeedsAt(state.pet, nowMs);
+      let hunger = needs.hunger;
+      let joy = needs.joy;
+      if (action.kind === "feed") { hunger = Math.min(100, hunger + 35); joy = Math.min(100, joy + 4); }
+      if (action.kind === "pet") { joy = Math.min(100, joy + 22); }
+      if (action.kind === "play") { joy = Math.min(100, joy + 32); hunger = Math.max(0, hunger - 6); }
+      const t = today();
+      const careDays = state.pet.careDays.includes(t) ? state.pet.careDays : [...state.pet.careDays, t].sort().slice(-90);
+      const stageBefore = petStageIndex(state.pet);
+      const stageAfter = petStageIndex({ ...state.pet, careDays });
+      const rd = state.pet.rewardDay.date === t ? state.pet.rewardDay : { date: t, A: 0, B: 0 };
+      const rewardDay = { ...rd };
+      let coins = state.coins;
+      if (rd[action.user] < PET_CARE_REWARD_DAILY_MAX) { coins += PET_CARE_REWARD_COINS; rewardDay[action.user] = rd[action.user] + 1; }
+      const nowStr = new Date(nowMs).toISOString();
+      const pet = {
+        ...state.pet, hunger, joy, statsAt: nowStr, careDays,
+        lastCareAt: nowStr,
+        lastCareAtBy: { ...state.pet.lastCareAtBy, [action.user]: nowStr },
+        careCount: { ...state.pet.careCount, [action.user]: state.pet.careCount[action.user] + 1 },
+        rewardDay,
+      };
+      const careText = { feed: `vừa cho ${pet.name} ăn`, pet: `vừa vuốt ve ${pet.name}`, play: `vừa chơi cùng ${pet.name}` }[action.kind];
+      let acts = pushAct(state, action.actor, `${careText}${coins > state.coins ? ` (+${PET_CARE_REWARD_COINS} Xu Tim)` : ""}`, "paw");
+      if (stageAfter > stageBefore) {
+        acts = [{ id: uid(), actor: pet.name, text: `đã lớn thêm một giai đoạn nhờ những ngày hai đứa chăm sóc!`, icon: "sparkles", time: nowStr }, ...acts].slice(0, 40);
+      }
+      return { ...state, pet, coins, activities: acts };
+    }
+    case "PET_RENAME": {
+      const name = action.name.trim().slice(0, 20);
+      if (!name || name === state.pet.name) return state;
+      return { ...state, pet: { ...state.pet, name } };
+    }
+    case "EVENT_ADD": {
+      // Ngày đặc biệt — cùng khóa với nội dung khác: tiêu đề <= 60 ký tự, ngày phải tồn tại
+      // thật, trần 50 sự kiện, id đã xoá (tombstone) không hồi sinh, khoảng cách 5s/người.
+      const ev = action.event;
+      if (!ev.id || !ev.title.trim() || ev.title.length > EVENT_TITLE_MAX || !isValidDateKey(ev.date)) return state;
+      if (state.events.some((e) => e.id === ev.id)) return state;
+      if ((state.deletedIds?.events ?? []).includes(ev.id)) return state;
+      if (state.events.length >= EVENTS_MAX) return state;
+      if (!contentAddAllowed(state, ev.createdBy, Date.now())) return state;
+      const clean: SpecialEvent = {
+        id: ev.id, title: ev.title.trim(), date: ev.date,
+        repeat: ev.repeat === "yearly" ? "yearly" : "once",
+        createdBy: ev.createdBy === "B" ? "B" : "A",
+        createdAt: ev.createdAt || new Date().toISOString(),
+        updatedAt: ev.updatedAt || new Date().toISOString(),
+      };
+      const actor = clean.createdBy === "A" ? state.personA : state.personB;
+      const next = { ...state, contentLog: { ...state.contentLog, [clean.createdBy]: new Date().toISOString() } };
+      return { ...next, events: [clean, ...state.events], activities: pushAct(next, actor, `đã thêm ngày đặc biệt "${clean.title}"`, "calendar") };
+    }
+    case "EVENT_EDIT": {
+      const idx = state.events.findIndex((e) => e.id === action.event.id);
+      if (idx < 0) return state;
+      if (!action.event.title.trim() || action.event.title.length > EVENT_TITLE_MAX || !isValidDateKey(action.event.date)) return state;
+      const cur = state.events[idx];
+      const edited: SpecialEvent = { ...cur, title: action.event.title.trim(), date: action.event.date, repeat: action.event.repeat === "yearly" ? "yearly" : "once", updatedAt: new Date().toISOString() };
+      if (JSON.stringify(edited) === JSON.stringify({ ...cur, updatedAt: edited.updatedAt })) return state;
+      return { ...state, events: state.events.map((e, i) => (i === idx ? edited : e)) };
+    }
+    case "EVENT_DEL": {
+      if (!state.events.some((e) => e.id === action.id)) return state;
+      return { ...state, events: state.events.filter((e) => e.id !== action.id), deletedIds: withTombstone(state, "events", action.id) };
     }
     default: return state;
   }

@@ -6,10 +6,12 @@ import { COLOR, FONT, ROLE, SHADOW_FLOAT } from "../../components/theme";
 import { QuickActions } from "../../components/QuickActions";
 
 /**
- * Tab bar — hệ "Vườn giấy ấm" (mockup vòng 2): tối đa 5 vị trí, luôn có icon + nhãn.
- * Nhà · Vườn · (+) giữa mở sheet hành động nhanh · Thư · Hai đứa (hub dẫn tới
- * Trò chơi / Tiện ích / Khung màn hình / Tài khoản — các màn đó là route Stack gốc
- * ở cấp app: /games, /utilities, /frames, /account).
+ * Tab bar — hệ "Vườn giấy ấm" (mockup vòng 2): 4 tab + nút giữa, luôn có icon + nhãn.
+ * Nhà · Vườn · (+) giữa mở sheet hành động nhanh · Hai đứa (hub dẫn tới
+ * Trò chơi / Tiện ích / Khung màn hình / Tài khoản / Thư đã lưu — các màn đó là
+ * route Stack gốc ở cấp app: /games, /utilities, /frames, /account, /letters).
+ * Thư KHÔNG còn là tab (user chốt 2026-10-23: thư chỉ là tính năng phụ) — nó là
+ * route Stack /letters với lối vào duy nhất ở hub Hai đứa.
  * Trình bày theo mockup: thanh trắng mờ, bóng mềm từ dưới lên, KHÔNG viền cứng phía
  * trên; tab đang chọn có pill hồng mềm nằm SAU icon + nhãn đậm màu primary; đĩa "+"
  * 56px màu primary nổi lên trên với viền màu canvas và bóng rose.
@@ -71,7 +73,6 @@ export default function TabsLayout() {
             ),
           }}
         />
-        <Tabs.Screen name="letters" options={{ title: "Thư", tabBarIcon: ({ focused }) => <TabIcon name={focused ? "mail" : "mail-outline"} focused={focused} /> }} />
         <Tabs.Screen name="couple" options={{ title: "Hai đứa", tabBarIcon: ({ focused }) => <TabIcon name={focused ? "people" : "people-outline"} focused={focused} /> }} />
       </Tabs>
       <QuickActions visible={quickOpen} onClose={() => setQuickOpen(false)} />

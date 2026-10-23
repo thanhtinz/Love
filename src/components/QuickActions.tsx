@@ -4,6 +4,7 @@ import { router } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { decideCareDrop, myName, useLove } from "../lib/store";
 import { careStatus, speciesById } from "../lib/plants";
+import { PING_DAILY_MAX, today } from "../lib/types";
 import { COLOR, FONT, RADIUS, ROLE, SPACE } from "./theme";
 
 /**
@@ -38,7 +39,23 @@ export function QuickActions({ visible, onClose }: { visible: boolean; onClose: 
     router.push("/(tabs)/garden");
   }
 
+  function sendPing() {
+    // "Nhớ bạn" nhịp tim: gửi ngay 1 nhịp (reducer tự chặn khi đủ 50 nhịp/ngày).
+    dispatch({ type: "PING_SEND", user: me, actor: myName(state) });
+    onClose();
+  }
+
+  const myPingsToday = state.pings.day.date === today() ? state.pings.day[me] : 0;
+
   const rows: { icon: string; label: string; desc: string; color: string; bg: string; onPress: () => void }[] = [
+    {
+      icon: "heart",
+      label: "Gửi nhịp nhớ bạn",
+      desc: myPingsToday >= PING_DAILY_MAX ? `Hôm nay bạn đã gửi đủ ${PING_DAILY_MAX} nhịp rồi` : `Chạm là gửi ngay một nhịp tim · hôm nay bạn đã gửi ${myPingsToday}/${PING_DAILY_MAX} nhịp`,
+      color: COLOR.primary,
+      bg: ROLE.selfSoft,
+      onPress: sendPing,
+    },
     {
       icon: "water",
       label: "Tưới nước cho cây",

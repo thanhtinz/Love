@@ -1,5 +1,5 @@
 import {
-  AppState, PersonId, PlantState, SecStamp, defaultState,
+  AppState, EVENTS_MAX, PersonId, PlantState, SecStamp, defaultState,
 } from "./types";
 import { speciesById, totalGrowthMs } from "./plants";
 
@@ -251,6 +251,73 @@ export function mergeStates(local: AppState, remote: AppState, mySlot: PersonId)
     frameRewards = { date: local.frameRewards.date, claimed: [...new Set([...local.frameRewards.claimed, ...remote.frameRewards.claimed])] };
   }
 
+  /* --- gói tính năng 2026-10-23 ---
+   * pings/presence/cycle: PER-SLOT, ưu tiên tuyệt đối cho bản do CHÍNH chủ slot ghi
+   * (slotWinner như moods/loveNotes) — máy người kia không bao giờ đè được dữ liệu
+   * cá nhân của chủ nhân, kể cả khi đồng hồ của họ "mới hơn". */
+  const pickSlot = <T,>(key: string, slot: PersonId, lval: T, rval: T): T => {
+    if (JSON.stringify(lval) === JSON.stringify(rval)) return lval;
+    const w = slotWinner(local, remote, key, slot, remoteNewer);
+    stampFrom(`${key}:${slot}`, w === "local" ? local : remote);
+    return w === "local" ? lval : rval;
+  };
+  const pingsDay = local.pings.day.date !== remote.pings.day.date
+    ? (local.pings.day.date > remote.pings.day.date ? local.pings.day : remote.pings.day)
+    : { date: local.pings.day.date, A: Math.max(local.pings.day.A, remote.pings.day.A), B: Math.max(local.pings.day.B, remote.pings.day.B) };
+  const pings = {
+    A: pickSlot("pings", "A", local.pings.A, remote.pings.A),
+    B: pickSlot("pings", "B", local.pings.B, remote.pings.B),
+    day: pingsDay,
+  };
+  const presence = {
+    A: pickSlot("presence", "A", local.presence.A, remote.presence.A),
+    B: pickSlot("presence", "B", local.presence.B, remote.presence.B),
+  };
+  const cycle = {
+    A: pickSlot("cycle", "A", local.cycle.A, remote.cycle.A),
+    B: pickSlot("cycle", "B", local.cycle.B, remote.cycle.B),
+  };
+
+  /* decor: owned HỢP NHẤT hai máy (mua ở máy nào cũng không mất món); phần đang
+   * trang bị quyết theo dấu mục "decor" như equipped; món đang trang bị mà không
+   * nằm trong owned hợp nhất (dữ liệu lệch) thì rơi về mặc định thay vì hiện đồ ma. */
+  const decorOwned = [...new Set([...local.decor.owned, ...remote.decor.owned])];
+  const decorStampL = stampOf(local, "decor");
+  const decorStampR = stampOf(remote, "decor");
+  const decorSide = decorStampL && decorStampR ? (decorStampL.t >= decorStampR.t ? local : remote) : (decorStampL ? local : decorStampR ? remote : newer);
+  const decorSrc = decorSide.decor;
+  const decor = {
+    owned: decorOwned,
+    sceneBg: decorOwned.includes(decorSrc.sceneBg) ? decorSrc.sceneBg : "",
+    fence: decorOwned.includes(decorSrc.fence) ? decorSrc.fence : "",
+    path: decorOwned.includes(decorSrc.path) ? decorSrc.path : "",
+    placed: decorSrc.placed.filter((id) => decorOwned.includes(id)).slice(0, 3),
+  };
+
+  /* pet: section CHUNG — chỉ số đói/vui lấy từ phía có lần chăm MỚI HƠN (chúng đã
+   * được materialize kèm statsAt khi chăm); ngày chăm hợp nhất (lớn theo ngày không
+   * bao giờ thụt lùi vì đồng bộ); đếm chăm/thưởng lấy max theo từng người. */
+  const petCareSide = (local.pet.lastCareAt || "") >= (remote.pet.lastCareAt || "") ? local.pet : remote.pet;
+  const petStampL = stampOf(local, "pet");
+  const petStampR = stampOf(remote, "pet");
+  const petNameSide = petStampL && petStampR ? (petStampL.t >= petStampR.t ? local.pet : remote.pet) : petCareSide;
+  const petRewardDay = local.pet.rewardDay.date !== remote.pet.rewardDay.date
+    ? (local.pet.rewardDay.date > remote.pet.rewardDay.date ? local.pet.rewardDay : remote.pet.rewardDay)
+    : { date: local.pet.rewardDay.date, A: Math.max(local.pet.rewardDay.A, remote.pet.rewardDay.A), B: Math.max(local.pet.rewardDay.B, remote.pet.rewardDay.B) };
+  const pet = {
+    name: petNameSide.name,
+    bornAt: local.pet.bornAt <= remote.pet.bornAt ? local.pet.bornAt : remote.pet.bornAt,
+    hunger: petCareSide.hunger, joy: petCareSide.joy, statsAt: petCareSide.statsAt,
+    careDays: [...new Set([...local.pet.careDays, ...remote.pet.careDays])].sort().slice(-90),
+    lastCareAt: petCareSide.lastCareAt,
+    lastCareAtBy: {
+      A: (local.pet.lastCareAtBy.A || "") >= (remote.pet.lastCareAtBy.A || "") ? local.pet.lastCareAtBy.A : remote.pet.lastCareAtBy.A,
+      B: (local.pet.lastCareAtBy.B || "") >= (remote.pet.lastCareAtBy.B || "") ? local.pet.lastCareAtBy.B : remote.pet.lastCareAtBy.B,
+    },
+    careCount: { A: Math.max(local.pet.careCount.A, remote.pet.careCount.A), B: Math.max(local.pet.careCount.B, remote.pet.careCount.B) },
+    rewardDay: petRewardDay,
+  };
+
   /* --- sưu tập: union theo id --- */
   const letterMap = new Map(local.letters.map((l) => [l.id, l]));
   for (const rl of remote.letters) {
@@ -288,7 +355,20 @@ export function mergeStates(local: AppState, remote: AppState, mySlot: PersonId)
     notes: unionDeleted(local.deletedIds?.notes, remote.deletedIds?.notes),
     bucket: unionDeleted(local.deletedIds?.bucket, remote.deletedIds?.bucket),
     memories: unionDeleted(local.deletedIds?.memories, remote.deletedIds?.memories),
+    events: unionDeleted(local.deletedIds?.events, remote.deletedIds?.events),
   };
+  /* events: union theo id + tombstone như memories; cùng id mà hai phía lệch nội
+   * dung (một phía vừa sửa) thì bản updatedAt MỚI HƠN thắng. */
+  const eventMap = new Map(local.events.map((e) => [e.id, e]));
+  for (const re of remote.events) {
+    const le = eventMap.get(re.id);
+    if (!le) eventMap.set(re.id, re);
+    else if ((re.updatedAt || "") > (le.updatedAt || "")) eventMap.set(re.id, re);
+  }
+  const events = [...eventMap.values()]
+    .filter((e) => !deletedIds.events.includes(e.id))
+    .sort((a, b) => (b.createdAt || "").localeCompare(a.createdAt || ""))
+    .slice(0, EVENTS_MAX);
   const notes = unionById(local.notes, remote.notes).filter((n) => !deletedIds.notes.includes(n.id)).sort((a, b) => (b.createdAt || "").localeCompare(a.createdAt || ""));
   const bucketMap = new Map(local.bucket.map((x) => [x.id, x]));
   for (const rb of remote.bucket) {
@@ -379,6 +459,7 @@ export function mergeStates(local: AppState, remote: AppState, mySlot: PersonId)
     moods, answers, daily, games, loveNotes, loveLimits, contentLog, frameRewards,
     letters, letterCollection, notes, bucket, memories, activities, treeCollection, deletedIds,
     plants, selectedPlantId, lastLoveAction,
+    pings, presence, cycle, decor, pet, events,
     updatedAt: lt >= rt ? lt : rt,
     secTs,
   };
@@ -399,6 +480,9 @@ const SLOT_SPECS: SlotSpec[] = [
   { key: "loveNotes", get: (s, slot) => s.loveNotes[slot] },
   { key: "loveLimits", get: (s, slot) => ({ c: s.loveLimits.counts[slot], at: s.loveLimits.lastAt[slot] }) },
   { key: "contentLog", get: (s, slot) => s.contentLog[slot] },
+  { key: "pings", get: (s, slot) => s.pings[slot] },
+  { key: "presence", get: (s, slot) => s.presence[slot] },
+  { key: "cycle", get: (s, slot) => s.cycle[slot] },
 ];
 const SHARED_SPECS: { key: string; get: (s: AppState) => unknown }[] = [
   { key: "letters", get: (s) => s.letters },
@@ -417,6 +501,9 @@ const SHARED_SPECS: { key: string; get: (s: AppState) => unknown }[] = [
   { key: "equipped", get: (s) => s.equipped },
   { key: "frameRewards", get: (s) => s.frameRewards },
   { key: "lastLoveAction", get: (s) => s.lastLoveAction },
+  { key: "decor", get: (s) => s.decor },
+  { key: "pet", get: (s) => s.pet },
+  { key: "events", get: (s) => s.events },
 ];
 
 function sameValue(a: unknown, b: unknown): boolean {
