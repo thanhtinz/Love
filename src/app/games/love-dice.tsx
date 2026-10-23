@@ -88,7 +88,7 @@ export default function LoveDiceScreen() {
 
   return (
     <View style={s.screen}>
-      <ScreenHeader title="Xúc xắc hẹn hò" subtitle="Gieo 2 xúc xắc: một hành động yêu thương + một bối cảnh hẹn" />
+      <ScreenHeader fallback="/games" title="Xúc xắc hẹn hò" subtitle="Gieo 2 xúc xắc: một hành động yêu thương + một bối cảnh hẹn" />
       <ScrollView contentContainerStyle={s.scroll}>
         <View style={s.card}>
           <View style={{ flexDirection: "row", alignItems: "center", gap: 9 }}>

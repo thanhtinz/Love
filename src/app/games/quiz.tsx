@@ -36,7 +36,7 @@ export default function QuizScreen() {
 
   return (
     <View style={s.screen}>
-      <ScreenHeader title="Hiểu ý nhau" subtitle="Trắc nghiệm mỗi ngày — đáp án niêm phong riêng từng người" />
+      <ScreenHeader fallback="/games" title="Hiểu ý nhau" subtitle="Trắc nghiệm mỗi ngày — đáp án niêm phong riêng từng người" />
       <ScrollView contentContainerStyle={s.scroll}>
         {/* Khu vực của BẠN */}
         <View style={s.card}>

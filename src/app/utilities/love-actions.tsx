@@ -27,7 +27,7 @@ export default function LoveActionsScreen() {
 
   return (
     <View style={s.screen}>
-      <ScreenHeader title="Hành động yêu thương" subtitle={`Gửi yêu thương cho ${partner.name} — nghỉ ${LOVE_ACTION_COOLDOWN_MS / 1000} giây giữa 2 lần, tối đa ${LOVE_ACTION_DAILY_MAX} lần/ngày`} />
+      <ScreenHeader fallback="/utilities" title="Hành động yêu thương" subtitle={`Gửi yêu thương cho ${partner.name} — nghỉ ${LOVE_ACTION_COOLDOWN_MS / 1000} giây giữa 2 lần, tối đa ${LOVE_ACTION_DAILY_MAX} lần/ngày`} />
       <ScrollView contentContainerStyle={s.scroll}>
         <View style={s.card}>
           <View style={{ flexDirection: "row", alignItems: "center", gap: 9 }}>

@@ -93,7 +93,7 @@ export default function SpinWheelScreen() {
 
   return (
     <View style={s.screen}>
-      <ScreenHeader title="Vòng quay yêu thương" subtitle="Trúng Xu Tim, XP, thư tình hoặc nhiệm vụ hẹn hò" />
+      <ScreenHeader fallback="/games" title="Vòng quay yêu thương" subtitle="Trúng Xu Tim, XP, thư tình hoặc nhiệm vụ hẹn hò" />
       <ScrollView contentContainerStyle={s.scroll}>
         <View style={s.card}>
           <View style={{ gap: 8 }}>

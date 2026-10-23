@@ -14,7 +14,7 @@ export default function FrameMoodScreen() {
 
   return (
     <View style={s.screen}>
-      <ScreenHeader title="Khung Mood hai người" subtitle="Mỗi người một cột riêng, ghi rõ tên — không lẫn lộn" />
+      <ScreenHeader fallback="/frames" title="Khung Mood hai người" subtitle="Mỗi người một cột riêng, ghi rõ tên — không lẫn lộn" />
       <ScrollView contentContainerStyle={s.scroll}>
         <FrameExport kind="mood" hasContent={!!(moodsToday.A || moodsToday.B)}>
           <Text style={{ fontSize: 16, fontFamily: "BeVietnamPro_900Black", color: C.pinkDark }}>Tâm trạng hôm nay</Text>

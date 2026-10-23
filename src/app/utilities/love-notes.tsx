@@ -49,7 +49,7 @@ export default function LoveNotesScreen() {
 
   return (
     <View style={s.screen}>
-      <ScreenHeader title="Love Notes" subtitle="Lời nhắn ghim lâu dài của từng người + ghi chú nhanh chung" />
+      <ScreenHeader fallback="/utilities" title="Love Notes" subtitle="Lời nhắn ghim lâu dài của từng người + ghi chú nhanh chung" />
       <ScrollView contentContainerStyle={s.scroll}>
         {/* Lời nhắn của BẠN */}
         <View style={[s.card, { borderColor: "#FFC4CF", borderWidth: 1.5 }]}>

@@ -83,7 +83,7 @@ export default function MemoryMatchScreen() {
 
   return (
     <View style={s.screen}>
-      <ScreenHeader title="Ghép cặp ký ức" subtitle="Lật 12 lá tìm 6 cặp mặt giống nhau — thắng là nhận thưởng ngày" />
+      <ScreenHeader fallback="/games" title="Ghép cặp ký ức" subtitle="Lật 12 lá tìm 6 cặp mặt giống nhau — thắng là nhận thưởng ngày" />
       <ScrollView contentContainerStyle={s.scroll}>
         <View style={s.card}>
           <View style={{ flexDirection: "row", alignItems: "center", gap: 9 }}>

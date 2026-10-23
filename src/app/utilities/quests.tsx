@@ -52,7 +52,7 @@ export default function QuestsScreen() {
 
   return (
     <View style={s.screen}>
-      <ScreenHeader title="Nhiệm vụ & huy hiệu" subtitle="Nhiệm vụ ngày tính riêng từng người — huy hiệu và streak là chung" />
+      <ScreenHeader fallback="/utilities" title="Nhiệm vụ & huy hiệu" subtitle="Nhiệm vụ ngày tính riêng từng người — huy hiệu và streak là chung" />
       <ScrollView contentContainerStyle={s.scroll}>
         {/* Dải đếm ngày GỌN (1 khối nhỏ) + segmented Nhiệm vụ/Huy hiệu để màn hình ngắn lại */}
         <View style={[s.card, { backgroundColor: "#FFE9EE", gap: 7 }]}>

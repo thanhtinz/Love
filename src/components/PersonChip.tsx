@@ -20,7 +20,7 @@ export const PARTNER_COLOR = ROLE.partnerDark; // sắc đậm của mint để 
 export const PARTNER_MAIN = ROLE.partner;
 export const PARTNER_BG = ROLE.partnerSoft;
 
-export interface PersonInfo { slot: PersonId; name: string; avatar: string; isSelf: boolean; color: string; bg: string }
+export interface PersonInfo { slot: PersonId; name: string; avatar: string; isSelf: boolean; color: string; bg: string; main: string }
 
 export function personOf(state: AppState, slot: PersonId): PersonInfo {
   const isSelf = slot === state.currentUser;
@@ -31,6 +31,7 @@ export function personOf(state: AppState, slot: PersonId): PersonInfo {
     isSelf,
     color: isSelf ? SELF_COLOR : PARTNER_COLOR,
     bg: isSelf ? SELF_BG : PARTNER_BG,
+    main: isSelf ? SELF_MAIN : PARTNER_MAIN,
   };
 }
 export const selfOf = (state: AppState): PersonInfo => personOf(state, state.currentUser);
@@ -41,7 +42,7 @@ export const PersonChip = memo(function PersonChip({ state, slot, size = 22, sho
   const p = personOf(state, slot);
   return (
     <View style={{ flexDirection: "row", alignItems: "center", gap: 5, backgroundColor: p.bg, borderRadius: 999, paddingLeft: 2, paddingRight: 8, paddingVertical: 2, alignSelf: "flex-start", flexShrink: 1, minWidth: 0 }}>
-      <Avatar id={p.avatar} size={size} />
+      <Avatar id={p.avatar} size={size} ring={p.main} />
       <Text style={{ fontSize: 12, fontFamily: FONT.bold, color: p.color, flexShrink: 1 }} numberOfLines={1}>{p.name}</Text>
       {p.isSelf && showYouTag && (
         <View style={{ backgroundColor: ROLE.self, borderRadius: 999, paddingHorizontal: 6, paddingVertical: 1 }}>

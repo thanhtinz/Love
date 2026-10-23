@@ -1,5 +1,6 @@
 import { Image } from "expo-image";
 import { View } from "react-native";
+import { COLOR } from "./theme";
 import heroSrc from "../../assets/art/couple-hero.webp";
 import letterSrc from "../../assets/art/couple-letter.webp";
 import mascotSrc from "../../assets/art/mascot-mam.webp";
@@ -15,6 +16,16 @@ export const ART_BG = {
 // HERO trang Nhà: tranh vẽ thật cặp đôi bên chậu hoa hồng, cover kín khung hero.
 export function HeroArt() {
   return <Image source={heroSrc} style={{ width: "100%", height: "100%" }} contentFit="cover" accessibilityLabel="Hai đứa bên chậu hoa hồng" />;
+}
+
+// Dải tranh hero vòng 2: tranh là một DẢI CẢNH phía trên tấm giấy "Ngày N" —
+// neo điểm lấy nét ở 28% chiều cao tranh như mockup (object-position: center 28%).
+export function HeroBand({ height = 118 }: { height?: number }) {
+  return (
+    <View style={{ width: "100%", height, overflow: "hidden" }}>
+      <Image source={heroSrc} style={{ width: "100%", height: "100%" }} contentFit="cover" contentPosition={{ top: "28%" }} accessibilityLabel="Hai đứa bên chậu hoa hồng" />
+    </View>
+  );
 }
 
 // Tranh thư tình cho màn hình đăng nhập/đăng ký và ghép cặp — contain trong khung nền khớp màu tranh.
@@ -82,6 +93,48 @@ export function EmptyPlotImage({ size = 62 }: { size?: number }) {
   );
 }
 
+/**
+ * BỆ CẢNH cây — trình bày "tranh là cảnh" của hệ Vườn giấy ấm (thay ô trắng vuông):
+ * ellipse đất #E9D8BE ở đáy + tranh cây contain đứng trên đất. Nền tranh trắng được
+ * hoà vào nền cảnh bằng mixBlendMode "multiply" (hiệu lực trên bản web; native bỏ qua
+ * thuộc tính này và tranh hiện nguyên khung — chấp nhận được, không vỡ bố cục).
+ * Trạng thái yếu/héo vẫn bằng opacity + phủ xám như PlantImage.
+ */
+export function PlantScene({ speciesId, stageIndex, status, height, imgHeight, soilRatio = 0.16 }: {
+  speciesId: string;
+  stageIndex: number;
+  status?: string;
+  height: number;
+  imgHeight: number;
+  soilRatio?: number;
+}) {
+  const stages = PLANT_ART[speciesId] ?? PLANT_ART["love-tree"];
+  const src = stages[Math.max(0, Math.min(stageIndex, stages.length - 1))];
+  const wilted = status === "wilted";
+  const weak = status === "need";
+  return (
+    <View style={{ height, alignItems: "center", justifyContent: "flex-end", position: "relative" }}>
+      <View style={{ position: "absolute", bottom: 2, alignSelf: "center", width: "82%", height: Math.round(height * soilRatio), backgroundColor: COLOR.soil, borderRadius: 999, opacity: 0.85 }} />
+      <Image
+        source={src}
+        style={{ height: imgHeight, width: imgHeight, mixBlendMode: "multiply", opacity: wilted ? 0.55 : weak ? 0.8 : 1 } as never}
+        contentFit="contain"
+        accessibilityLabel="Cây trong vườn"
+      />
+      {wilted && <View style={{ position: "absolute", top: 0, left: 0, right: 0, bottom: 0, backgroundColor: "rgba(105,105,105,0.14)" }} />}
+    </View>
+  );
+}
+
+/** Bệ cảnh ô đất trống — cùng ngôn ngữ với PlantScene, không hộp trắng. */
+export function EmptyPlotScene({ height, imgHeight }: { height: number; imgHeight: number }) {
+  return (
+    <View style={{ height, alignItems: "center", justifyContent: "flex-end", position: "relative" }}>
+      <Image source={EMPTY_PLOT_ART} style={{ height: imgHeight, width: imgHeight, mixBlendMode: "multiply" } as never} contentFit="contain" accessibilityLabel="Ô đất trống" />
+    </View>
+  );
+}
+
 // ===== BỘ TRANH THẬT THỨ HAI: avatar / mood / shop / misc =====
 export const AVATAR_ART: Record<string, number> = {
   "svg-a": require("../../assets/art/avatars/svg-a.webp"),
@@ -131,14 +184,15 @@ const HEART_GAME_ART = require("../../assets/art/misc/heart-game.webp");
 const MEMORIES_EMPTY_ART = require("../../assets/art/misc/memories-empty.webp");
 const BUCKET_EMPTY_ART = require("../../assets/art/misc/bucket-empty.webp");
 
-// Phong bì thư vẽ thật — thư rơi trong vườn + minh hoạ trong modal đọc thư (nền trắng, contain).
+// Phong bì thư vẽ thật — thư rơi trong vườn + minh hoạ trong sheet đọc thư.
+// mixBlendMode multiply: nền trắng của tranh hoà vào giấy thư (hiệu lực trên web).
 export function LetterEnvelopeImage({ size = 58 }: { size?: number }) {
-  return <Image source={LETTER_ENVELOPE_ART} style={{ width: size, height: size }} contentFit="contain" accessibilityLabel="Phong bì thư" />;
+  return <Image source={LETTER_ENVELOPE_ART} style={{ width: size, height: size, mixBlendMode: "multiply" } as never} contentFit="contain" accessibilityLabel="Phong bì thư" />;
 }
 
-// Trái tim vẽ thật — mục tiêu trong game Bắt tim bay (nền trắng, contain).
+// Trái tim vẽ thật — tâm vòng quay Vòng quay yêu thương + mặt sau lá bài Ghép cặp ký ức.
 export function HeartGameImage({ size = 44 }: { size?: number }) {
-  return <Image source={HEART_GAME_ART} style={{ width: size, height: size }} contentFit="contain" accessibilityLabel="Trái tim" />;
+  return <Image source={HEART_GAME_ART} style={{ width: size, height: size, mixBlendMode: "multiply" } as never} contentFit="contain" accessibilityLabel="Trái tim" />;
 }
 
 // Trạng thái trống Kỷ niệm — khung nền kem khớp màu nền tranh (#fbecdd đo từ góc tranh).

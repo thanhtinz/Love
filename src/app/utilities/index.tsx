@@ -24,7 +24,7 @@ export default function UtilitiesHubScreen() {
 
   return (
     <View style={s.screen}>
-      <ScreenHeader title="Tiện ích đôi mình" subtitle="Mỗi tiện ích một màn hình riêng — trạng thái của bạn và của người ấy luôn tách bạch" />
+      <ScreenHeader fallback="/(tabs)/couple" title="Tiện ích đôi mình" subtitle="Mỗi tiện ích một màn hình riêng — trạng thái của bạn và của người ấy luôn tách bạch" />
       <ScrollView contentContainerStyle={s.scroll}>
       <View style={{ gap: 9 }}>
         <FeatureCard icon="happy" title="Mood hôm nay" desc="Mood của bạn và của người ấy hôm nay" color={C.amber} bg="#fef3c7" route="/utilities/mood" badge={moodDone ? undefined : "Chưa chọn"} />

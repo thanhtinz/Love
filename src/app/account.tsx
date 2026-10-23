@@ -61,7 +61,7 @@ export default function AccountScreen() {
 
   return (
     <View style={s.screen}>
-      <ScreenHeader title="Tài khoản của bạn" subtitle="Hồ sơ, avatar, mã mời và đăng xuất" />
+      <ScreenHeader fallback="/(tabs)/couple" title="Tài khoản của bạn" subtitle="Hồ sơ, avatar, mã mời và đăng xuất" />
       <ScrollView contentContainerStyle={s.scroll}>
       <View style={[s.card, { alignItems: "center", gap: 6 }]}>
         <Avatar id={user.avatar} size={76} />

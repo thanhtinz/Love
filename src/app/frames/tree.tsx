@@ -26,7 +26,7 @@ export default function FrameTreeScreen() {
 
   return (
     <View style={s.screen}>
-      <ScreenHeader title="Khung Cây hôm nay" subtitle="Một thông tin chính: cây đang lớn tới đâu" />
+      <ScreenHeader fallback="/frames" title="Khung Cây hôm nay" subtitle="Một thông tin chính: cây đang lớn tới đâu" />
       <ScrollView contentContainerStyle={s.scroll}>
         <FrameExport kind="tree" hasContent={!!plant}>
           <Text style={{ fontSize: 15, fontFamily: "BeVietnamPro_700Bold", color: C.pinkDark }}>Cây hôm nay</Text>

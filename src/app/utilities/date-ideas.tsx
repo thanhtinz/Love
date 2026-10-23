@@ -71,7 +71,7 @@ export default function DateIdeasScreen() {
 
   return (
     <View style={s.screen}>
-      <ScreenHeader title="Gợi ý hẹn hò" subtitle="Kế hoạch tối nay theo mood của hai đứa + ý tưởng ngẫu nhiên" />
+      <ScreenHeader fallback="/utilities" title="Gợi ý hẹn hò" subtitle="Kế hoạch tối nay theo mood của hai đứa + ý tưởng ngẫu nhiên" />
       <ScrollView contentContainerStyle={s.scroll}>
         {/* KẾ HOẠCH TỐI NAY */}
         <View style={[s.card, { gap: 9 }]}>

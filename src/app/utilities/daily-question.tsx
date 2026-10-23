@@ -28,7 +28,7 @@ export default function DailyQuestionScreen() {
 
   return (
     <View style={s.screen}>
-      <ScreenHeader title="Câu hỏi mỗi ngày" subtitle="Mỗi người trả lời riêng — cả hai trả lời xong mới mở đáp án của nhau" />
+      <ScreenHeader fallback="/utilities" title="Câu hỏi mỗi ngày" subtitle="Mỗi người trả lời riêng — cả hai trả lời xong mới mở đáp án của nhau" />
       <ScrollView contentContainerStyle={s.scroll}>
         <View style={[s.card, { backgroundColor: "#E5EBF2", borderColor: "#C9D6E4" }]}>
           <Text style={{ fontSize: 16, fontFamily: "BeVietnamPro_700Bold", color: C.text, lineHeight: 23 }}>{q}</Text>

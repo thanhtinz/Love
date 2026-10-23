@@ -32,7 +32,7 @@ export default function BucketListScreen() {
 
   return (
     <View style={s.screen}>
-      <ScreenHeader title="Bucket List" subtitle="Những việc hai bạn muốn làm cùng nhau" />
+      <ScreenHeader fallback="/utilities" title="Bucket List" subtitle="Những việc hai bạn muốn làm cùng nhau" />
       <ScrollView contentContainerStyle={s.scroll}>
         <View style={s.card}>
           <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>

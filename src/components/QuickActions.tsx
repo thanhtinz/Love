@@ -59,8 +59,8 @@ export function QuickActions({ visible, onClose }: { visible: boolean; onClose: 
       icon: "document-text",
       label: "Thêm ghi chú",
       desc: "Dán một lời nhắn nhanh lên Love Notes",
-      color: "#8B5CF6",
-      bg: "#EFEAFE",
+      color: ROLE.shared,
+      bg: ROLE.sharedSoft,
       onPress: () => go("/utilities/love-notes"),
     },
     {
@@ -75,11 +75,12 @@ export function QuickActions({ visible, onClose }: { visible: boolean; onClose: 
 
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
-      <TouchableOpacity style={{ flex: 1, backgroundColor: "rgba(34,40,54,0.45)" }} activeOpacity={1} onPress={onClose} accessibilityLabel="Đóng thực đơn nhanh" />
-      <View style={{ backgroundColor: "#fff", borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: SPACE.lg, paddingBottom: 26, gap: SPACE.sm }}>
-        <Text style={{ fontFamily: FONT.bold, fontSize: 17, color: COLOR.text }}>Làm gì nhanh nào?</Text>
+      <TouchableOpacity style={{ flex: 1, backgroundColor: "rgba(51,39,46,0.42)" }} activeOpacity={1} onPress={onClose} accessibilityLabel="Đóng thực đơn nhanh" />
+      <View style={{ backgroundColor: "#fff", borderTopLeftRadius: RADIUS.sheet, borderTopRightRadius: RADIUS.sheet, padding: SPACE.xl, paddingTop: 10, paddingBottom: 26, gap: SPACE.sm }}>
+        <View style={{ alignSelf: "center", width: 38, height: 5, borderRadius: 3, backgroundColor: "#EBD9D2", marginBottom: 6 }} />
+        <Text style={{ fontFamily: FONT.extrabold, fontSize: 19, color: COLOR.text }}>Làm gì nhanh nào?</Text>
         {rows.map((r) => (
-          <TouchableOpacity key={r.label} onPress={r.onPress} style={{ flexDirection: "row", alignItems: "center", gap: 12, minHeight: 58, borderRadius: RADIUS.inner, backgroundColor: COLOR.bg, borderWidth: 1, borderColor: COLOR.border, paddingHorizontal: 12, paddingVertical: 8 }}>
+          <TouchableOpacity key={r.label} onPress={r.onPress} style={{ flexDirection: "row", alignItems: "center", gap: 12, minHeight: 58, borderRadius: RADIUS.inner, backgroundColor: COLOR.bg, paddingHorizontal: 12, paddingVertical: 8 }}>
             <View style={{ width: 42, height: 42, borderRadius: 21, backgroundColor: r.bg, alignItems: "center", justifyContent: "center" }}>
               <Ionicons name={r.icon as never} size={21} color={r.color} />
             </View>
@@ -87,11 +88,11 @@ export function QuickActions({ visible, onClose }: { visible: boolean; onClose: 
               <Text style={{ fontFamily: FONT.semibold, fontSize: 14.5, color: COLOR.text }}>{r.label}</Text>
               <Text style={{ fontFamily: FONT.medium, fontSize: 12, color: COLOR.textSoft }} numberOfLines={1}>{r.desc}</Text>
             </View>
-            <Ionicons name="chevron-forward" size={17} color={COLOR.textFaint} />
+            <Ionicons name="chevron-forward" size={17} color={COLOR.chevron} />
           </TouchableOpacity>
         ))}
-        <TouchableOpacity onPress={onClose} style={{ alignItems: "center", justifyContent: "center", minHeight: 44, borderRadius: RADIUS.pill, backgroundColor: ROLE.selfSoft, marginTop: 2 }}>
-          <Text style={{ fontFamily: FONT.semibold, fontSize: 14, color: ROLE.selfDark }}>Đóng</Text>
+        <TouchableOpacity onPress={onClose} style={{ alignItems: "center", justifyContent: "center", minHeight: 48, borderRadius: RADIUS.control, backgroundColor: "#fff", borderWidth: 1.5, borderColor: COLOR.lineStrong, marginTop: 2 }}>
+          <Text style={{ fontFamily: FONT.bold, fontSize: 14, color: COLOR.text }}>Đóng</Text>
         </TouchableOpacity>
       </View>
     </Modal>

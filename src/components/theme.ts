@@ -1,14 +1,15 @@
 /**
- * DESIGN SYSTEM — Khu Vườn Tình Yêu (đợt thiết kế lại theo nghiên cứu UI app couple).
+ * DESIGN SYSTEM — Khu Vườn Tình Yêu, hệ "VƯỜN GIẤY ẤM" (2026-10-23).
  *
- * Nguồn quy tắc: ~/workspace/research_notes/couple-app-ui-references-20261022-1509/report.md
- * - Hệ màu 3 VAI cố định toàn app (Cupla): Bạn / Người ấy / Chúng mình — luôn kèm avatar + tên,
- *   không bao giờ phân biệt chỉ bằng màu.
- * - Spacing lưới 4/8 (quy tắc 11): lề màn hình 16, khoảng cách card 12, trong card 16, nhóm cách 20.
- * - Bo góc: card 20, nút 16 (CTA chính dạng pill), avatar tròn. Touch target tối thiểu 44px.
- * - Thang chữ 4 CẤP (quy tắc 12): Display 30 CHỈ dành cho số ngày yêu (D-day);
- *   Title 19, Body 15.5, Caption 12.5. Font Be Vietnam Pro (bo tròn, đủ dấu tiếng Việt).
- * - Mật độ (quy tắc 10): 1 card = 1 ý, tối đa 3 card trên fold, mỗi section 1 CTA chính.
+ * Nguồn: bản tham khảo vòng 2 được user duyệt (artifact
+ * b-n-tham-kh-o-giao-di-n-v-ng-2-khu-v-n-t-nh-y-u) + báo cáo
+ * ~/workspace/research_notes/couple-app-ui-redo-20261023/report.md (vòng 1)
+ * và report-round2.md (4 delta + ngân sách phần tử mỗi màn).
+ *
+ * Nguyên tắc cốt lõi: Ít card hơn; card quan trọng lớn và ấm hơn. Tranh là CẢNH,
+ * không phải thumbnail. Chữ chính phải thật lớn, chữ phụ phải thật lặng. Màu chỉ
+ * xuất hiện khi nó mang nghĩa: rose = Bạn + CTA chính, teal = Người ấy + vườn khỏe,
+ * navy = Chúng mình. Mỗi viewport tối đa MỘT nút primary #D94373.
  *
  * File này CHỈ chứa hằng số trình bày — không chứa logic nghiệp vụ.
  */
@@ -23,84 +24,122 @@ export const FONT = {
   black: "BeVietnamPro_900Black",
 } as const;
 
-/* ---------- Màu: 3 vai + trung tính ấm ---------- */
+/* ---------- Ba vai — giữ ý tưởng, chỉnh độ sâu theo mockup vòng 2 ---------- */
 export const ROLE = {
-  /** Bạn (người đang đăng nhập) — hồng đào */
-  self: "#FF8FA3",
-  selfDark: "#C93A5B", // chữ/icon của "Bạn" trên nền sáng (đủ tương phản)
-  selfSoft: "#FFE9EE",
+  /** Bạn (người đang đăng nhập) — hồng rose */
+  self: "#F2789A",
+  selfDark: "#C73369", // chữ/icon của "Bạn" trên nền sáng
+  selfSoft: "#FFE3EC",
   /** Người ấy (đối phương) — xanh mint */
-  partner: "#3EC6B8",
-  partnerDark: "#159e8f", // xanh teal đậm — accent/teal đậm theo spec mockup tham chiếu
-  partnerSoft: "#D9F4F0",
-  /** Chúng mình (việc chung của hai người) — xanh navy trầm */
-  shared: "#2F4A67",
-  sharedDark: "#223850",
-  sharedSoft: "#E5EBF2",
+  partner: "#2FBFAE",
+  partnerDark: "#0E7C74",
+  partnerSoft: "#DDF5F0",
+  /** Chúng mình (việc chung của hai người) — xanh navy */
+  shared: "#35506B",
+  sharedDark: "#24384E",
+  sharedSoft: "#E7EDF4",
 } as const;
 
 export const COLOR = {
-  bg: "#fff6f3", // nền hồng rất nhạt theo spec mockup tham chiếu
-  card: "#FFFFFF", // card trắng thuần
-  primary: "#e14b78", // CTA chính — hồng rose theo spec mockup, chữ trắng đọc rõ
-  tealDark: "#159e8f", // accent teal đậm (vai trò của Người ấy khi cần sắc đậm)
-  primaryDark: "#C93A5B",
+  bg: "#FFF7F0", // canvas — nền giấy ấm toàn app
+  canvasRose: "#FFEFF2", // vùng nền rất nhẹ sau hero/thư
+  card: "#FFFFFF", // bề mặt card hành động chính
+  surfaceSoft: "#FFFDFB", // card phụ trên nền canvas
+  primary: "#D94373", // CTA chính — TỐI ĐA 1 nút/viewport
+  primaryPressed: "#BE2F60",
+  primaryDark: ROLE.selfDark, // alias tương thích ngược (chữ rose đậm)
+  tealDark: ROLE.partnerDark, // alias tương thích ngược
   primarySoft: ROLE.selfSoft,
-  border: "#F3DCE0", // viền pastel rất nhẹ, thống nhất 1 mức
-  text: "#3D3A44",
-  textSoft: "#7A7484",
-  textFaint: "#ABA3B3",
-  track: "#F6EDEF", // nền thanh tiến trình
-  success: "#3D9B6E",
+  border: "rgba(195,51,105,0.09)", // line — viền 1px trên nền sáng (mockup --line)
+  lineStrong: "#E3C3CC", // viền khi cần tách trắng khỏi trắng
+  text: "#33272E", // ink — nâu tím ấm
+  textSoft: "#75666E", // inkSoft — chữ phụ đọc được
+  textFaint: "#9B8A91", // inkFaint — CHỈ metadata ngắn
+  track: "#F3E3DA", // track tiến trình trung tính (mockup --track)
+  gardenWash: "#EAF6EC", // nền cảnh vườn
+  letterPaper: "#FFFBF4", // giấy thư
+  letterLine: "#F3E3CB", // viền thẻ thư nổi bật
+  letterLineSoft: "#F5E9D4", // viền hàng thư gọn
+  soil: "#E9D8BE", // ellipse đất dưới cây
+  heroBg: "#FBE9E4", // nền dải tranh hero
+  footBg: "#FBEFE7", // cụm chân trang hub Hai đứa
+  chevron: "#B9A6AE", // chevron trong hàng điều hướng
+  onNavySoft: "#C9D6E4", // chữ phụ trên nền navy
+  success: "#2F8F5B",
   successSoft: "#E2F4E9",
-  warning: "#D97706",
+  warning: "#D98E1B", // sun — icon nắng / nhãn ấm
+  warningText: "#A85B00", // chữ cảnh báo trên nền sáng
   warningSoft: "#FDF0DC",
-  danger: "#C2413B",
+  danger: "#BE4038", // CHỈ lỗi thật hoặc cây héo — không dùng cho "chưa làm"
   dangerSoft: "#FBE7E4",
-  sun: "#E8A13A",
-  water: "#4AA8D8",
+  sun: "#D98E1B",
+  water: "#2F8FC4",
+  legendary: "#C98512",
 } as const;
 
-/* ---------- Spacing / hình khối (lưới 4/8) ---------- */
+/* ---------- Spacing — nhịp "gần trong nhóm, xa giữa nhóm" ---------- */
 export const SPACE = {
   xs: 4,
   sm: 8,
   md: 12,
   lg: 16,
   xl: 20,
-  xxl: 28,
-  screenX: 16, // padding ngang màn hình
-  cardGap: 12, // khoảng cách giữa các card
-  sectionGap: 20, // khoảng cách giữa các nhóm/section
+  xxl: 24,
+  xxxl: 32,
+  screenX: 20, // lề màn hình (16 -> 20 theo hệ mới)
+  cardGap: 12, // khoảng cách trong một nhóm
+  sectionGap: 24, // khoảng cách giữa các section
 } as const;
 
 export const RADIUS = {
-  card: 20,
-  hero: 22, // bo góc khối hero ở Trang chủ theo spec mockup
-  inner: 14,
-  tile: 13, // bo góc ô thư theo spec mockup
-  button: 16,
-  pill: 999,
+  scene: 28, // hero, cảnh vườn, hồ sơ chung
+  card: 24, // card chính
+  inner: 18, // ô trong card, tranh cây, game tile ~20
+  tile: 16, // ô nhỏ / strip
+  control: 18, // nút chính/phụ — KHÔNG mặc định pill nữa
+  button: 18, // alias tương thích ngược
+  sheet: 32, // góc trên của bottom sheet/modal
+  hero: 28, // alias tương thích ngược (= scene)
+  pill: 999, // CHỈ chip trạng thái và segmented
 } as const;
 
 export const TOUCH = { min: 44 } as const;
 
-/* ---------- Thang chữ 4 cấp (line-height đi kèm) ---------- */
+/* ---------- Thang chữ — bậc mạnh hơn hẳn bản cũ ---------- */
 export const TYPE = {
-  /** CHỈ dùng cho số ngày yêu (D-day) — nơi duy nhất trong app */
-  display: { fontFamily: FONT.black, fontSize: 30, lineHeight: 36 },
-  title: { fontFamily: FONT.bold, fontSize: 19, lineHeight: 25 },
-  body: { fontFamily: FONT.regular, fontSize: 15.5, lineHeight: 22 },
-  bodyStrong: { fontFamily: FONT.semibold, fontSize: 15.5, lineHeight: 22 },
-  caption: { fontFamily: FONT.medium, fontSize: 12.5, lineHeight: 17 },
+  /** displayHero 42/900 — CHỈ số ngày trong hero Home */
+  display: { fontFamily: FONT.black, fontSize: 42, lineHeight: 44 },
+  /** Số lớn ở Games/Couple khi thật cần */
+  displaySm: { fontFamily: FONT.black, fontSize: 32, lineHeight: 36 },
+  /** h1 — tiêu đề màn hình */
+  title: { fontFamily: FONT.extrabold, fontSize: 24, lineHeight: 30 },
+  /** h2 — tiêu đề card chính */
+  cardTitle: { fontFamily: FONT.extrabold, fontSize: 19, lineHeight: 25 },
+  /** Nội dung cảm xúc: câu hỏi hôm nay, trích thư */
+  emphasis: { fontFamily: FONT.semibold, fontSize: 17, lineHeight: 25 },
+  body: { fontFamily: FONT.regular, fontSize: 15, lineHeight: 22 },
+  bodyStrong: { fontFamily: FONT.bold, fontSize: 15, lineHeight: 22 },
+  caption: { fontFamily: FONT.semibold, fontSize: 12.5, lineHeight: 17 },
   captionStrong: { fontFamily: FONT.semibold, fontSize: 12.5, lineHeight: 17 },
+  /** Nhãn section viết hoa nhẹ */
+  micro: { fontFamily: FONT.bold, fontSize: 11, lineHeight: 14, letterSpacing: 1.4, textTransform: "uppercase" as const },
 } as const;
 
-/** Bóng đổ duy nhất 1 mức, rất nhẹ (quy tắc 11) — dùng cho card nổi (hero, modal). */
+/* ---------- Độ nổi — 3 mức có nghĩa ---------- */
+/** E1 — card trắng chính trên nền giấy */
 export const SHADOW = {
-  shadowColor: "#B4596F",
+  shadowColor: "#783654",
   shadowOpacity: 0.08,
-  shadowRadius: 12,
-  shadowOffset: { width: 0, height: 3 },
-  elevation: 2,
+  shadowRadius: 14,
+  shadowOffset: { width: 0, height: 4 },
+  elevation: 1,
+} as const;
+
+/** E2 — phần tử nổi hẳn: nút + giữa, modal, thư rơi, tab bar */
+export const SHADOW_FLOAT = {
+  shadowColor: "#331824",
+  shadowOpacity: 0.16,
+  shadowRadius: 24,
+  shadowOffset: { width: 0, height: 10 },
+  elevation: 6,
 } as const;

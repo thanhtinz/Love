@@ -77,7 +77,7 @@ export default function MemoriesScreen() {
 
   return (
     <View style={s.screen}>
-      <ScreenHeader title="Dòng kỷ niệm" subtitle="Kỷ niệm hai bạn lưu giữ và những cây đã trưởng thành" />
+      <ScreenHeader fallback="/utilities" title="Dòng kỷ niệm" subtitle="Kỷ niệm hai bạn lưu giữ và những cây đã trưởng thành" />
       <FlatList
         style={{ flex: 1 }}
         contentContainerStyle={{ padding: 16, paddingBottom: 28 }}

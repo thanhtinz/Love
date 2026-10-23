@@ -19,7 +19,7 @@ export default function MoodScreen() {
 
   return (
     <View style={s.screen}>
-      <ScreenHeader title="Mood hôm nay" subtitle="Mỗi người một thẻ riêng — bạn chỉ sửa được mood của mình" />
+      <ScreenHeader fallback="/utilities" title="Mood hôm nay" subtitle="Mỗi người một thẻ riêng — bạn chỉ sửa được mood của mình" />
       <ScrollView contentContainerStyle={s.scroll}>
         {/* Thẻ của BẠN — chỉnh sửa được */}
         <View style={[s.card, { borderColor: "#FFC4CF", borderWidth: 1.5 }]}>

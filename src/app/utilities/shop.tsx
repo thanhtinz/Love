@@ -24,7 +24,7 @@ export default function ShopScreen() {
 
   return (
     <View style={s.screen}>
-      <ScreenHeader title="Cửa hàng trang trí" subtitle="Xu Tim là ví chung của khu vườn" />
+      <ScreenHeader fallback="/utilities" title="Cửa hàng trang trí" subtitle="Xu Tim là ví chung của khu vườn" />
       <ScrollView contentContainerStyle={s.scroll}>
         <View style={[s.card, { flexDirection: "row", alignItems: "center", gap: 10 }]}>
           <View style={[s.chip, { paddingVertical: 7, paddingHorizontal: 12 }]}><Ionicons name="diamond" size={14} color={C.pinkDark} /><Text style={[s.chipText, { fontSize: 13 }]}>Ví chung: {state.coins} Xu Tim</Text></View>

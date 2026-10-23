@@ -15,7 +15,7 @@ export default function FrameDaysScreen() {
 
   return (
     <View style={s.screen}>
-      <ScreenHeader title="Khung Đếm ngày yêu" subtitle="Xem trước và xuất ảnh PNG của khung này" />
+      <ScreenHeader fallback="/frames" title="Khung Đếm ngày yêu" subtitle="Xem trước và xuất ảnh PNG của khung này" />
       <ScrollView contentContainerStyle={s.scroll}>
         <FrameExport kind="days">
           <Text style={{ fontSize: 16, fontFamily: "BeVietnamPro_900Black", color: C.pinkDark }}>{state.gardenName}</Text>

@@ -11,8 +11,8 @@ import { MOOD_ART } from "./Art";
 const FaceIcon = memo(function FaceIcon({ mood, size = 44 }: { mood: string; size?: number }) {
   const src = MOOD_ART[mood] ?? MOOD_ART["joy"];
   return (
-    <View style={{ width: size, height: size, borderRadius: Math.round(size * 0.3), overflow: "hidden", backgroundColor: "#fff" }}>
-      <Image source={src} style={{ width: "100%", height: "100%" }} contentFit="cover" accessibilityLabel={mood} />
+    <View style={{ width: size, height: size, borderRadius: Math.round(size * 0.3), overflow: "hidden" }}>
+      <Image source={src} style={{ width: "100%", height: "100%", mixBlendMode: "multiply" } as never} contentFit="cover" accessibilityLabel={mood} />
     </View>
   );
 });

@@ -7,7 +7,7 @@ import { C, FeatureCard, ScreenHeader, s } from "../../components/ui";
 export default function FramesHubScreen() {
   return (
     <View style={s.screen}>
-      <ScreenHeader title="Khung màn hình" subtitle="Mỗi khung một màn hình riêng: xem trước rồi xuất ảnh PNG" />
+      <ScreenHeader fallback="/(tabs)/couple" title="Khung màn hình" subtitle="Mỗi khung một màn hình riêng: xem trước rồi xuất ảnh PNG" />
       <ScrollView contentContainerStyle={s.scroll}>
         <View style={{ gap: 9 }}>
           <FeatureCard icon="calendar" title="Khung Đếm ngày yêu" desc="Số ngày bên nhau + đếm ngược tới mốc kỷ niệm kế tiếp" color={C.pink} bg={C.pinkSoft} route="/frames/days" />
