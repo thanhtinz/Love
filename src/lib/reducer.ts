@@ -1,6 +1,6 @@
 import {
   AppState, LetterMoment, LoveNote, NOTE_MIN_INTERVAL_MS, NOTE_TEXT_MAX, NOTES_CAP,
-  PING_BURST_WINDOW_MS, PING_DAILY_MAX, PersonId, formatDateVN, isValidDateKey,
+  PING_BURST_WINDOW_MS, PING_DAILY_MAX, PersonId, WidgetPrefs, formatDateVN, isValidDateKey,
   parseDateKey, today, uid,
 } from "./types";
 import { defaultState, normalizeState } from "./model";
@@ -31,7 +31,8 @@ export type Action =
   | { type: "PING_SEND"; user: PersonId; actor: string }
   | { type: "PRESENCE_START"; user: PersonId; durationMs: number | null; actor: string }
   | { type: "PRESENCE_STOP"; user: PersonId; actor: string; reason: "manual" | "expired" }
-  | { type: "PRESENCE_SNAPSHOT"; user: PersonId; lat: number | null; lng: number | null; acc: number | null; battery: number | null; at: string };
+  | { type: "PRESENCE_SNAPSHOT"; user: PersonId; lat: number | null; lng: number | null; acc: number | null; battery: number | null; at: string }
+  | { type: "WIDGET_PREFS_SET"; user: PersonId; prefs: Partial<WidgetPrefs> };
 
 function pushAct(s: AppState, actor: string, text: string, icon: string, slot?: PersonId): AppState["activities"] {
   return [{ id: uid(), actor, text, icon, time: nowIso(), slot }, ...s.activities].slice(0, 40);
@@ -237,6 +238,22 @@ export function gardenReducer(state: AppState, action: Action): AppState {
         ...(action.lat != null && action.lng != null ? { lat: action.lat, lng: action.lng, acc: action.acc, locAt: action.at } : null),
       };
       return { ...state, presence: { ...state.presence, [action.user]: slot } };
+    }
+
+    /* ---------- Widget màn hình chính: công tắc RIÊNG của từng người ---------- */
+    case "WIDGET_PREFS_SET": {
+      // Chỉ ghi vào slot của CHÍNH người thao tác (action.user) — không có đường
+      // nào sửa công tắc của người ấy từ máy này. Chỉ nhận boolean thật; giá trị
+      // không đổi -> no-op (tránh phát đồng bộ thừa).
+      const prev = state.widgetPrefs[action.user];
+      const clean = (v: unknown, fallback: boolean): boolean => (typeof v === "boolean" ? v : fallback);
+      const nextPrefs: WidgetPrefs = {
+        day: clean(action.prefs.day, prev.day),
+        note: clean(action.prefs.note, prev.note),
+        tree: clean(action.prefs.tree, prev.tree),
+      };
+      if (nextPrefs.day === prev.day && nextPrefs.note === prev.note && nextPrefs.tree === prev.tree) return state;
+      return { ...state, widgetPrefs: { ...state.widgetPrefs, [action.user]: nextPrefs } };
     }
   }
 }

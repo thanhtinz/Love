@@ -1,6 +1,6 @@
 import {
-  AppState, Activity, LoveNote, PersonId, PingsState, PresenceSlot,
-  AVATARS, defaultPresenceSlot, finiteNum, isPlainObject, isValidDateKey,
+  AppState, Activity, LoveNote, PersonId, PingsState, PresenceSlot, WidgetPrefs,
+  AVATARS, boolOr, defaultPresenceSlot, defaultWidgetPrefs, finiteNum, isPlainObject, isValidDateKey,
   objArray, strOr, today,
 } from "./types";
 import { createTree, normalizeTree } from "./tree";
@@ -41,6 +41,7 @@ export const defaultState: AppState = {
   pings: defaultPings(),
   activities: [],
   presence: { A: defaultPresenceSlot(), B: defaultPresenceSlot() },
+  widgetPrefs: { A: defaultWidgetPrefs(), B: defaultWidgetPrefs() },
   lastLetter: null,
 };
 
@@ -71,6 +72,13 @@ function normalizePresenceSlot(raw: unknown): PresenceSlot {
     battery: num(raw.battery),
     at: strOr(raw.at, ""),
   };
+}
+
+/** Công tắc widget của một người: chỉ nhận boolean thật, còn lại mặc định TẮT
+ *  (dữ liệu cũ chưa có trường này -> cả ba tắt, đúng cam kết "muốn thì tự bật"). */
+function normalizeWidgetPrefs(raw: unknown): WidgetPrefs {
+  const r = isPlainObject(raw) ? raw : {};
+  return { day: boolOr(r.day, false), note: boolOr(r.note, false), tree: boolOr(r.tree, false) };
 }
 
 function normalizeNote(raw: unknown): LoveNote | null {
@@ -108,6 +116,7 @@ export function normalizeState(rawInput: unknown): AppState {
     tree: createTree(),
     pings: defaultPings(),
     presence: { A: defaultPresenceSlot(), B: defaultPresenceSlot() },
+    widgetPrefs: { A: defaultWidgetPrefs(), B: defaultWidgetPrefs() },
   };
 
   /* --- Định danh (sẽ bị SET_IDENTITY ghi đè từ hồ sơ Supabase ngay sau khi tải) --- */
@@ -171,6 +180,10 @@ export function normalizeState(rawInput: unknown): AppState {
   /* --- CORE 5: presence (chỉ nhận slot có cờ sharing dạng boolean — shape cũ khác hẳn, bỏ) --- */
   const rawPresence = isPlainObject(raw.presence) ? raw.presence : {};
   base.presence = { A: normalizePresenceSlot(rawPresence.A), B: normalizePresenceSlot(rawPresence.B) };
+
+  /* --- Widget: công tắc riêng theo slot (bản cũ không có -> mặc định tắt cả ba) --- */
+  const rawWidgetPrefs = isPlainObject(raw.widgetPrefs) ? raw.widgetPrefs : {};
+  base.widgetPrefs = { A: normalizeWidgetPrefs(rawWidgetPrefs.A), B: normalizeWidgetPrefs(rawWidgetPrefs.B) };
 
   /* --- Thư rơi gần nhất: messageId phải thuộc kho 36 thư --- */
   const rawLetter = isPlainObject(raw.lastLetter) ? raw.lastLetter : null;

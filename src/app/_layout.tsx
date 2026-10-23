@@ -15,6 +15,7 @@ import {
 import { AuthProvider } from "../lib/auth";
 import { GardenProvider } from "../lib/store";
 import { LocationSync } from "../components/LocationSync";
+import { WidgetSync } from "../components/WidgetSync";
 import { COLOR } from "../components/theme";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 
@@ -68,6 +69,7 @@ export default function RootLayout() {
             </View>
           </View>
           <LocationSync />
+          <WidgetSync />
         </GardenProvider>
       </AuthProvider>
       </SafeAreaProvider>
@@ -80,6 +82,7 @@ export default function RootLayout() {
         <StatusBar style="dark" />
         <Navigator />
         <LocationSync />
+        <WidgetSync />
       </GardenProvider>
     </AuthProvider>
     </SafeAreaProvider>

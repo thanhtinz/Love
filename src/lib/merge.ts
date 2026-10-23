@@ -1,5 +1,5 @@
 import {
-  AppState, LoveNote, PersonId, PresenceSlot, SecStamp, TreePlant,
+  AppState, LoveNote, PersonId, PresenceSlot, SecStamp, TreePlant, WidgetPrefs, defaultWidgetPrefs,
 } from "./types";
 import { totalGrowthMs } from "./tree";
 
@@ -155,6 +155,13 @@ export function mergeStates(local: AppState, remote: AppState, mySlot: PersonId)
     B: pickSlot("presence", "B", local.presence.B, remote.presence.B),
   };
 
+  /* --- Widget: công tắc RIÊNG theo slot (chủ slot thắng — máy người kia không
+   *  bao giờ đè được lựa chọn widget của mình). Bản cũ thiếu trường -> mặc định. --- */
+  const widgetPrefs: { A: WidgetPrefs; B: WidgetPrefs } = {
+    A: pickSlot("widgetPrefs", "A", local.widgetPrefs?.A ?? defaultWidgetPrefs(), remote.widgetPrefs?.A ?? defaultWidgetPrefs()),
+    B: pickSlot("widgetPrefs", "B", local.widgetPrefs?.B ?? defaultWidgetPrefs(), remote.widgetPrefs?.B ?? defaultWidgetPrefs()),
+  };
+
   /* --- Thư rơi gần nhất: mốc `at` mới hơn thắng --- */
   const lastLetter = !local.lastLetter ? remote.lastLetter
     : !remote.lastLetter ? local.lastLetter
@@ -166,7 +173,7 @@ export function mergeStates(local: AppState, remote: AppState, mySlot: PersonId)
     roomCode: newer.roomCode,
     personA: newer.personA, personB: newer.personB,
     avatarA: newer.avatarA, avatarB: newer.avatarB,
-    couple, tree, notes, noteLog, pings, activities, presence, lastLetter,
+    couple, tree, notes, noteLog, pings, activities, presence, widgetPrefs, lastLetter,
     updatedAt: lt >= rt ? lt : rt,
     secTs,
   };
@@ -178,6 +185,7 @@ const SLOT_SPECS: SlotSpec[] = [
   { key: "pings", get: (s, slot) => s.pings[slot] },
   { key: "presence", get: (s, slot) => s.presence[slot] },
   { key: "noteLog", get: (s, slot) => s.noteLog[slot] },
+  { key: "widgetPrefs", get: (s, slot) => s.widgetPrefs[slot] },
 ];
 const SHARED_SPECS: { key: string; get: (s: AppState) => unknown }[] = [
   { key: "couple", get: (s) => s.couple },

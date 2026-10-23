@@ -7,6 +7,7 @@ import { useAuth } from "../lib/auth";
 import { useLove } from "../lib/store";
 import { AVATARS } from "../lib/types";
 import Avatar from "../components/Avatar";
+import { WidgetSettingsCard } from "../components/WidgetSettings";
 import { COLOR, FONT, RADIUS, ROLE, SPACE, TYPE } from "../components/theme";
 import { ScreenHeader, StatusChip, s } from "../components/ui";
 
@@ -119,6 +120,9 @@ export default function AccountScreen() {
             </TouchableOpacity>
           </View>
         )}
+
+        {/* Widget màn hình chính — công tắc riêng của chính người dùng + xem trước */}
+        <WidgetSettingsCard />
 
         {/* Rời vườn + đăng xuất */}
         <View style={s.card}>

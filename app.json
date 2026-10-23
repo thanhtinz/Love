@@ -52,7 +52,34 @@
           "resizeMode": "contain"
         }
       ],
-      "expo-image"
+      "expo-image",
+      "expo-asset",
+      "expo-notifications",
+      [
+        "expo-widgets",
+        {
+          "enableAndroid": true,
+          "widgets": [
+            {
+              "name": "LoveWidget",
+              "displayName": "Khu Vườn Tình Yêu",
+              "description": "Đếm ngày yêu, note của người ấy và cây tình yêu — chọn phần muốn hiện trong app, mục Tài khoản.",
+              "ios": {
+                "supportedFamilies": ["systemSmall", "systemMedium"],
+                "initialLayout": "src/widgets/LoveWidget.ios.tsx"
+              },
+              "android": {
+                "targetCellWidth": 4,
+                "targetCellHeight": 2,
+                "minWidth": 250,
+                "minHeight": 110,
+                "resizeMode": "both",
+                "initialLayout": "src/widgets/LoveWidget.android.tsx"
+              }
+            }
+          ]
+        }
+      ]
     ],
     "scheme": "lovecouple",
     "slug": "love-couple-app",

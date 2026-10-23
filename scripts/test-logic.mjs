@@ -14,6 +14,7 @@ const MO = require("./.build/model.js");
 const R = require("./.build/reducer.js");
 const M = require("./.build/merge.js");
 const MT = require("./.build/maptiles.js");
+const WG = require("./.build/widget.js");
 
 const H = 3600000;
 const MIN = 60000;
@@ -344,6 +345,140 @@ console.log("\n--- H) Bản đồ — slippy tiles + fit khung hình ---");
   check("H6 fit 1 điểm -> zoom 15, tâm đúng điểm đó", single.zoom === 15 && single.center.lat === hcmc.lat && single.center.lon === hcmc.lon);
   const worldFit = MT.fitMapPoints([{ lat: 80, lon: -179 }, { lat: -80, lon: 179 }], W, HH, PAD);
   check("H7 fit cặp cực đoan (gần trọn thế giới) -> zoom bị kẹp không dưới 3", worldFit.zoom >= 3, `zoom=${worldFit.zoom}`);
+
+  /* ---- Tương tác: kéo (pan) ---- */
+  const Z15 = 15;
+  const dragRight = MT.panCenterByPixels(hcmc, Z15, 256, 0); // nội dung theo tay sang phải -> tâm sang TÂY
+  const dragLeft = MT.panCenterByPixels(hcmc, Z15, -256, 0); // nội dung theo tay sang trái -> tâm sang ĐÔNG
+  check("H8 kéo: kéo phải (dx>0) tâm giảm kinh độ (sang tây), kéo trái (dx<0) tâm tăng kinh độ (sang đông)", dragRight.lon < hcmc.lon && dragLeft.lon > hcmc.lon, `right=${dragRight.lon.toFixed(5)} left=${dragLeft.lon.toFixed(5)}`);
+  check("H9 kéo: 256px ở zoom 15 = đúng 1 gạch = 360/2^15 độ kinh (cả hai chiều)", Math.abs((hcmc.lon - dragRight.lon) - 360 / Math.pow(2, 15)) < 1e-9 && Math.abs((dragLeft.lon - hcmc.lon) - 360 / Math.pow(2, 15)) < 1e-9, `dLon=${(hcmc.lon - dragRight.lon).toFixed(8)}`);
+  const panDown = MT.panCenterByPixels(hcmc, Z15, 0, 256); // kéo XUỐNG -> nội dung theo tay, tâm lên BẮC
+  const panUp = MT.panCenterByPixels(hcmc, Z15, 0, -256);
+  check("H10 kéo: kéo xuống (dy>0) tâm tăng vĩ độ, kéo lên (dy<0) tâm giảm vĩ độ; độ dịch pixel thế giới đúng 256", panDown.lat > hcmc.lat && panUp.lat < hcmc.lat && Math.abs((MT.latLonToWorldPx(hcmc.lat, hcmc.lon, Z15).y - MT.latLonToWorldPx(panDown.lat, panDown.lon, Z15).y) - 256) < 1e-6, `down=${panDown.lat.toFixed(5)} up=${panUp.lat.toFixed(5)}`);
+  const panAnti = MT.panCenterByPixels({ lat: 10, lon: 179.9999 }, Z15, -256, 0); // kéo sang đông qua kinh tuyến 180
+  check("H11 kéo qua kinh tuyến 180: kinh độ gói vòng về [-180, 180)", panAnti.lon >= -180 && panAnti.lon < -179, `lon=${panAnti.lon.toFixed(5)}`);
+  const panPole = MT.panCenterByPixels({ lat: 80, lon: 0 }, Z15, 0, 100000); // kéo lên cực mạnh
+  check("H12 kéo quá cực: vĩ độ tâm bị kẹp <= 85.0511 (biên Mercator)", panPole.lat <= 85.05113, `lat=${panPole.lat.toFixed(5)}`);
+
+  /* ---- Tương tác: zoom quanh điểm neo ---- */
+  const VS = { w: 360, h: 340 };
+  const anchor = { x: 40, y: 300 };
+  const latLonAtPx = (view, px) => {
+    const c = MT.latLonToWorldPx(view.center.lat, view.center.lon, view.zoom);
+    return MT.worldPxToLatLon(c.x + (px.x - VS.w / 2), c.y + (px.y - VS.h / 2), view.zoom);
+  };
+  const projectPx = (view, ll) => {
+    const c = MT.latLonToWorldPx(view.center.lat, view.center.lon, view.zoom);
+    const p = MT.latLonToWorldPx(ll.lat, ll.lon, view.zoom);
+    return { x: p.x - c.x + VS.w / 2, y: p.y - c.y + VS.h / 2 };
+  };
+  const before = { center: { lat: hcmc.lat, lon: hcmc.lon }, zoom: 10 };
+  const anchorLL = latLonAtPx(before, anchor);
+  const zoomedIn = MT.zoomCenterAroundAnchor(before.center, before.zoom, 13, anchor, VS);
+  const anchorAfter = projectPx(zoomedIn, anchorLL);
+  check("H13 zoom quanh neo (không phải tâm): điểm địa lý dưới neo GIỮ NGUYÊN pixel sau zoom 10 -> 13", Math.abs(anchorAfter.x - anchor.x) < 1e-6 && Math.abs(anchorAfter.y - anchor.y) < 1e-6, `(${anchorAfter.x.toFixed(3)},${anchorAfter.y.toFixed(3)}) vs (${anchor.x},${anchor.y})`);
+  const zoomedOut = MT.zoomCenterAroundAnchor(before.center, before.zoom, 6.5, anchor, VS);
+  const anchorAfterOut = projectPx(zoomedOut, anchorLL);
+  check("H14 zoom RA quanh neo + zoom lẻ (10 -> 6.5): neo vẫn bất biến", Math.abs(anchorAfterOut.x - anchor.x) < 1e-6 && Math.abs(anchorAfterOut.y - anchor.y) < 1e-6, `(${anchorAfterOut.x.toFixed(3)},${anchorAfterOut.y.toFixed(3)})`);
+  const centerZoom = MT.zoomCenterAroundAnchor(before.center, before.zoom, 12, { x: VS.w / 2, y: VS.h / 2 }, VS);
+  check("H15 zoom quanh đúng tâm khung: tâm không đổi", Math.abs(centerZoom.center.lat - before.center.lat) < 1e-9 && Math.abs(centerZoom.center.lon - before.center.lon) < 1e-9, `zoom=${centerZoom.zoom}`);
+  const clampHi = MT.zoomCenterAroundAnchor(before.center, before.zoom, 25, anchor, VS);
+  const clampLo = MT.zoomCenterAroundAnchor(before.center, before.zoom, 1, anchor, VS);
+  check("H16 zoom bị kẹp [3, 18]: xin 25 -> 18, xin 1 -> 3", clampHi.zoom === 18 && clampLo.zoom === 3, `hi=${clampHi.zoom} lo=${clampLo.zoom}`);
+
+  /* ---- Gạch: gói X / kẹp Y ---- */
+  check("H17 wrapTileX gói vòng qua biên thế giới: -1 -> 2^z-1, 2^z -> 0, trong biên giữ nguyên", MT.wrapTileX(-1, 15) === 32767 && MT.wrapTileX(32768, 15) === 0 && MT.wrapTileX(26089, 15) === 26089, `${MT.wrapTileX(-1, 15)},${MT.wrapTileX(32768, 15)}`);
+  check("H18 clampTileY kẹp vào [0, 2^z-1]: -5 -> 0, 99999 -> 32767, trong biên giữ nguyên", MT.clampTileY(-5, 15) === 0 && MT.clampTileY(99999, 15) === 32767 && MT.clampTileY(15392, 15) === 15392, `${MT.clampTileY(-5, 15)},${MT.clampTileY(99999, 15)}`);
+}
+
+/* ================= I) WIDGET MÀN HÌNH CHÍNH ================= */
+console.log("\n--- I) Widget: công tắc riêng + props + timeline ---");
+{
+  const variantOf = (day, note, tree) => WG.widgetLayoutVariant({ showDay: day, showNote: note, showTree: tree });
+  check("I1 bố cục theo tổ hợp công tắc: 8 tổ hợp -> 8 biến thể đúng", [
+    [false, false, false, "none"], [true, true, true, "all"],
+    [true, true, false, "noteDay"], [false, true, true, "noteTree"],
+    [true, false, true, "dayTree"], [false, true, false, "note"],
+    [true, false, false, "day"], [false, false, true, "tree"],
+  ].every(([d, n, t, v]) => variantOf(d, n, t) === v));
+
+  check("I2 mặc định cả ba công tắc TẮT -> biến thể 'none' (trạng thái gợi ý)", (() => {
+    const st = fresh();
+    return st.widgetPrefs.A.day === false && st.widgetPrefs.A.note === false && st.widgetPrefs.A.tree === false
+      && WG.widgetLayoutVariant(WG.buildWidgetProps(WG.widgetInputFromState(st, "A", NOW))) === "none";
+  })());
+
+  // Ngày 252 (bắt đầu 251 ngày trước): giai đoạn 5 "Nụ hoa", còn 365-252 = 113 ngày lên giai đoạn 6.
+  const st252 = MO.normalizeState({ couple: { startDate: dayKeyAgo(251) }, widgetPrefs: { A: { day: true, note: true, tree: true } } });
+  const p252 = WG.buildWidgetProps(WG.widgetInputFromState(st252, "A", NOW));
+  check("I3 props ngày 252: dayCount 252, cây giai đoạn 5 'Nụ hoa', còn 113 ngày lên giai đoạn", p252.dayCount === 252 && p252.treeStage === 5 && p252.treeStageName === "Nụ hoa" && p252.daysToNextStage === 113, `stage=${p252.treeStage} next=${p252.daysToNextStage}`);
+
+  const st100 = MO.normalizeState({ couple: { startDate: dayKeyAgo(99) }, widgetPrefs: { A: { day: true, note: false, tree: false } } });
+  const p100 = WG.buildWidgetProps(WG.widgetInputFromState(st100, "A", NOW));
+  check("I4 đúng ngày mốc 100: milestoneToday = true, dayProgress = 1, chữ có mốc 100", p100.dayCount === 100 && p100.milestoneToday === true && p100.dayProgress === 1 && p100.milestoneText.includes("100"));
+
+  const st150 = MO.normalizeState({ couple: { startDate: dayKeyAgo(149) }, widgetPrefs: { A: { day: true, note: false, tree: false } } });
+  const p150 = WG.buildWidgetProps(WG.widgetInputFromState(st150, "A", NOW));
+  check("I5 ngày 150: tiến độ tới mốc 200 = (150-100)/(200-100) = 0.5, còn 50 ngày", Math.abs(p150.dayProgress - 0.5) < 1e-9 && p150.milestoneText.includes("50 ngày") && p150.milestoneText.includes("200"), p150.milestoneText);
+
+  // Note: phải chọn note mới nhất của NGƯỜI ẤY (slot B khi mình là A), không phải của mình.
+  const noteMine = { id: "n-mine", authorSlot: "A", text: "Note của mình mới nhất", mood: "", createdAt: iso(NOW - 1 * MIN), readAt: "" };
+  const notePartner = { id: "n-partner", authorSlot: "B", text: "Note của người ấy", mood: "", createdAt: iso(NOW - 3 * H), readAt: "" };
+  const stNotes = MO.normalizeState({ couple: { startDate: dayKeyAgo(10) }, notes: [noteMine, notePartner], widgetPrefs: { A: { day: false, note: true, tree: false } } });
+  const pNotes = WG.buildWidgetProps(WG.widgetInputFromState(stNotes, "A", NOW));
+  check("I6 module Note chọn note của NGƯỜI ẤY (dù note của mình mới hơn) + chưa xem + '3 giờ trước'", pNotes.noteId === "n-partner" && pNotes.noteText === "Note của người ấy" && pNotes.noteUnread === true && pNotes.noteRelativeTime === "3 giờ trước", `${pNotes.noteId}/${pNotes.noteRelativeTime}`);
+  const pNotesRead = WG.buildWidgetProps(WG.widgetInputFromState(MO.normalizeState({ couple: { startDate: dayKeyAgo(10) }, notes: [{ ...notePartner, readAt: iso(NOW - 2 * H) }], widgetPrefs: { A: { note: true } } }), "A", NOW));
+  check("I7 note đã đọc -> noteUnread = false", pNotesRead.noteUnread === false);
+
+  const longNote = "Hôm nay trời đẹp quá, mình đi dạo quanh hồ và nghĩ về những ngày đầu hai đứa mới quen nhau, mọi thứ vẫn còn nguyên vẹn như thế. ".repeat(3).trim();
+  const tFull = WG.truncateNoteText(longNote, WG.NOTE_TEXT_BUDGET);
+  const tShort = WG.truncateNoteText(longNote, WG.NOTE_SHORT_BUDGET);
+  check("I8 cắt note: không vượt ngân sách, kết bằng '…', một dòng, cắt ở ranh giới từ", tFull.length <= WG.NOTE_TEXT_BUDGET && tShort.length <= WG.NOTE_SHORT_BUDGET && tFull.endsWith("…") && !tFull.includes("\n") && !tFull.slice(0, -1).endsWith(" "), `${tFull.length}/${tShort.length}`);
+  check("I9 cắt note: note ngắn giữ nguyên; note toàn khoảng trắng -> rỗng", WG.truncateNoteText("Yêu bạn", 150) === "Yêu bạn" && WG.truncateNoteText("  \n  ", 150) === "");
+
+  // Timeline: hôm nay ngày 29 (giai đoạn 2) — entry ngày mai phải sang ngày 30 (giai đoạn 3).
+  const baseTl = { startDate: dayKeyAgo(28), prefs: { day: true, note: false, tree: true }, partnerNote: null };
+  const tl = WG.buildWidgetTimeline(baseTl, NOW, 30);
+  check("I10 timeline 30 ngày: 31 entry, entry sau 0 giờ địa phương, ngày tăng dần đều +1", tl.length === 31 && tl.slice(1).every((e) => e.date.getHours() === 0 && e.date.getMinutes() === 0) && tl.every((e, i) => e.props.dayCount === 29 + i), `${tl[0].props.dayCount}->${tl[30].props.dayCount}`);
+  check("I11 timeline qua ranh giới GIAI ĐOẠN: entry 0 giai đoạn 2, entry ngày mai giai đoạn 3", tl[0].props.treeStage === 2 && tl[1].props.treeStage === 3 && tl[1].props.daysToNextStage === 70, `s0=${tl[0].props.treeStage} s1=${tl[1].props.treeStage}`);
+
+  const baseMs = { startDate: dayKeyAgo(98), prefs: { day: true, note: false, tree: false }, partnerNote: null };
+  const tlMs = WG.buildWidgetTimeline(baseMs, NOW, 3);
+  check("I12 timeline qua MỐC NGÀY: hôm nay 99 (chưa mốc), ngày mai 100 (milestoneToday)", tlMs[0].props.dayCount === 99 && tlMs[0].props.milestoneToday === false && tlMs[1].props.dayCount === 100 && tlMs[1].props.milestoneToday === true);
+
+  // Reducer: WIDGET_PREFS_SET chỉ sửa slot của chính người thao tác + no-op khi không đổi.
+  const stW = fresh();
+  const stW1 = R.gardenReducer(stW, { type: "WIDGET_PREFS_SET", user: "A", prefs: { note: true } });
+  check("I13 WIDGET_PREFS_SET: chỉ slot A đổi (note=true), slot B giữ nguyên tắt", stW1.widgetPrefs.A.note === true && stW1.widgetPrefs.A.day === false && stW1.widgetPrefs.B.note === false);
+  const stW2 = R.gardenReducer(stW1, { type: "WIDGET_PREFS_SET", user: "A", prefs: { note: true } });
+  check("I14 WIDGET_PREFS_SET không đổi giá trị -> no-op (cùng reference)", stW2 === stW1);
+  const stW3 = R.gardenReducer(stW1, { type: "WIDGET_PREFS_SET", user: "A", prefs: { day: "yes" } });
+  check("I15 WIDGET_PREFS_SET giá trị không phải boolean -> bỏ qua (no-op)", stW3 === stW1);
+
+  const stNorm = MO.normalizeState({ widgetPrefs: { A: { day: true, note: "x", tree: 1 }, B: null } });
+  check("I16 normalize widgetPrefs: boolean thật được giữ, rác -> tắt, thiếu -> tắt cả ba", stNorm.widgetPrefs.A.day === true && stNorm.widgetPrefs.A.note === false && stNorm.widgetPrefs.A.tree === false && stNorm.widgetPrefs.B.day === false && stNorm.widgetPrefs.B.note === false && stNorm.widgetPrefs.B.tree === false);
+
+  // Merge: công tắc của ai người đó thắng (đóng dấu secTs qua dispatchWithStamps).
+  const localMine = R.dispatchWithStamps(fresh(), { type: "WIDGET_PREFS_SET", user: "A", prefs: { note: true } });
+  const remoteStale = { ...fresh(), widgetPrefs: { A: { day: false, note: false, tree: false }, B: { day: false, note: false, tree: false } }, secTs: { "widgetPrefs:A": { t: iso(NOW - 60000), by: "B" } } };
+  const mergedMine = M.mergeStates(localMine, MO.normalizeState(remoteStale), "A");
+  check("I17 merge: công tắc của A do A sửa thắng bản cũ phía máy B ghi hộ", mergedMine.widgetPrefs.A.note === true);
+  const remoteB = R.dispatchWithStamps({ ...fresh(), currentUser: "B" }, { type: "WIDGET_PREFS_SET", user: "B", prefs: { day: true, tree: true } });
+  const mergedBoth = M.mergeStates(localMine, remoteB, "A");
+  check("I18 merge: hai máy giữ độc lập — A note=true (của A), B day+tree=true (của B)", mergedBoth.widgetPrefs.A.note === true && mergedBoth.widgetPrefs.B.day === true && mergedBoth.widgetPrefs.B.tree === true && mergedBoth.widgetPrefs.B.note === false);
+
+  // Neo vào 12:00 trưa hôm nay để phép so lệch 20 phút không bao giờ vấp nửa đêm.
+  const noon = new Date(); noon.setHours(12, 0, 0, 0);
+  const NOON = noon.getTime();
+  const startNoon = T.dayKeyLocal(new Date(NOON - 10 * 24 * H));
+  const pSig1 = WG.buildWidgetProps({ startDate: startNoon, prefs: { day: true, note: true, tree: false }, partnerNote: { id: "x1", text: "Chào bạn", authorName: "Bé B", createdAt: iso(NOON - 3 * H), readAt: "" }, nowMs: NOON });
+  const pSig2 = WG.buildWidgetProps({ startDate: startNoon, prefs: { day: true, note: true, tree: false }, partnerNote: { id: "x1", text: "Chào bạn", authorName: "Bé B", createdAt: iso(NOON - 3 * H), readAt: "" }, nowMs: NOON + 20 * MIN });
+  const pSig3 = WG.buildWidgetProps({ startDate: startNoon, prefs: { day: true, note: true, tree: false }, partnerNote: { id: "x2", text: "Note khác", authorName: "Bé B", createdAt: iso(NOON - 1 * H), readAt: "" }, nowMs: NOON });
+  check("I19 chữ ký widget: lệch 20 phút (chỉ đổi chữ 'x giờ trước') -> chữ ký GIỐNG; note mới -> chữ ký KHÁC", WG.widgetSignature(pSig1) === WG.widgetSignature(pSig2) && WG.widgetSignature(pSig1) !== WG.widgetSignature(pSig3));
+
+  const st800 = MO.normalizeState({ couple: { startDate: dayKeyAgo(799) }, widgetPrefs: { A: { tree: true } } });
+  const p800 = WG.buildWidgetProps(WG.widgetInputFromState(st800, "A", NOW));
+  check("I20 giai đoạn cuối (ngày 800): stage 7, daysToNextStage = -1, treeProgress = 1", p800.dayCount === 800 && p800.treeStage === 7 && p800.daysToNextStage === -1 && p800.treeProgress === 1);
 }
 
 console.log(`\n===== TỔNG: ${count - failures}/${count} PASS =====`);

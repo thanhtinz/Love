@@ -3,6 +3,7 @@ import { Pressable, ScrollView, Text, TextInput, TouchableOpacity, View } from "
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { useLove } from "../../lib/store";
+import { notifyPartnerOfNote } from "../../lib/push";
 import { NOTE_MIN_INTERVAL_MS, NOTE_TEXT_MAX, uid, type LoveNote } from "../../lib/types";
 import { MOODS } from "../../lib/content";
 import { timeAgoText } from "../../lib/features";
@@ -40,6 +41,9 @@ export default function NotesScreen() {
       mood, createdAt: new Date().toISOString(), readAt: "",
     };
     dispatch({ type: "NOTE_ADD", note, user: me });
+    // Đường push: nhờ edge function báo cho người ấy (thông báo đến ngay;
+    // widget của họ làm mới khi hệ điều hành cho phép). Lỗi nuốt êm bên trong.
+    notifyPartnerOfNote();
     setText("");
     setMood("");
   }

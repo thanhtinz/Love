@@ -167,6 +167,18 @@ export const defaultPresenceSlot = (): PresenceSlot => ({
   lat: null, lng: null, acc: null, locAt: "", battery: null, at: "",
 });
 
+/* ================= WIDGET MÀN HÌNH CHÍNH (tùy chọn RIÊNG của từng người) ================= */
+/**
+ * Ba công tắc widget của MỘT người (mục theo slot như presence/noteLog — merge
+ * ưu tiên tuyệt đối cho chính chủ slot): mỗi công tắc quyết định module đó có
+ * được hiện trên widget MÀN HÌNH CHÍNH CỦA CHÍNH NGƯỜI ĐÓ hay không. Mặc định
+ * TẮT CẢ BA — user muốn hiện phần nào thì tự bật phần đó trong Tài khoản.
+ * Riêng công tắc `note`: nó là CỔNG RIÊNG TƯ phía người NHẬN — tắt thì note của
+ * người ấy không bao giờ rời app ra màn hình chính của mình.
+ */
+export interface WidgetPrefs { day: boolean; note: boolean; tree: boolean }
+export const defaultWidgetPrefs = (): WidgetPrefs => ({ day: false, note: false, tree: false });
+
 /* ================= HOẠT ĐỘNG + THƯ RƠI (khoảnh khắc, không phải tính năng) ================= */
 export interface Activity { id: string; actor: string; slot?: PersonId; text: string; icon: string; time: string }
 export const ACTIVITIES_CAP = 40;
@@ -207,6 +219,9 @@ export interface AppState {
   activities: Activity[];
   /** CORE 5 — định vị tạm thời */
   presence: { A: PresenceSlot; B: PresenceSlot };
+  /** Widget màn hình chính — công tắc RIÊNG của từng người (mỗi người chỉ sửa
+   *  phần của chính mình; xem WidgetPrefs) */
+  widgetPrefs: { A: WidgetPrefs; B: WidgetPrefs };
   /** Lá thư rơi gần nhất (khoảnh khắc pop-up dùng chung 2 máy) */
   lastLetter: LetterMoment | null;
   updatedAt?: string;
