@@ -26,6 +26,9 @@ function Navigator() {
       <Stack.Screen name="auth" />
       <Stack.Screen name="pair" />
       <Stack.Screen name="(tabs)" />
+      <Stack.Screen name="games/index" />
+      <Stack.Screen name="utilities/index" />
+      <Stack.Screen name="account" />
       <Stack.Screen name="games/catch-hearts" />
       <Stack.Screen name="games/spin-wheel" />
       <Stack.Screen name="games/quiz" />

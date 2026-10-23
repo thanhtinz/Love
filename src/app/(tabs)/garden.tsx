@@ -255,6 +255,24 @@ export default function GardenScreen() {
           </View>
         )}
 
+        {/* Lối vào Cửa hàng trang trí — trước đây tab Vườn KHÔNG có lối vào shop nào;
+            shop chỉ tới được qua hub Tiện ích. Thẻ trắng có icon + nhãn chữ rõ ràng,
+            bấm mở thẳng màn shop (route Stack gốc /utilities/shop). */}
+        <TouchableOpacity style={[s.card, { flexDirection: "row", alignItems: "center", gap: 12 }]} onPress={() => router.push("/utilities/shop")} accessibilityLabel="Mở cửa hàng trang trí" accessibilityRole="button">
+          <View style={{ width: 46, height: 46, borderRadius: RADIUS.inner, backgroundColor: "#fef3c7", alignItems: "center", justifyContent: "center" }}>
+            <Ionicons name="bag-handle" size={23} color={COLOR.warning} />
+          </View>
+          <View style={{ flex: 1, minWidth: 0, gap: 2 }}>
+            <Text style={{ fontFamily: FONT.semibold, fontSize: 15, color: COLOR.text }}>Cửa hàng trang trí</Text>
+            <Text style={s.sub}>Chậu cây, khung cảnh vườn, phụ kiện — mua bằng Xu Tim chung</Text>
+          </View>
+          <View style={[s.chip, { flexShrink: 0 }]}>
+            <Ionicons name="diamond" size={12} color={ROLE.selfDark} />
+            <Text style={s.chipText}>{state.coins} Xu</Text>
+          </View>
+          <Ionicons name="chevron-forward" size={18} color={COLOR.textFaint} style={{ flexShrink: 0 }} />
+        </TouchableOpacity>
+
         {/* Hoạt động chăm vườn — danh sách ngắn tối đa 5 dòng, nằm dưới 2 card */}
         <View style={{ paddingHorizontal: 2 }}>
           <SectionTitle icon="time" color={ROLE.partner}>Hoạt động chăm vườn</SectionTitle>

@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { TouchableOpacity, View } from "react-native";
+import { TouchableOpacity } from "react-native";
 import { Tabs } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { COLOR, FONT, SHADOW } from "../../components/theme";
@@ -7,16 +7,17 @@ import { QuickActions } from "../../components/QuickActions";
 
 /**
  * Tab bar theo nghiên cứu (quy tắc 1): TỐI ĐA 5 vị trí, luôn có icon + nhãn chữ.
- * Nhà · Vườn · (+) giữa mở sheet hành động nhanh · Thư · Hai đứa (hub chứa
- * Trò chơi / Tiện ích / Khung màn hình / Tài khoản — vẫn là route cũ, chỉ ẩn khỏi tab bar).
+ * Nhà · Vườn · (+) giữa mở sheet hành động nhanh · Thư · Hai đứa (hub dẫn tới
+ * Trò chơi / Tiện ích / Khung màn hình / Tài khoản — các màn đó là route Stack gốc
+ * ở cấp app: /games, /utilities, /frames, /account).
+ * TUYỆT ĐỐI không khai báo màn trong nhóm (tabs) rồi ẩn bằng href: null:
+ * expo-router 58 (TabsClient processScreens) đổi href:null thành options.hidden=true,
+ * và useVisibleTabsWithRedirect sẽ router.replace về tab đầu tiên NGAY khi một route
+ * đang ẩn được focus — người dùng bấm vào hub sẽ bị bật ngược về Trang chủ (bug 2026-10-23).
  */
 function TabIcon({ name, focused }: { name: string; focused: boolean }) {
-  return (
-    <View style={{ alignItems: "center", gap: 3 }}>
-      <Ionicons name={name as never} size={23} color={focused ? COLOR.primary : COLOR.textFaint} />
-      <View style={{ width: 5, height: 5, borderRadius: 3, backgroundColor: focused ? COLOR.primary : "transparent" }} />
-    </View>
-  );
+  // Chỉ đổi màu icon khi active — KHÔNG chấm tròn bên dưới (user chê "chấm đỏ xấu", 2026-10-23).
+  return <Ionicons name={name as never} size={23} color={focused ? COLOR.primary : COLOR.textFaint} />;
 }
 
 export default function TabsLayout() {
@@ -53,10 +54,6 @@ export default function TabsLayout() {
         />
         <Tabs.Screen name="letters" options={{ title: "Thư", tabBarIcon: ({ focused }) => <TabIcon name={focused ? "mail" : "mail-outline"} focused={focused} /> }} />
         <Tabs.Screen name="couple" options={{ title: "Hai đứa", tabBarIcon: ({ focused }) => <TabIcon name={focused ? "people" : "people-outline"} focused={focused} /> }} />
-        {/* Các hub cũ giữ nguyên route, chỉ ẩn khỏi tab bar — vào qua tab Hai đứa / Trang chủ */}
-        <Tabs.Screen name="games" options={{ href: null }} />
-        <Tabs.Screen name="utilities" options={{ href: null }} />
-        <Tabs.Screen name="account" options={{ href: null }} />
       </Tabs>
       <QuickActions visible={quickOpen} onClose={() => setQuickOpen(false)} />
     </>
