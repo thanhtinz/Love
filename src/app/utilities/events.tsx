@@ -96,7 +96,7 @@ export default function EventsScreen() {
   return (
     <View style={s.screen}>
       <ScreenHeader fallback="/utilities" title="Ngày đặc biệt" subtitle="Đếm ngược những ngày quan trọng của hai đứa" />
-      <ScrollView contentContainerStyle={[s.scroll, { flexGrow: 1 }]}>
+      <ScrollView contentContainerStyle={s.scroll}>
         {formOpen ? (
           <View style={s.card}>
             <Text style={s.cardTitle}>{editingId ? "Sửa ngày đặc biệt" : "Thêm ngày đặc biệt"}</Text>
@@ -146,7 +146,6 @@ export default function EventsScreen() {
         )}
 
         <Text style={[s.small, { textAlign: "center" }]}>Đang có {state.events.length}/{EVENTS_MAX} ngày đặc biệt · Người tạo: {myName(state)} · Sự kiện gần nhất sẽ hiện đếm ngược ở hub Hai đứa và Trang chủ.</Text>
-        <View style={{ flex: 1 }} />
         <ClosingBand art={<MascotArt size={72} />} line="Ngày đặc biệt gần nhất luôn có một dòng đếm ngược ở hub Hai đứa và Trang chủ — để hai đứa không lỡ dịp nào của nhau." />
       </ScrollView>
     </View>

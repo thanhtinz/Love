@@ -216,11 +216,9 @@ export default function LettersScreen() {
         data={rows}
         keyExtractor={(item, i) => item.kind + ("letter" in item ? item.letter.id : i)}
         renderItem={renderRow}
-        contentContainerStyle={{ gap: 9, paddingBottom: 28, paddingHorizontal: SPACE.screenX, flexGrow: 1 }}
+        contentContainerStyle={{ gap: 9, paddingBottom: 28, paddingHorizontal: SPACE.screenX }}
         ListFooterComponent={
-          <View style={{ flex: 1, justifyContent: "flex-end", paddingTop: 18 }}>
-            <ClosingBand art={<MailboxArt size={72} />} line="Thư chỉ rơi khi hai đứa chăm cây — mỗi lá thư là một lần hai đứa nhớ nhau." />
-          </View>
+          <ClosingBand art={<MailboxArt size={72} />} line="Thư chỉ rơi khi hai đứa chăm cây — mỗi lá thư là một lần hai đứa nhớ nhau." />
         }
         initialNumToRender={12}
         windowSize={7}

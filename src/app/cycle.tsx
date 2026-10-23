@@ -80,7 +80,7 @@ export default function CycleScreen() {
   return (
     <View style={s.screen}>
       <ScreenHeader title="Chu kỳ & quan tâm" subtitle="Hiểu giai đoạn của nhau để quan tâm đúng lúc" fallback="/(tabs)/couple" />
-      <ScrollView contentContainerStyle={[s.scroll, { flexGrow: 1 }]}>
+      <ScrollView contentContainerStyle={s.scroll}>
         {/* PHẦN CỦA NGƯỜI ẤY — chỉ tồn tại trên màn khi họ ĐÃ bật chia sẻ */}
         {partnerC.share && (
           <View style={s.card}>
@@ -175,7 +175,6 @@ export default function CycleScreen() {
         <Text style={[s.small, { lineHeight: 18, paddingHorizontal: 4 }]}>
           Miễn trừ: giai đoạn và ngày dự kiến ở đây chỉ là phép tính lịch đơn giản để hai đứa quan tâm và nhắc nhau những ngày quan trọng — không phải tư vấn y tế, không thay thế bác sĩ. Chu kỳ thật có thể lệch vài ngày; nếu có dấu hiệu bất thường về sức khoẻ, hãy đi khám nhé. App không lưu nhật ký triệu chứng hay bất kỳ dữ kiện y tế chi tiết nào khác.
         </Text>
-        <View style={{ flex: 1 }} />
         <ClosingBand art={<MascotArt size={72} />} line="Biết giai đoạn của nhau, để những ngày nhạy cảm cũng trở thành ngày được quan tâm nhiều hơn." />
       </ScrollView>
     </View>

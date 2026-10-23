@@ -104,10 +104,14 @@ export function ChipButton({ label, variant = "price", icon, onPress, disabled, 
  * Dải kết màn yên tĩnh cho các màn NGẮN (vòng polish 2026-10-23): tranh thật có
  * sẵn + đúng một câu nhẹ, đặt trong khung giấy mềm — màn hình "kết thúc có chủ
  * đích" thay vì hụt hơi giữa chừng. Không chứa dữ kiện giả hay tính năng mới.
+ * MICRO-FIX: dải bám theo nội dung với khoảng đệm phía trên GIỚI HẠN (2× section
+ * gap, nằm trong chính component này) — các màn KHÔNG được chèn spacer flex:1
+ * đẩy dải xuống đáy nữa, vì trên màn cao sẽ thành một khoảng kem trống khổng lồ
+ * giữa nội dung và dải.
  */
 export function ClosingBand({ art, line }: { art: React.ReactNode; line: string }) {
   return (
-    <View style={{ alignItems: "center", gap: 9, backgroundColor: COLOR.surfaceSoft, borderRadius: RADIUS.card, borderWidth: 1, borderColor: COLOR.border, paddingVertical: 20, paddingHorizontal: 22 }}>
+    <View style={{ alignItems: "center", gap: 9, backgroundColor: COLOR.surfaceSoft, borderRadius: RADIUS.card, borderWidth: 1, borderColor: COLOR.border, paddingVertical: 20, paddingHorizontal: 22, marginTop: SPACE.sectionGap * 2 }}>
       {art}
       <Text style={{ ...TYPE.caption, color: COLOR.textSoft, textAlign: "center", lineHeight: 19 }}>{line}</Text>
     </View>

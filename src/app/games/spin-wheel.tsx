@@ -95,7 +95,7 @@ export default function SpinWheelScreen() {
   return (
     <View style={s.screen}>
       <ScreenHeader fallback="/games" title="Vòng quay yêu thương" subtitle="Trúng Xu Tim, XP, thư tình hoặc nhiệm vụ hẹn hò" />
-      <ScrollView contentContainerStyle={[s.scroll, { flexGrow: 1 }]}>
+      <ScrollView contentContainerStyle={s.scroll}>
         <View style={s.card}>
           <View style={{ gap: 8 }}>
             <View style={{ flexDirection: "row", alignItems: "center", gap: 9 }}>
@@ -132,7 +132,6 @@ export default function SpinWheelScreen() {
             <Ionicons name="refresh" size={16} color="#fff" /><Text style={s.btnText}>{spinning ? "Đang quay..." : left <= 0 ? "Bạn đã hết lượt hôm nay" : "Quay ngay"}</Text>
           </TouchableOpacity>
         </View>
-        <View style={{ flex: 1 }} />
         <ClosingBand art={<MascotArt size={72} />} line="Quay vui là chính — Xu, XP và thư trúng được đều bay về khu vườn chung của hai đứa." />
       </ScrollView>
     </View>

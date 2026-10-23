@@ -147,21 +147,24 @@ export default function HomeScreen() {
     </View>
   );
 
-  // Nửa mood: hai nửa nằm trong MỘT dải tint giấy duy nhất (không còn hai
-  // mini-card lồng trong card Hôm nay), ngăn nhau bằng hairline dọc; mặt mood
-  // 38px hoà nền (không hộp trắng); nhãn mood được 2 dòng để không bị cắt chữ.
+  // Nửa mood: hai nửa nằm trong MỘT dải tint giấy PHẲNG duy nhất, ngăn nhau chỉ
+  // bằng hairline dọc. Mỗi nửa KHÔNG có nền/viền/bo góc/bóng riêng (kể cả ô
+  // trống lúc chưa chọn mood — chỉ còn icon trơn trên nền dải, không hộp nét
+  // đứt nữa: bản live vẫn đọc hai ô đó thành hai mini-card kem). Cột chữ bám
+  // mép trên (flex-start) để giãn chiều dọc tự do; MỌI chữ trong dải hiện TRỌN
+  // — nhãn mood không giới hạn số dòng, dòng tên cho 2 dòng, cấm ellipsis 1 dòng.
   const moodHalf = (p: typeof me, moodId: string) => (
-    <View style={{ flex: 1, flexDirection: "row", alignItems: "center", gap: 9, paddingVertical: 10, paddingHorizontal: 12 }}>
+    <View style={{ flex: 1, flexDirection: "row", alignItems: "flex-start", gap: 9, paddingVertical: 10, paddingHorizontal: 12 }}>
       {moodId ? (
         <MoodFace mood={moodId} size={38} />
       ) : (
-        <View style={{ width: 38, height: 38, borderRadius: 12, borderWidth: 1.5, borderStyle: "dashed", borderColor: COLOR.lineStrong, backgroundColor: "rgba(255,255,255,0.5)", alignItems: "center", justifyContent: "center" }}>
-          <Ionicons name="happy-outline" size={19} color={COLOR.textFaint} />
+        <View style={{ width: 38, height: 38, alignItems: "center", justifyContent: "center" }}>
+          <Ionicons name="happy-outline" size={21} color={COLOR.textFaint} />
         </View>
       )}
       <View style={{ flex: 1, minWidth: 0 }}>
-        <Text style={{ ...TYPE.caption, color: p.color }} numberOfLines={1}>{firstName(p.name)} hôm nay</Text>
-        <Text style={{ fontFamily: FONT.bold, fontSize: 14, lineHeight: 19, color: COLOR.text }} numberOfLines={2}>
+        <Text style={{ ...TYPE.caption, color: p.color }} numberOfLines={2}>{firstName(p.name)} hôm nay</Text>
+        <Text style={{ fontFamily: FONT.bold, fontSize: 14, lineHeight: 19, color: COLOR.text }}>
           {moodId ? MOODS.find((m) => m.id === moodId)?.label : "Chưa chọn mood"}
         </Text>
       </View>

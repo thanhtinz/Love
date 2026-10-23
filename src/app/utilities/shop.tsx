@@ -49,7 +49,7 @@ export default function ShopScreen() {
   return (
     <View style={s.screen}>
       <ScreenHeader fallback="/utilities" title="Cửa hàng trang trí" subtitle="Xu Tim là ví chung của khu vườn" />
-      <ScrollView contentContainerStyle={[s.scroll, { flexGrow: 1 }]}>
+      <ScrollView contentContainerStyle={s.scroll}>
         <View style={[s.card, { flexDirection: "row", alignItems: "center", gap: 10 }]}>
           <StatusChip icon="diamond" label={`Ví chung: ${state.coins} Xu Tim`} variant="accent" />
           <View style={{ flex: 1 }}>
@@ -140,7 +140,6 @@ export default function ShopScreen() {
               : "Cảnh mùa, hàng rào và lối đi trang trí cho cả khu vườn chung — mua xong áp dụng ngay ở tab Vườn."
             : "Đồ mua xong áp dụng ngay ở tab Vườn — mua trùng không trừ tiền hai lần."}
         </Text>
-        <View style={{ flex: 1 }} />
         <ClosingBand art={<MascotArt size={72} />} line="Mỗi món đồ là một góc nhỏ hai đứa tự tay chọn cho khu vườn chung — mua xong qua tab Vườn ngắm thành quả nhé." />
       </ScrollView>
     </View>

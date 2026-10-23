@@ -113,7 +113,7 @@ export default function PresenceScreen() {
   return (
     <View style={s.screen}>
       <ScreenHeader title="Hiện diện" subtitle="Ảnh chụp khi mở app — không theo dõi nền" fallback="/(tabs)/couple" />
-      <ScrollView contentContainerStyle={[s.scroll, { flexGrow: 1 }]}>
+      <ScrollView contentContainerStyle={s.scroll}>
         {/* NGƯỜI ẤY */}
         <View style={s.card}>
           <View style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
@@ -186,7 +186,6 @@ export default function PresenceScreen() {
           Cách tính năng này hoạt động: vị trí chỉ được chụp khi bạn mở app hoặc tự bấm Cập nhật, và chỉ khi bạn đã bật chia sẻ + cấp quyền cho hệ điều hành. App không chạy nền, không lưu lịch sử di chuyển — ảnh chụp mới ghi đè ảnh chụp cũ. Tắt chia sẻ là người ấy không còn thấy dữ kiện đó nữa.
           {Platform.OS === "web" ? " Trên bản web, vị trí lấy từ trình duyệt (trình duyệt sẽ hỏi quyền riêng) và % pin có thể không đọc được tuỳ trình duyệt." : ""}
         </Text>
-        <View style={{ flex: 1 }} />
         <ClosingBand art={<MascotArt size={72} />} line="Chỉ cần mở app là hai đứa lại thấy nhau gần hơn một chút — xa nhau vẫn biết nhau đang ổn." />
       </ScrollView>
     </View>
