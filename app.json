@@ -2,7 +2,7 @@
   "expo": {
     "android": {
       "adaptiveIcon": {
-        "backgroundColor": "#fff1f2",
+        "backgroundColor": "#FAECD2",
         "foregroundImage": "./assets/android-icon-foreground.png"
       },
       "package": "com.thanhtinz.love",
@@ -55,7 +55,7 @@
       [
         "expo-splash-screen",
         {
-          "backgroundColor": "#fff1f2",
+          "backgroundColor": "#FAECD2",
           "image": "./assets/icon.png",
           "imageWidth": 180,
           "resizeMode": "contain"
