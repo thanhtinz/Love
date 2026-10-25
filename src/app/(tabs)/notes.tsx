@@ -1,15 +1,16 @@
-import React, { useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { Pressable, ScrollView, Text, TextInput, TouchableOpacity, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { useLove } from "../../lib/store";
 import { notifyPartnerOfNote } from "../../lib/push";
+import { success } from "../../lib/feedback";
 import { NOTE_MIN_INTERVAL_MS, NOTE_TEXT_MAX, uid, type LoveNote } from "../../lib/types";
 import { MOODS } from "../../lib/content";
 import { timeAgoText } from "../../lib/features";
 import { MoodFace } from "../../components/FaceIcon";
 import { MailboxArt } from "../../components/Art";
-import { PersonChip, personOf } from "../../components/PersonChip";
+import { PersonChip, partnerOf, personOf } from "../../components/PersonChip";
 import { COLOR, FONT, RADIUS, ROLE, SPACE, TYPE } from "../../components/theme";
 import { StatusChip, s, tabBarPad, useNow } from "../../components/ui";
 
@@ -27,7 +28,11 @@ export default function NotesScreen() {
   const now = useNow(1000);
   const [text, setText] = useState("");
   const [mood, setMood] = useState("");
+  const [sentTo, setSentTo] = useState("");
+  const sentTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const me = state.currentUser;
+
+  useEffect(() => () => { if (sentTimer.current) clearTimeout(sentTimer.current); }, []);
 
   const lastMine = state.noteLog[me] ? new Date(state.noteLog[me]).getTime() : 0;
   const waitMs = Math.max(0, NOTE_MIN_INTERVAL_MS - (now - lastMine));
@@ -46,6 +51,12 @@ export default function NotesScreen() {
     notifyPartnerOfNote();
     setText("");
     setMood("");
+    // Cảm giác (đợt "chất app" 1): rung "thành công" + nút đổi thành lời xác
+    // nhận gọi tên người ấy trong ~1.6 giây — hết im lặng như trước.
+    success();
+    setSentTo(partnerOf(state).name);
+    if (sentTimer.current) clearTimeout(sentTimer.current);
+    sentTimer.current = setTimeout(() => setSentTo(""), 1600);
   }
 
   return (
@@ -91,14 +102,23 @@ export default function NotesScreen() {
             </Text>
             <TouchableOpacity
               onPress={send}
-              disabled={!canSend}
-              style={{ flexDirection: "row", alignItems: "center", gap: 7, backgroundColor: COLOR.primary, borderRadius: RADIUS.control, paddingHorizontal: 18, minHeight: 44, opacity: canSend ? 1 : 0.5 }}
+              disabled={!canSend && !sentTo}
+              style={{ flexDirection: "row", alignItems: "center", gap: 7, backgroundColor: COLOR.primary, borderRadius: RADIUS.control, paddingHorizontal: 18, minHeight: 44, opacity: canSend || sentTo ? 1 : 0.5 }}
               accessibilityRole="button"
               accessibilityLabel="Gửi note"
-              accessibilityState={{ disabled: !canSend }}
+              accessibilityState={{ disabled: !canSend && !sentTo }}
             >
-              <Ionicons name="send" size={15} color="#fff" />
-              <Text style={{ color: "#fff", fontFamily: FONT.bold, fontSize: 14.5 }}>Gửi note</Text>
+              {sentTo ? (
+                <>
+                  <Ionicons name="checkmark-circle" size={16} color="#fff" />
+                  <Text style={{ color: "#fff", fontFamily: FONT.bold, fontSize: 14.5 }}>Đã gửi cho {sentTo}</Text>
+                </>
+              ) : (
+                <>
+                  <Ionicons name="send" size={15} color="#fff" />
+                  <Text style={{ color: "#fff", fontFamily: FONT.bold, fontSize: 14.5 }}>Gửi note</Text>
+                </>
+              )}
             </TouchableOpacity>
           </View>
         </View>

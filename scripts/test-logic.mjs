@@ -531,5 +531,25 @@ console.log("\n--- J) Push từng nhịp nhớ ---");
   PUSH.setFunctionsInvokerForTest(null);
 }
 
+/* ================= K) CÂU TÌNH HÔM NAY + LỜI CHÀO (đợt "chất app" 1) ================= */
+console.log("\n--- K) Câu tình hôm nay + lời chào theo buổi ---");
+{
+  check("K1 kho câu tình đúng 30 câu, không câu rỗng", CT.DAILY_QUOTES.length === 30
+    && CT.DAILY_QUOTES.every((q) => typeof q === "string" && q.trim().length > 0));
+  const keyA = "2026-10-25";
+  check("K2 dailyQuote XÁC ĐỊNH: cùng khóa ngày -> cùng câu (2 máy khớp nhau)",
+    CT.dailyQuote(keyA) === CT.dailyQuote(keyA) && CT.DAILY_QUOTES.includes(CT.dailyQuote(keyA)));
+  const seen = new Set();
+  for (let d = 0; d < 60; d++) seen.add(CT.dailyQuote(T.dayKeyLocal(new Date(2026, 8, 1 + d))));
+  check("K3 dailyQuote đổi câu theo ngày (60 ngày có >10 câu khác nhau)", seen.size > 10, `${seen.size} câu khác nhau`);
+  check("K4 dayPartForHour: 6h sáng · 12h trưa · 16h chiều · 21h tối · 2h tối",
+    CT.dayPartForHour(6) === "sang" && CT.dayPartForHour(12) === "trua"
+    && CT.dayPartForHour(16) === "chieu" && CT.dayPartForHour(21) === "toi" && CT.dayPartForHour(2) === "toi");
+  check("K5 greetingLine gọi tên CẢ HAI người ở mọi buổi",
+    [7, 12, 16, 21].every((h) => { const g = CT.greetingLine(h, "Tín", "Vy"); return g.includes("Tín") && g.includes("Vy"); }));
+  check("K6 greetingLine 4 buổi là 4 câu khác nhau",
+    new Set([7, 12, 16, 21].map((h) => CT.greetingLine(h, "An", "Bình"))).size === 4);
+}
+
 console.log(`\n===== TỔNG: ${count - failures}/${count} PASS =====`);
 if (failures > 0) { console.log(`CÓ ${failures} TEST FAIL`); process.exit(1); }

@@ -1,4 +1,4 @@
-import { LetterMoment, Rarity, PersonId, uid } from "./types";
+import { LetterMoment, Rarity, PersonId, today, uid } from "./types";
 
 /**
  * Nội dung tĩnh của bản rebuild: 12 mặt mood (cho Note tình yêu) + kho 36 thông
@@ -90,6 +90,70 @@ export function pickMessageSeeded(rarity: Rarity, seedKey: string): LoveMessage 
 export function makeLetterMoment(rarity: Rarity, source: string, bySlot: PersonId, atIso: string): LetterMoment {
   const msg = pickMessage(rarity);
   return { id: uid(), messageId: msg.id, rarity, source, at: atIso, bySlot };
+}
+
+/* ---------- Câu tình hôm nay — XÁC ĐỊNH theo ngày địa phương ---------- */
+/**
+ * 30 câu tình ngắn hiện dưới bộ đếm ngày ở Trang Nhà (đợt "chất app" 1).
+ * Chọn theo hash của khóa ngày (dayKeyLocal) nên CẢ 2 MÁY luôn thấy cùng một
+ * câu trong cùng một ngày — không lưu state, không đồng bộ gì thêm.
+ */
+export const DAILY_QUOTES: string[] = [
+  "Ngày nào có nhau, ngày đó là ngày đẹp.",
+  "Thương nhau là việc nhỏ làm đều mỗi ngày.",
+  "Chỉ cần còn nắm tay nhau, mùa nào cũng là mùa xuân.",
+  "Bình yên là khi biết có một người luôn ở phía mình.",
+  "Hai đứa, một khu vườn — cứ tưới là cứ xanh.",
+  "Ở bên nhau lâu không khó, khó là mỗi ngày vẫn chọn nhau.",
+  "Một tin nhắn nhỏ cũng đủ làm ngày của nhau sáng lên.",
+  "Yêu xa hay gần, quan trọng là lòng vẫn hướng về nhau.",
+  "Cảm ơn vì hôm nay vẫn là nhau.",
+  "Điều lãng mạn nhất là sự đều đặn: chào buổi sáng, chúc ngủ ngon.",
+  "Tình yêu lớn lên từ những lần quan tâm không cần lý do.",
+  "Có nhau rồi, những ngày bình thường cũng hóa đặc biệt.",
+  "Nắng có lúc tắt, nhưng việc thương nhau thì không nghỉ ngày nào.",
+  "Hai trái tim chung một nhịp là đủ ấm cả ngày.",
+  "Đi chậm cũng được, miễn là đi cùng nhau.",
+  "Một cái ôm đúng lúc đáng giá hơn trăm lời hoa mỹ.",
+  "Yêu là khi niềm vui của người kia cũng là niềm vui của mình.",
+  "Giữ nhau bằng những điều tử tế nhỏ xíu mỗi ngày.",
+  "Hôm nay cũng thương nhau nhiều hơn hôm qua một chút nhé.",
+  "Khu vườn này xanh vì có hai người cùng chăm — tình yêu cũng vậy.",
+  "Chẳng cần hoàn hảo, chỉ cần thật lòng và ở lại.",
+  "Mỗi ngày bên nhau là một trang nữa của câu chuyện đẹp nhất.",
+  "Thương là nhớ nhau ngay cả khi đang bận rộn nhất.",
+  "Có một người để nhớ, để chờ, để kể chuyện cuối ngày — thế là đủ.",
+  "Tình yêu không ồn ào; nó là tiếng nhịp đều đặn mỗi ngày.",
+  "Nắm tay nhau qua ngày thường mới là lãng mạn bền nhất.",
+  "Dù hôm nay thế nào, có nhau là có nhà.",
+  "Một lời yêu đúng lúc làm mềm cả một ngày cứng.",
+  "Hai đứa mình là bằng chứng: điều nhỏ làm đều sẽ thành điều lớn.",
+  "Mai này nhìn lại, những ngày như hôm nay là những ngày đẹp nhất.",
+];
+export function dailyQuote(dayKey: string = today()): string {
+  return DAILY_QUOTES[hashString(`daily-quote-${dayKey}`) % DAILY_QUOTES.length];
+}
+
+/* ---------- Lời chào theo buổi — gọi tên CẢ HAI người ---------- */
+export type DayPart = "sang" | "trua" | "chieu" | "toi";
+export function dayPartForHour(hour: number): DayPart {
+  if (hour >= 5 && hour < 11) return "sang";
+  if (hour >= 11 && hour < 14) return "trua";
+  if (hour >= 14 && hour < 19) return "chieu";
+  return "toi";
+}
+/** Lời chào ở card "Hôm nay" (Trang Nhà): deterministic theo giờ địa phương. */
+export function greetingLine(hour: number, selfName: string, partnerName: string): string {
+  switch (dayPartForHour(hour)) {
+    case "sang":
+      return `Chào buổi sáng, ${selfName}. ${partnerName} đang ở ngay đây thôi — bắt đầu ngày mới cùng nhau nhé.`;
+    case "trua":
+      return `Chào buổi trưa, ${selfName}. Nhớ nghỉ ngơi một chút, ${partnerName} đang nhớ bạn đó.`;
+    case "chieu":
+      return `Chào buổi chiều, ${selfName}. Thêm một buổi nữa bên nhau rồi — ${partnerName} vẫn ở ngay đây thôi.`;
+    default:
+      return `Tối rồi, ${selfName}. ${partnerName} đang ở ngay đây thôi — khép lại ngày dài bên nhau nhé.`;
+  }
 }
 
 /**

@@ -1,9 +1,10 @@
-import React, { useEffect, useState } from "react";
-import { Modal, Text, TouchableOpacity, View } from "react-native";
+import React, { useEffect, useRef, useState } from "react";
+import { Animated, Modal, Text, TouchableOpacity, View } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Ionicons } from "@expo/vector-icons";
 import type { AppState } from "../lib/types";
 import { makeStageUpLetter, messageById } from "../lib/content";
+import { heartbeatPulse } from "../lib/feedback";
 import { dayCount } from "../lib/features";
 import { TREE_STAGE_COUNT, treeStageForDay } from "../lib/tree";
 import { useLove } from "../lib/store";
@@ -21,8 +22,9 @@ import { COLOR, FONT, RADIUS, SHADOW_FLOAT } from "./theme";
  *    thư/bộ sưu tập — đóng là xong, chỉ còn dòng dấu vết trong nhật ký.
  * 2) PingPop — nhịp tim "Nhớ bạn" của người ấy: MỖI nhịp là một sự kiện riêng
  *    (không gộp chuỗi, không cooldown phía người nhận) nên pop hiện theo từng
- *    nhịp mới, tự tắt sau 6 giây. Ngoài app, mỗi nhịp còn có push riêng qua
- *    notify-heartbeat (xem lib/push.ts).
+ *    nhịp mới, tự tắt sau 6 giây. Đợt "chất app" 1: pop NẢY VÀO bằng spring và
+ *    rung nhịp tim đôi (lib/feedback.heartbeatPulse) đúng 1 lần mỗi nhịp mới.
+ *    Ngoài app, mỗi nhịp còn có push riêng qua notify-heartbeat (lib/push.ts).
  * 3) useStageUp — giai đoạn cây đi theo NGÀY YÊU: khi giai đoạn suy ra từ ngày
  *    yêu vượt mọi giai đoạn đã ăn mừng (couple.celebratedStages), dispatch
  *    CELEBRATE_TREE_STAGE đúng 1 lần để rơi lá thư xác định của giai đoạn đó.
@@ -84,6 +86,9 @@ export function PingPop() {
   const [dismissedFor, setDismissedFor] = useState("");
   const [loaded, setLoaded] = useState(false);
   const nowTick = useNow(5000);
+  const [popScale] = useState(() => new Animated.Value(0.8));
+  const [popOpacity] = useState(() => new Animated.Value(0));
+  const pulsedForRef = useRef("");
 
   useEffect(() => {
     let alive = true;
@@ -106,16 +111,33 @@ export function PingPop() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [show, burstAt]);
 
+  // Khoảnh khắc NHẬN nhịp: pop nảy vào bằng spring + rung nhịp tim đôi đúng
+  // 1 lần cho mỗi nhịp mới (giữ mốc đã rung để không rung lại khi re-render).
+  useEffect(() => {
+    if (!show || !burstAt) return;
+    popScale.setValue(0.8);
+    popOpacity.setValue(0);
+    Animated.parallel([
+      Animated.spring(popScale, { toValue: 1, friction: 6, tension: 90, useNativeDriver: true }),
+      Animated.timing(popOpacity, { toValue: 1, duration: 160, useNativeDriver: true }),
+    ]).start();
+    if (pulsedForRef.current !== burstAt) {
+      pulsedForRef.current = burstAt;
+      heartbeatPulse();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [show, burstAt]);
+
   if (!show) return null;
   const partner = personOf(state, partnerSlot);
   return (
     <View pointerEvents="none" style={{ position: "absolute", top: 54, left: 20, right: 20, alignItems: "center", zIndex: 50 }}>
-      <View style={{ flexDirection: "row", alignItems: "center", gap: 10, backgroundColor: "#fff", borderRadius: 999, paddingHorizontal: 16, paddingVertical: 10, borderWidth: 1, borderColor: COLOR.border, ...SHADOW_FLOAT }}>
+      <Animated.View style={{ flexDirection: "row", alignItems: "center", gap: 10, backgroundColor: "#fff", borderRadius: 999, paddingHorizontal: 16, paddingVertical: 10, borderWidth: 1, borderColor: COLOR.border, opacity: popOpacity, transform: [{ scale: popScale }], ...SHADOW_FLOAT }}>
         <Ionicons name="heart" size={20} color={COLOR.primary} />
         <Text style={{ fontFamily: FONT.bold, fontSize: 14, color: COLOR.text }}>
           {partner.name} đang nhớ bạn
         </Text>
-      </View>
+      </Animated.View>
     </View>
   );
 }

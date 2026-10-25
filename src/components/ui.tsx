@@ -291,9 +291,9 @@ export function LoadMoreRow({ onPress, label = "Tải thêm" }: { onPress: () =>
   );
 }
 
-export function IconBtn({ icon, label, color, bg, onPress, disabled }: { icon: string; label: string; color: string; bg: string; onPress: () => void; disabled?: boolean }) {
+export function IconBtn({ icon, label, color, bg, onPress, disabled, dimmed }: { icon: string; label: string; color: string; bg: string; onPress: () => void; disabled?: boolean; dimmed?: boolean }) {
   return (
-    <TouchableOpacity onPress={onPress} disabled={disabled} style={{ flex: 1, backgroundColor: bg, borderRadius: RADIUS.control, minHeight: 56, paddingVertical: 10, alignItems: "center", justifyContent: "center", gap: 4, opacity: disabled ? 0.45 : 1 }}>
+    <TouchableOpacity onPress={onPress} disabled={disabled} style={{ flex: 1, backgroundColor: bg, borderRadius: RADIUS.control, minHeight: 56, paddingVertical: 10, alignItems: "center", justifyContent: "center", gap: 4, opacity: disabled || dimmed ? 0.45 : 1 }}>
       <Ionicons name={icon as never} size={22} color={color} />
       <Text style={{ fontSize: 12, fontFamily: FONT.semibold, color }}>{label}</Text>
     </TouchableOpacity>

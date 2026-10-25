@@ -1,16 +1,20 @@
-import React, { useEffect } from "react";
+import React, { useEffect, useState } from "react";
 import { ScrollView, Text, TouchableOpacity, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { myName, useLove } from "../../lib/store";
 import { notifyPartnerOfHeartbeat } from "../../lib/push";
+import { heartbeatPulse } from "../../lib/feedback";
+import { dailyQuote, greetingLine } from "../../lib/content";
 import { dayKeyLocal, today } from "../../lib/types";
 import { MILESTONES, dayCount, milestoneReached, nextMilestone, timeAgoText } from "../../lib/features";
 import { HomeGardenScene } from "../../components/Art";
-import { PersonChip, personOf } from "../../components/PersonChip";
+import Avatar from "../../components/Avatar";
+import { HeartBurst } from "../../components/HeartBurst";
+import { PersonChip, partnerOf, personOf, selfOf } from "../../components/PersonChip";
 import { LetterAndPingPops, useStageUp } from "../../components/Popups";
 import { COLOR, FONT, RADIUS, ROLE, SPACE, TYPE } from "../../components/theme";
-import { ProgressBar, SkeletonCard, StatusChip, s, tabBarPad } from "../../components/ui";
+import { ProgressBar, SkeletonCard, StatusChip, s, tabBarPad, useNow } from "../../components/ui";
 
 /**
  * Trang Nhà — bản GỌN (2026-10-23): nhà chỉ để NGẮM và CẢM, không phải sảnh
@@ -23,6 +27,15 @@ import { ProgressBar, SkeletonCard, StatusChip, s, tabBarPad } from "../../compo
  * (3) Note mới nhất: xem trước TĨNH (không bấm sang tab Note).
  * (4) "Dấu vết gần nhất": tối đa 3 dòng hoạt động gần nhất, tĩnh.
  * Cả màn vừa khoảng một viewport + cuộn nhẹ là hết.
+ *
+ * Đợt "chất app" 1 (2026-10-25) — Nhà lấy HAI ĐỨA làm trung tâm:
+ * - Hero có mặt cả hai: avatar chồng nhau + "{Bạn} & {Người ấy}" ngay trên
+ *   "Ngày N" — bộ đếm không còn đứng một mình giữa phong cảnh.
+ * - "Câu tình hôm nay" dưới dòng cột mốc: 1 câu/ngày, xác định theo ngày nên
+ *   2 máy thấy cùng một câu (lib/content.dailyQuote).
+ * - Lời chào theo buổi ở đầu card "Hôm nay", gọi tên cả hai người.
+ * - Gửi nhịp nhớ có CẢM GIÁC: rung nhịp tim đôi + mưa tim bay lên từ card
+ *   (lib/feedback + components/HeartBurst).
  */
 const ACT_ICON: Record<string, string> = {
   water: "water", sunny: "sunny", heart: "heart", bug: "bug", sparkles: "sparkles",
@@ -32,9 +45,14 @@ const ACT_ICON: Record<string, string> = {
 export default function HomeScreen() {
   const { state, dispatch, hydrated } = useLove();
   const insets = useSafeAreaInsets();
+  const nowTick = useNow(60000);
+  const [burst, setBurst] = useState(0);
   useStageUp(state, dispatch);
 
   const me = state.currentUser;
+  const self = selfOf(state);
+  const partner = partnerOf(state);
+  const hour = new Date(nowTick).getHours();
   const count = dayCount(state.couple.startDate);
   const next = nextMilestone(count);
   const reached = milestoneReached(count);
@@ -92,9 +110,20 @@ export default function HomeScreen() {
                   <Text style={{ fontFamily: FONT.bold, fontSize: 12.5, color: "#8A6108" }}>Chúc mừng mốc {reached} ngày yêu!</Text>
                 </View>
               ) : null}
+              {/* Hai đứa hiện diện ngay trên bộ đếm: avatar chồng + tên của cả hai */}
+              <View style={{ flexDirection: "row", alignItems: "center", marginBottom: 7 }}>
+                <Avatar id={self.avatar} size={36} ring="#FFF7F0" />
+                <View style={{ marginLeft: -12 }}>
+                  <Avatar id={partner.avatar} size={36} ring="#FFF7F0" />
+                </View>
+                <Text style={{ fontFamily: FONT.bold, fontSize: 14.5, color: COLOR.text, marginLeft: 10 }}>{self.name} & {partner.name}</Text>
+              </View>
               <Text style={{ ...TYPE.display, color: COLOR.text }}>Ngày {count}</Text>
               <Text style={{ fontFamily: FONT.regular, fontSize: 13.5, color: COLOR.textSoft, marginTop: 3, textAlign: "center" }}>
                 {next ? `Còn ${next.remaining} ngày nữa tới mốc ${next.days} ngày` : "Hai đứa đã đi qua mọi cột mốc trong danh sách — cứ yêu tiếp thôi"}
+              </Text>
+              <Text style={{ fontFamily: FONT.medium, fontStyle: "italic", fontSize: 13.5, color: ROLE.selfDark, marginTop: 7, textAlign: "center" }}>
+                {`“${dailyQuote()}”`}
               </Text>
               <View style={{ width: "100%", marginTop: 12 }}>
                 <ProgressBar value={milestonePct} color={COLOR.primary} height={8} />
@@ -103,10 +132,13 @@ export default function HomeScreen() {
           </View>
         </View>
 
-        {/* (2) Hôm nay — nhịp nhớ + tóm tắt chăm cây (tĩnh) + 1 CTA */}
-        <View style={[s.card, { marginTop: 2 }]}>
+        {/* (2) Hôm nay — lời chào gọi tên hai đứa + nhịp nhớ + tóm tắt chăm cây (tĩnh) + 1 CTA */}
+        <View style={[s.card, { marginTop: 2, position: "relative" }]}>
           <Text style={{ ...TYPE.micro, color: COLOR.textSoft }}>Hôm nay</Text>
           <Text style={{ ...TYPE.emphasis, color: COLOR.text, marginTop: 8 }}>
+            {greetingLine(hour, self.name, partner.name)}
+          </Text>
+          <Text style={{ ...TYPE.body, color: COLOR.textSoft, marginTop: 4 }}>
             Hôm nay hai đứa đã nhớ nhau {pingsToday} nhịp.
           </Text>
           <Text style={{ ...TYPE.body, color: COLOR.textSoft, marginTop: 4 }}>{careSummary}</Text>
@@ -114,6 +146,8 @@ export default function HomeScreen() {
             onPress={() => {
               dispatch({ type: "PING_SEND", user: me, actor: myName(state) });
               notifyPartnerOfHeartbeat();
+              heartbeatPulse();
+              setBurst((b) => b + 1);
             }}
             style={[s.btn, { marginTop: 14 }]}
             accessibilityRole="button"
@@ -122,6 +156,7 @@ export default function HomeScreen() {
             <Ionicons name="heart" size={19} color="#fff" />
             <Text style={s.btnText}>Gửi nhịp nhớ</Text>
           </TouchableOpacity>
+          <HeartBurst burstKey={burst} />
         </View>
 
         {/* (3) Note mới nhất — xem trước TĨNH, không điều hướng */}

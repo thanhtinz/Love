@@ -1,11 +1,13 @@
-import React from "react";
-import { ScrollView, Text, View } from "react-native";
+import React, { useState } from "react";
+import { Animated, ScrollView, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { myName, useLove } from "../../lib/store";
+import { careTouch, softWarning } from "../../lib/feedback";
 import { COMBO_WINDOW_MS, dayCount, decideCareLetter, timeAgoText } from "../../lib/features";
 import { TREE_STAGES, careStatus, decayedStats, treeHealth, treeStageForDay, type CareKind } from "../../lib/tree";
 import { PlantScene, MascotArt } from "../../components/Art";
+import { HeartBurst } from "../../components/HeartBurst";
 import { PersonChip, partnerOf } from "../../components/PersonChip";
 import { LetterAndPingPops, useStageUp } from "../../components/Popups";
 import { COLOR, FONT, RADIUS, ROLE, SPACE, TYPE } from "../../components/theme";
@@ -18,7 +20,10 @@ import { ClosingBand, IconBtn, ProgressBar, StatBar, StatusChip, s, tabBarPad, u
  * - 3 thanh chỉ số Nước/Nắng/Yêu là SỨC SỐNG hiển thị, hao theo giờ thật; chăm
  *   cây có cooldown 60 giây mỗi người và VÔ HIỆU khi chỉ số liên quan đã >= 95%
  *   — lý do chặn hiện rõ ngay dưới cụm nút (khóa cứng nằm ở reducer, UI chỉ
- *   trình bày lại). Chăm cây giữ cây tươi khỏe, KHÔNG đổi giai đoạn.
+ *   trình bày lại). Đợt "chất app" 1: nút bị chặn chỉ MỜ đi (dimmed) chứ vẫn
+ *   nhận chạm để rung cảnh báo mềm; chăm thành công thì rung mềm + cây nhún
+ *   vui + cánh hoa rơi (lib/feedback + HeartBurst mode "petals").
+ *   Chăm cây giữ cây tươi khỏe, KHÔNG đổi giai đoạn.
  * - "Song chăm": người ấy chăm trong 90 giây gần đây -> dòng gợi ý combo.
  * - Dấu vết chăm cây: lần chăm gần nhất + nhật ký chăm rút gọn.
  */
@@ -34,6 +39,8 @@ export default function TreeScreen() {
   const { state, dispatch, hydrated } = useLove();
   const insets = useSafeAreaInsets();
   const now = useNow(1000);
+  const [sceneScale] = useState(() => new Animated.Value(1));
+  const [petalKey, setPetalKey] = useState(0);
   useStageUp(state, dispatch);
 
   const me = state.currentUser;
@@ -53,9 +60,27 @@ export default function TreeScreen() {
   const careActs = state.activities.filter((a) => CARE_ICONS.has(a.icon)).slice(0, 5);
   const lastCareSlot = state.tree.lastCareBySlot;
 
-  function onCare(kind: CareKind) {
+  /** Cây "đáp lại" khi được chăm: nhún vui 1 -> 1.03 -> 1 + một đợt cánh hoa rơi. */
+  function bounceTree() {
+    sceneScale.setValue(1);
+    Animated.sequence([
+      Animated.timing(sceneScale, { toValue: 1.03, duration: 160, useNativeDriver: true }),
+      Animated.spring(sceneScale, { toValue: 1, friction: 4, tension: 60, useNativeDriver: true }),
+    ]).start();
+    setPetalKey((k) => k + 1);
+  }
+
+  function onCare(kind: CareKind, ok: boolean) {
+    if (!ok) {
+      // Chạm vào nút đang bị chặn: chỉ rung cảnh báo mềm + dòng lý do đã hiện
+      // sẵn dưới cụm nút — khóa cứng vẫn nằm ở reducer/careStatus như cũ.
+      softWarning();
+      return;
+    }
     const { drop, combo } = decideCareLetter(state, kind, now);
     dispatch({ type: "TREE_CARE", kind, user: me, actor: myName(state), drop, combo });
+    careTouch();
+    bounceTree();
   }
 
   return (
@@ -69,9 +94,12 @@ export default function TreeScreen() {
           <StatusChip label={`Giai đoạn ${stageForDay.stage}/7`} variant="accent" />
         </View>
 
-        {/* Bệ cảnh cây */}
+        {/* Bệ cảnh cây — cây nhún vui + cánh hoa rơi khi chăm thành công */}
         <View style={{ backgroundColor: COLOR.gardenWash, borderRadius: RADIUS.scene, borderWidth: 1, borderColor: COLOR.border, overflow: "hidden" }}>
-          <PlantScene stageIndex={stageIdx} status={health.status} height={308} imgHeight={284} />
+          <Animated.View style={{ transform: [{ scale: sceneScale }] }}>
+            <PlantScene stageIndex={stageIdx} status={health.status} height={308} imgHeight={284} />
+          </Animated.View>
+          <HeartBurst burstKey={petalKey} mode="petals" />
         </View>
 
         {/* Trạng thái + chỉ số */}
@@ -105,12 +133,12 @@ export default function TreeScreen() {
           <Text style={{ ...TYPE.micro, color: COLOR.textSoft }}>Chăm cây</Text>
           <View style={{ flexDirection: "row", gap: 10, marginTop: 12 }}>
             {statuses.slice(0, 2).map(({ def, cs }) => (
-              <IconBtn key={def.kind} icon={def.icon} label={def.label} color={def.color} bg={def.bg} disabled={!cs.ok} onPress={() => onCare(def.kind)} />
+              <IconBtn key={def.kind} icon={def.icon} label={def.label} color={def.color} bg={def.bg} dimmed={!cs.ok} onPress={() => onCare(def.kind, cs.ok)} />
             ))}
           </View>
           <View style={{ flexDirection: "row", gap: 10, marginTop: 10 }}>
             {statuses.slice(2).map(({ def, cs }) => (
-              <IconBtn key={def.kind} icon={def.icon} label={def.label} color={def.color} bg={def.bg} disabled={!cs.ok} onPress={() => onCare(def.kind)} />
+              <IconBtn key={def.kind} icon={def.icon} label={def.label} color={def.color} bg={def.bg} dimmed={!cs.ok} onPress={() => onCare(def.kind, cs.ok)} />
             ))}
           </View>
           {firstBlocked ? (

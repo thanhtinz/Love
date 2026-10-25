@@ -1,12 +1,14 @@
-import React from "react";
+import React, { useEffect, useState } from "react";
 import { Modal, Pressable, Text, TouchableOpacity, View } from "react-native";
 import { router } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { myName, useLove } from "../lib/store";
 import { notifyPartnerOfHeartbeat } from "../lib/push";
+import { heartbeatPulse } from "../lib/feedback";
 import { today } from "../lib/types";
 import { shareStatus } from "../lib/features";
 import { COLOR, FONT, RADIUS, ROLE, SPACE, TILE } from "./theme";
+import { HeartBurst } from "./HeartBurst";
 import { Medallion } from "./ui";
 
 /**
@@ -19,6 +21,18 @@ export function QuickActions({ visible, onClose }: { visible: boolean; onClose: 
   const me = state.currentUser;
   const myPingsToday = state.pings.day.date === today() ? state.pings.day[me] : 0;
   const myShare = shareStatus(state.presence[me]);
+  const [pingBurst, setPingBurst] = useState(0);
+  const [pingSent, setPingSent] = useState(false);
+
+  // Sau khi gửi nhịp từ sheet: nán ~600ms để mưa tim kịp hiện rồi mới đóng.
+  useEffect(() => {
+    if (!pingSent) return;
+    const t = setTimeout(() => {
+      setPingSent(false);
+      onClose();
+    }, 600);
+    return () => clearTimeout(t);
+  }, [pingSent, onClose]);
 
   function go(route: string) {
     onClose();
@@ -26,11 +40,16 @@ export function QuickActions({ visible, onClose }: { visible: boolean; onClose: 
   }
 
   function sendPing() {
+    if (pingSent) return; // đang trong khoảnh khắc ăn mừng — chống gửi trùng
     // Nhịp nhớ không giới hạn, không chờ: gửi là đi ngay + 1 push riêng cho
     // người ấy (fire-and-forget, lỗi nuốt êm bên trong lib/push).
     dispatch({ type: "PING_SEND", user: me, actor: myName(state) });
     notifyPartnerOfHeartbeat();
-    onClose();
+    // Cảm giác: rung nhịp tim đôi + mưa tim — effect phía trên giữ sheet lại
+    // ~600ms để khoảnh khắc kịp hiện rồi mới đóng (trước đây đóng ngay).
+    heartbeatPulse();
+    setPingBurst((b) => b + 1);
+    setPingSent(true);
   }
 
   const rows: { icon: string; title: string; desc: string; onPress: () => void; disabled?: boolean }[] = [
@@ -52,7 +71,7 @@ export function QuickActions({ visible, onClose }: { visible: boolean; onClose: 
       <Pressable style={{ flex: 1, backgroundColor: "rgba(51,39,46,0.35)", justifyContent: "flex-end" }} onPress={onClose}>
         <Pressable
           onPress={() => {}}
-          style={{ backgroundColor: COLOR.bg, borderTopLeftRadius: RADIUS.sheet, borderTopRightRadius: RADIUS.sheet, paddingHorizontal: SPACE.screenX, paddingTop: 14, paddingBottom: 30 }}
+          style={{ backgroundColor: COLOR.bg, borderTopLeftRadius: RADIUS.sheet, borderTopRightRadius: RADIUS.sheet, paddingHorizontal: SPACE.screenX, paddingTop: 14, paddingBottom: 30, position: "relative" }}
         >
           <View style={{ alignSelf: "center", width: 44, height: 5, borderRadius: 3, backgroundColor: COLOR.lineStrong, marginBottom: 14 }} />
           <Text style={{ fontFamily: FONT.extrabold, fontSize: 19, color: COLOR.text, marginBottom: 4 }}>Làm gì cho nhau nè?</Text>
@@ -81,6 +100,7 @@ export function QuickActions({ visible, onClose }: { visible: boolean; onClose: 
               Mọi thứ ở đây đều đồng bộ với người ấy ngay khi cả hai đang mở app.
             </Text>
           </View>
+          <HeartBurst burstKey={pingBurst} />
         </Pressable>
       </Pressable>
     </Modal>
