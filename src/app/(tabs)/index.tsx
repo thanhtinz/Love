@@ -168,23 +168,27 @@ export default function HomeScreen() {
               <Text style={{ fontFamily: FONT.regular, fontSize: 13.5, color: COLOR.textSoft, marginTop: 3, textAlign: "center" }}>
                 {next ? `Còn ${next.remaining} ngày nữa tới mốc ${next.days} ngày` : "Hai đứa đã đi qua mọi cột mốc trong danh sách — cứ yêu tiếp thôi"}
               </Text>
-              <Text style={{ fontFamily: FONT.medium, fontStyle: "italic", fontSize: 13.5, color: ROLE.selfDark, marginTop: 7, textAlign: "center" }}>
-                {`“${dailyQuote()}”`}
-              </Text>
-              <View style={{ width: "100%", marginTop: 12 }}>
-                <ProgressBar value={milestonePct} color={COLOR.primary} height={8} />
+              {/* Hàng dưới của hero: TRÁI = cột câu tình + thanh tiến trình mốc
+                  (flex 1), PHẢI = ảnh hai đứa trong Ô RIÊNG in-flow 92px.
+                  (Sửa 2026-10-25 theo ảnh chủ app gửi: polaroid absolute cũ đè
+                  lên chữ câu tình + đầu phải thanh tiến trình và thò ra khỏi
+                  đáy hero — nay ảnh có chỗ ngồi hẳn hoi bên trong padding,
+                  không chữ nào chạy dưới ảnh nữa. Chưa đặt ảnh -> cột trái
+                  phủ kín bề ngang như cũ, không ô trống, không nhảy layout.) */}
+              <View style={{ flexDirection: "row", alignItems: "center", width: "100%", marginTop: 7, gap: state.couplePhoto && photoUrl ? 14 : 0 }}>
+                <View style={{ flex: 1 }}>
+                  <Text style={{ fontFamily: FONT.medium, fontStyle: "italic", fontSize: 13.5, color: ROLE.selfDark, textAlign: "center" }}>
+                    {`“${dailyQuote()}”`}
+                  </Text>
+                  <View style={{ marginTop: 12 }}>
+                    <ProgressBar value={milestonePct} color={COLOR.primary} height={8} />
+                  </View>
+                </View>
+                {state.couplePhoto && photoUrl ? <CouplePolaroid url={photoUrl} width={92} /> : null}
               </View>
             </View>
           </View>
         </View>
-        {/* Ảnh của hai đứa (đợt 3): polaroid nhỏ gác lên góc dưới-phải của hero,
-            ngay cạnh hàng avatar — CHỈ hiện khi đã đặt ảnh và xin được URL;
-            chưa đặt thì hero giữ nguyên như đợt 1. */}
-        {state.couplePhoto && photoUrl ? (
-          <View style={{ position: "absolute", right: 12, bottom: -10, zIndex: 5 }} pointerEvents="none">
-            <CouplePolaroid url={photoUrl} width={84} />
-          </View>
-        ) : null}
         </View>
 
         {/* (2) Lời chào — dòng RIÊNG đứng dưới hero: lời chào là cảm xúc, không phải dữ kiện */}

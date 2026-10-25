@@ -3,19 +3,19 @@ import { Text, View } from "react-native";
 import { FONT, RADIUS, SHADOW_FLOAT } from "./theme";
 
 /**
- * Khung POLAROID NHỎ cho ảnh thật của hai đứa: viền trắng dày, góc bo nhẹ,
- * bóng đổ mềm — không xoay, không hiệu ứng thừa. Hiện chỉ dùng ở góc hero
- * trang Nhà (~84px); ở tab Hai đứa ảnh hiện khổ lớn bằng CouplePhotoLarge.
+ * Khung ảnh VUÔNG cho ảnh thật của hai đứa: viền trắng đều, góc bo nhẹ, bóng
+ * đổ mềm — một Ô RIÊNG ngay hàng dưới của hero trang Nhà (~92px, in-flow,
+ * không còn gác absolute đè lên chữ). Ảnh cắt vuông (cover) cho vừa ô; ở tab
+ * Hai đứa ảnh hiện khổ lớn bằng CouplePhotoLarge.
  */
 export function CouplePolaroid({ url, width, caption }: { url: string; width: number; caption?: string }) {
-  const pad = Math.max(5, Math.round(width * 0.07));
-  const photoW = width - pad * 2;
-  const photoH = Math.round(photoW * 0.75); // ảnh được cắt 4:3 lúc chọn
+  const pad = Math.max(5, Math.round(width * 0.065));
+  const photoSide = width - pad * 2;
   return (
-    <View style={{ width, backgroundColor: "#FFFFFF", borderRadius: 12, padding: pad, paddingBottom: caption ? pad + 2 : pad + 7, ...SHADOW_FLOAT }}>
+    <View style={{ width, height: caption ? undefined : width, backgroundColor: "#FFFFFF", borderRadius: 12, padding: pad, ...SHADOW_FLOAT }}>
       <Image
         source={{ uri: url }}
-        style={{ width: photoW, height: photoH, borderRadius: 6, backgroundColor: "#F6E8EC" }}
+        style={{ width: photoSide, height: photoSide, borderRadius: 6, backgroundColor: "#F6E8EC" }}
         contentFit="cover"
         accessibilityLabel="Ảnh của hai đứa"
       />
