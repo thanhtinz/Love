@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { ActivityIndicator, ScrollView, Text, TextInput, TouchableOpacity, View } from "react-native";
+import { ActivityIndicator, ScrollView, Text, TextInput, TouchableOpacity, View, useWindowDimensions } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import * as ImagePicker from "expo-image-picker";
@@ -13,16 +13,17 @@ import { statusMoodById } from "../../lib/content";
 import { StatusEditor } from "../../components/StatusEditor";
 import Avatar from "../../components/Avatar";
 import { HeroBand, MascotArt } from "../../components/Art";
-import { CouplePolaroid } from "../../components/CouplePhoto";
-import { partnerOf, personOf, selfOf } from "../../components/PersonChip";
+import { CouplePhotoLarge } from "../../components/CouplePhoto";
+import { partnerOf, selfOf } from "../../components/PersonChip";
 import { COLOR, FONT, RADIUS, ROLE, SPACE, TYPE } from "../../components/theme";
 import { ClosingBand, FeatureCard, ProgressBar, s, tabBarPad } from "../../components/ui";
 
 /**
  * Tab "Hai đứa" — hub của cặp đôi trong bản rebuild:
  * - Thẻ hồ sơ navy "Chúng mình": avatar hai người, Ngày N, ngày bắt đầu, mốc tiếp theo.
- * - Ảnh của hai đứa (đợt 3) ngay trong thẻ navy: ảnh thật khung polaroid khi đã
- *   đặt (Storage, bucket riêng tư), chưa đặt thì tranh couple-hero + nút thêm ảnh.
+ * - Ảnh của hai đứa (đợt 3) ngay trong thẻ navy: ảnh thật khổ lớn 4:3 phủ kín
+ *   bề ngang thẻ (Storage, bucket riêng tư), chưa đặt thì tranh couple-hero
+ *   cùng khổ + nút thêm ảnh dạng pill nhỏ đè ở góc ảnh.
  * - Sửa ngày bắt đầu yêu ngay tại đây (cả hai đều sửa được, máy kia thấy qua nhật ký).
  * - Hàng Bản đồ hai đứa (kèm trạng thái phiên đang chạy) -> /location.
  * - Hàng Tài khoản & ghép cặp -> /account.
@@ -47,6 +48,10 @@ export default function CoupleScreen() {
   const [photoOk, setPhotoOk] = useState(false);
   const [statusOpen, setStatusOpen] = useState(false);
   const photoUrl = useCouplePhotoUrl(state.couplePhoto);
+  // Khổ ảnh 4:3 phủ kín bề ngang thẻ navy: bề ngang khả dụng = màn hình trừ
+  // lề ScrollView (SPACE.screenX x2) và padding thẻ (20 x2).
+  const { width: windowWidth } = useWindowDimensions();
+  const photoH = Math.round((windowWidth - SPACE.screenX * 2 - 40) * 0.75);
 
   // eslint-disable-next-line react-hooks/set-state-in-effect -- đồng bộ ô ngày từ state, trừ khi đang sửa
   useEffect(() => { if (!dateDirty && hydrated) setDateText(formatDateVN(state.couple.startDate)); }, [state.couple.startDate, dateDirty, hydrated]);
@@ -165,35 +170,38 @@ export default function CoupleScreen() {
               );
             })}
           </View>
-          {/* Ảnh của hai đứa: có ảnh thật thì khung polaroid trắng trên nền navy;
-              chưa có (hoặc đang tải/chưa xin được URL) thì dùng tranh vẽ cặp đôi. */}
-          <View style={{ marginTop: 18, alignItems: "center" }}>
-            {state.couplePhoto && photoUrl ? (
-              <CouplePolaroid url={photoUrl} width={228} caption={`Ảnh do ${personOf(state, state.couplePhoto.bySlot).name} đặt`} />
-            ) : (
-              <View style={{ width: "100%", borderRadius: RADIUS.card, overflow: "hidden" }}>
-                <HeroBand height={132} />
-              </View>
-            )}
-            {state.couplePhoto && !photoUrl ? (
-              <Text style={{ fontFamily: FONT.regular, fontSize: 12.5, color: COLOR.onNavySoft, marginTop: 9 }}>
-                Đang tải ảnh của hai đứa...
-              </Text>
-            ) : null}
-            <TouchableOpacity
-              onPress={pickCouplePhoto}
-              disabled={photoBusy}
-              style={{ flexDirection: "row", alignItems: "center", gap: 7, marginTop: 13, backgroundColor: "rgba(255,255,255,0.14)", borderWidth: 1, borderColor: "rgba(255,255,255,0.35)", borderRadius: RADIUS.control, paddingHorizontal: 16, paddingVertical: 10, opacity: photoBusy ? 0.6 : 1 }}
-              accessibilityRole="button"
-              accessibilityLabel={state.couplePhoto ? "Đổi ảnh hai đứa" : "Thêm ảnh của hai đứa"}
-            >
-              {photoBusy
-                ? <ActivityIndicator size="small" color="#fff" />
-                : <Ionicons name="image" size={16} color="#fff" />}
-              <Text style={{ fontFamily: FONT.bold, fontSize: 13.5, color: "#fff" }}>
-                {photoBusy ? "Đang tải ảnh lên..." : state.couplePhoto ? "Đổi ảnh hai đứa" : "Thêm ảnh của hai đứa"}
-              </Text>
-            </TouchableOpacity>
+          {/* Ảnh của hai đứa: ảnh thật hiện LỚN phủ kín bề ngang thẻ (4:3,
+              không khung, không ghi chú); chưa đặt thì tranh couple-hero cùng
+              khổ. Nút đổi/thêm ảnh là pill nhỏ đè ở góc dưới-phải của ảnh. */}
+          <View style={{ marginTop: 18 }}>
+            <View style={{ position: "relative" }}>
+              {state.couplePhoto && photoUrl ? (
+                <CouplePhotoLarge url={photoUrl} />
+              ) : (
+                <View style={{ borderRadius: RADIUS.inner, overflow: "hidden" }}>
+                  <HeroBand height={photoH} />
+                </View>
+              )}
+              {state.couplePhoto && !photoUrl ? (
+                <View style={{ position: "absolute", top: 10, left: 10, backgroundColor: "rgba(38,22,30,0.62)", borderRadius: 999, paddingHorizontal: 10, paddingVertical: 5 }}>
+                  <Text style={{ fontFamily: FONT.medium, fontSize: 11.5, color: "#fff" }}>Đang tải ảnh...</Text>
+                </View>
+              ) : null}
+              <TouchableOpacity
+                onPress={pickCouplePhoto}
+                disabled={photoBusy}
+                style={{ position: "absolute", right: 10, bottom: 10, flexDirection: "row", alignItems: "center", gap: 6, backgroundColor: "rgba(38,22,30,0.62)", borderRadius: 999, paddingHorizontal: 12, paddingVertical: 8, opacity: photoBusy ? 0.6 : 1 }}
+                accessibilityRole="button"
+                accessibilityLabel={state.couplePhoto ? "Đổi ảnh hai đứa" : "Thêm ảnh của hai đứa"}
+              >
+                {photoBusy
+                  ? <ActivityIndicator size="small" color="#fff" />
+                  : <Ionicons name="camera" size={14} color="#fff" />}
+                <Text style={{ fontFamily: FONT.bold, fontSize: 12.5, color: "#fff" }}>
+                  {photoBusy ? "Đang tải lên..." : state.couplePhoto ? "Đổi ảnh" : "Thêm ảnh"}
+                </Text>
+              </TouchableOpacity>
+            </View>
             {photoMsg ? (
               <Text style={{ fontFamily: FONT.regular, fontSize: 12.5, color: photoOk ? COLOR.onNavySoft : "#FFC4CE", marginTop: 9, textAlign: "center" }}>
                 {photoMsg}

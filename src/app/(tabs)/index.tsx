@@ -17,7 +17,7 @@ import { HeartBurst } from "../../components/HeartBurst";
 import { PersonChip, partnerOf, personOf, selfOf } from "../../components/PersonChip";
 import { usePestWatch, useStageUp } from "../../components/Popups";
 import { COLOR, FONT, RADIUS, ROLE, SPACE, TYPE } from "../../components/theme";
-import { ProgressBar, SkeletonCard, StatusChip, s, tabBarPad, useNow } from "../../components/ui";
+import { Medallion, ProgressBar, SkeletonCard, StatusChip, s, tabBarPad, useNow } from "../../components/ui";
 
 /**
  * Trang Nhà — bản GỌN (2026-10-23): nhà chỉ để NGẮM và CẢM, không phải sảnh
@@ -25,10 +25,14 @@ import { ProgressBar, SkeletonCard, StatusChip, s, tabBarPad, useNow } from "../
  * tĩnh — không hàng link, không chevron, không bấm-xem-thêm:
  * (1) HERO: tranh cảnh vườn mới phủ kín (hai cây hoa đan tán thành trái tim) +
  *     lớp scrim mềm ở đáy ôm "Ngày N" + dòng cột mốc + thanh tiến trình mốc.
- * (2) Card "Hôm nay": số nhịp nhớ hôm nay + tóm tắt chăm cây (chữ tĩnh) +
- *     ĐÚNG 1 nút chính "Gửi nhịp nhớ".
- * (3) Note mới nhất: xem trước TĨNH (không bấm sang tab Note).
- * (4) "Dấu vết gần nhất": tối đa 3 dòng hoạt động gần nhất, tĩnh.
+ * (2) Lời chào theo buổi: dòng RIÊNG đứng ngay dưới hero (lời chào là cảm xúc,
+ *     không phải dữ kiện — không nhốt trong card).
+ * (3) Ba thẻ RIÊNG BIỆT, mỗi thẻ một dữ kiện + tile icon của nó: "Nhịp nhớ
+ *     hôm nay" (ôm ĐÚNG 1 nút chính "Gửi nhịp nhớ"), "Chăm cây", "Nhiệm vụ
+ *     hôm nay" — không còn nhồi tất cả vào một card "Hôm nay" (feedback chủ
+ *     app 2026-10-25: "cái nào ra cái đó").
+ * (4) Note mới nhất: xem trước TĨNH (không bấm sang tab Note).
+ * (5) "Dấu vết gần nhất": tối đa 3 dòng hoạt động gần nhất, tĩnh.
  * Cả màn vừa khoảng một viewport + cuộn nhẹ là hết.
  *
  * Đợt "chất app" 1 (2026-10-25) — Nhà lấy HAI ĐỨA làm trung tâm:
@@ -36,7 +40,7 @@ import { ProgressBar, SkeletonCard, StatusChip, s, tabBarPad, useNow } from "../
  *   "Ngày N" — bộ đếm không còn đứng một mình giữa phong cảnh.
  * - "Câu tình hôm nay" dưới dòng cột mốc: 1 câu/ngày, xác định theo ngày nên
  *   2 máy thấy cùng một câu (lib/content.dailyQuote).
- * - Lời chào theo buổi ở đầu card "Hôm nay", gọi tên cả hai người.
+ * - Lời chào theo buổi đứng RIÊNG dưới hero, gọi tên cả hai người.
  * - Gửi nhịp nhớ có CẢM GIÁC: rung nhịp tim đôi + mưa tim bay lên từ card
  *   (lib/feedback + components/HeartBurst).
  */
@@ -76,8 +80,9 @@ export default function HomeScreen() {
       <View style={s.screen}>
         <View style={{ padding: SPACE.screenX, gap: 12 }}>
           <SkeletonCard height={330} />
-          <SkeletonCard height={150} />
-          <SkeletonCard height={110} />
+          <SkeletonCard height={160} />
+          <SkeletonCard height={104} />
+          <SkeletonCard height={104} />
         </View>
       </View>
     );
@@ -113,10 +118,11 @@ export default function HomeScreen() {
       ? `Hôm nay chưa ai chăm cây · tổng ${state.tree.careCount} lần chăm từ trước tới nay.`
       : "Chưa ai chăm cây lần nào — cây đang chờ hai đứa ghé thăm.";
 
-  /* Gợi ý nhiệm vụ ngày — chữ TĨNH như careSummary (Home không chứa lối tắt) */
+  /* Nhiệm vụ ngày — thẻ RIÊNG dưới đây chỉ đọc số đã xong + cờ hoàn thành
+   * (Home không chứa lối tắt sang tab Cây). */
   const dqHome = currentDailyQuests(state.dailyQuests);
   const questsDoneHome = dqHome.quests.filter((q) => q.count >= q.target).length;
-  const questHint = `Nhiệm vụ hôm nay: ${questsDoneHome}/3${dqHome.allCompletedAt ? " — đã hoàn thành, cây đang tỏa hào quang vàng" : ""}`;
+  const questsAllDoneHome = Boolean(dqHome.allCompletedAt);
 
   /* Trạng thái của NGƯỜI ẤY (hiện diện sống): hiện ngay dưới hàng tên trong
    * hero — trạng thái là CỦA HỌ, nhãn luôn gắn tên họ để không mơ hồ là của
@@ -181,17 +187,31 @@ export default function HomeScreen() {
         ) : null}
         </View>
 
-        {/* (2) Hôm nay — lời chào gọi tên hai đứa + nhịp nhớ + tóm tắt chăm cây (tĩnh) + 1 CTA */}
-        <View style={[s.card, { marginTop: 2, position: "relative" }]}>
-          <Text style={{ ...TYPE.micro, color: COLOR.textSoft }}>Hôm nay</Text>
-          <Text style={{ ...TYPE.emphasis, color: COLOR.text, marginTop: 8 }}>
-            {greetingLine(hour, self.name, partner.name)}
-          </Text>
-          <Text style={{ ...TYPE.body, color: COLOR.textSoft, marginTop: 4 }}>
-            {pingLine}
-          </Text>
-          <Text style={{ ...TYPE.body, color: COLOR.textSoft, marginTop: 4 }}>{careSummary}</Text>
-          <Text style={{ ...TYPE.body, color: COLOR.textSoft, marginTop: 4 }}>{questHint}</Text>
+        {/* (2) Lời chào — dòng RIÊNG đứng dưới hero: lời chào là cảm xúc, không phải dữ kiện */}
+        <Text style={{ ...TYPE.emphasis, color: COLOR.text, paddingHorizontal: 4 }}>
+          {greetingLine(hour, self.name, partner.name)}
+        </Text>
+
+        {/* (3a) Nhịp nhớ hôm nay — thẻ riêng, ôm CTA chính DUY NHẤT của màn */}
+        <View style={[s.card, { position: "relative" }]}>
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
+            <Medallion icon="heart" size={40} />
+            <Text style={{ fontFamily: FONT.bold, fontSize: 15.5, color: COLOR.text, flex: 1 }}>Nhịp nhớ hôm nay</Text>
+          </View>
+          {myPingsToday > 0 && partnerPingsToday > 0 ? (
+            <View style={{ marginTop: 12, gap: 8 }}>
+              <View style={{ flexDirection: "row", alignItems: "center" }}>
+                <Text style={{ ...TYPE.body, color: COLOR.textSoft, flex: 1 }}>Bạn → {partner.name}</Text>
+                <Text style={{ ...TYPE.bodyStrong, color: ROLE.selfDark }}>{myPingsToday} nhịp</Text>
+              </View>
+              <View style={{ flexDirection: "row", alignItems: "center" }}>
+                <Text style={{ ...TYPE.body, color: COLOR.textSoft, flex: 1 }}>{partner.name} → Bạn</Text>
+                <Text style={{ ...TYPE.bodyStrong, color: ROLE.partnerDark }}>{partnerPingsToday} nhịp</Text>
+              </View>
+            </View>
+          ) : (
+            <Text style={{ ...TYPE.body, color: COLOR.textSoft, marginTop: 10 }}>{pingLine}</Text>
+          )}
           <TouchableOpacity
             onPress={() => {
               dispatch({ type: "PING_SEND", user: me, actor: myName(state) });
@@ -209,8 +229,35 @@ export default function HomeScreen() {
           <HeartBurst burstKey={burst} />
         </View>
 
-        {/* (3) Note mới nhất — xem trước TĨNH, không điều hướng */}
-        <View style={[s.card, { marginTop: 2 }]}>
+        {/* (3b) Chăm cây — thẻ riêng: lần chăm gần nhất + tổng số lần (tĩnh) */}
+        <View style={s.card}>
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
+            <Medallion icon="leaf" color={ROLE.partnerDark} bg={ROLE.partnerSoft} size={40} />
+            <Text style={{ fontFamily: FONT.bold, fontSize: 15.5, color: COLOR.text, flex: 1 }}>Chăm cây</Text>
+          </View>
+          <Text style={{ ...TYPE.body, color: COLOR.textSoft, marginTop: 10 }}>{careSummary}</Text>
+        </View>
+
+        {/* (3c) Nhiệm vụ hôm nay — thẻ riêng: thanh 3 đoạn theo số việc đã xong,
+            vẫn KHÔNG link (Home không điều hướng) */}
+        <View style={s.card}>
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
+            <Medallion icon="flag" color={ROLE.sharedDark} bg={ROLE.sharedSoft} size={40} />
+            <Text style={{ fontFamily: FONT.bold, fontSize: 15.5, color: COLOR.text, flex: 1 }}>Nhiệm vụ hôm nay</Text>
+            <Text style={{ ...TYPE.bodyStrong, color: COLOR.text }}>{questsDoneHome}/3</Text>
+          </View>
+          <View style={{ flexDirection: "row", gap: 6, marginTop: 12 }}>
+            {[0, 1, 2].map((i) => (
+              <View key={i} style={{ flex: 1, height: 8, borderRadius: 99, backgroundColor: i < questsDoneHome ? COLOR.primary : COLOR.track }} />
+            ))}
+          </View>
+          {questsAllDoneHome ? (
+            <Text style={{ ...TYPE.caption, color: COLOR.legendary, marginTop: 9 }}>Đã hoàn thành — cây đang tỏa hào quang vàng</Text>
+          ) : null}
+        </View>
+
+        {/* (4) Note mới nhất — xem trước TĨNH, không điều hướng */}
+        <View style={s.card}>
           <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
             <Text style={{ ...TYPE.micro, color: COLOR.textSoft, flex: 1 }}>Note mới nhất</Text>
             {latestNoteIsNew ? <StatusChip label="Mới" variant="accent" /> : null}
@@ -226,9 +273,9 @@ export default function HomeScreen() {
           )}
         </View>
 
-        {/* (4) Dấu vết gần nhất — tối đa 3 dòng, tĩnh */}
+        {/* (5) Dấu vết gần nhất — tối đa 3 dòng, tĩnh */}
         {state.activities.length > 0 ? (
-          <View style={[s.card, { marginTop: 2 }]}>
+          <View style={s.card}>
             <Text style={{ ...TYPE.micro, color: COLOR.textSoft }}>Dấu vết gần nhất</Text>
             <View style={{ marginTop: 10, gap: 11 }}>
               {state.activities.slice(0, 3).map((a) => (

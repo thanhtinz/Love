@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { Animated, ScrollView, Text, TouchableOpacity, View } from "react-native";
+import { Animated, LayoutAnimation, Platform, ScrollView, Text, TouchableOpacity, UIManager, View } from "react-native";
 import { router } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
@@ -14,7 +14,7 @@ import { PersonChip, partnerOf, personOf } from "../../components/PersonChip";
 import { currentDailyQuests, questDef, questStreak } from "../../lib/quests";
 import { usePestWatch, useStageUp } from "../../components/Popups";
 import { COLOR, FONT, RADIUS, ROLE, SPACE, TYPE } from "../../components/theme";
-import { ClosingBand, IconBtn, ProgressBar, StatBar, StatusChip, s, tabBarPad, useNow } from "../../components/ui";
+import { ClosingBand, IconBtn, ProgressBar, StatusChip, s, tabBarPad, useNow } from "../../components/ui";
 
 /**
  * Tab Cây — MỘT Cây Tình Yêu duy nhất của hai đứa.
@@ -33,7 +33,10 @@ import { ClosingBand, IconBtn, ProgressBar, StatBar, StatusChip, s, tabBarPad, u
  *   tán lá, làm cây hao sức nhanh hơn một chút; "Bắt sâu" chỉ có tác dụng
  *   trong lúc sâu đang sống, ngoài lúc đó bị chặn như các nút chăm khác.
  * - "Song chăm": người ấy chăm trong 90 giây gần đây -> dòng gợi ý combo.
- * - Dấu vết chăm cây: lần chăm gần nhất + nhật ký chăm rút gọn.
+ * - BỐ CỤC GỌN (vòng thu gọn): vòng chăm cây (cảnh -> banner sâu -> nút chăm
+ *   -> 3 mini bar sức sống) nằm trọn trong viewport đầu; mọi khối còn lại
+ *   (giai đoạn, nhiệm vụ, dấu vết) là section GẬP đóng mặc định — mở trang
+ *   là chăm được ngay, không phải kéo dài.
  */
 const CARE_DEFS: { kind: CareKind; label: string; icon: string; color: string; bg: string }[] = [
   { kind: "water", label: "Tưới nước", icon: "water", color: COLOR.water, bg: "#E1F0FA" },
@@ -42,6 +45,76 @@ const CARE_DEFS: { kind: CareKind; label: string; icon: string; color: string; b
   { kind: "bug", label: "Bắt sâu", icon: "bug", color: COLOR.successText, bg: COLOR.successSoft },
 ];
 const CARE_ICONS = new Set(["water", "sunny", "heart", "bug", "sparkles"]);
+
+// LayoutAnimation trên Android cần bật cờ thực nghiệm (kiến trúc mới đã mặc
+// định bật — gọi có guard để vô hại ở mọi nền tảng).
+if (Platform.OS === "android" && UIManager.setLayoutAnimationEnabledExperimental) {
+  UIManager.setLayoutAnimationEnabledExperimental(true);
+}
+
+/** Mini bar sức sống: nhãn + % + thanh 6px trong một ô — 3 ô thành một hàng
+ *  gọn ngay dưới cụm nút chăm (cùng luật màu với StatBar: đỏ chỉ khi < 20). */
+function MiniBar({ label, value, color }: { label: string; value: number; color: string }) {
+  const v = Math.max(0, Math.min(100, value));
+  return (
+    <View style={{ flex: 1 }}>
+      <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
+        <Text style={{ fontFamily: FONT.semibold, fontSize: 11.5, color: COLOR.text }}>{label}</Text>
+        <Text style={{ fontFamily: FONT.semibold, fontSize: 11.5, color: COLOR.textSoft }}>{Math.round(v)}%</Text>
+      </View>
+      <View style={{ height: 6, borderRadius: 99, backgroundColor: COLOR.track, overflow: "hidden", marginTop: 4 }}>
+        <View style={{ height: "100%", width: `${v}%`, backgroundColor: v < 20 ? COLOR.danger : color, borderRadius: 99 }} />
+      </View>
+    </View>
+  );
+}
+
+/**
+ * Section GẬP dùng chung cho phần dưới vòng chăm cây: đầu mục gồm medallion
+ * icon + tiêu đề + một dòng tóm tắt + chevron xoay; chạm để mở/gập với
+ * LayoutAnimation mượt. ĐÓNG là mặc định — trạng thái chỉ sống trong
+ * component (không lưu), mở trang luôn bắt đầu từ bố cục gọn.
+ */
+function CollapsibleSection({ icon, title, summary, children }: {
+  icon: string;
+  title: string;
+  summary?: string;
+  children: React.ReactNode;
+}) {
+  const [open, setOpen] = useState(false);
+  const [spin] = useState(() => new Animated.Value(0));
+  function toggle() {
+    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+    Animated.timing(spin, { toValue: open ? 0 : 1, duration: 200, useNativeDriver: true }).start();
+    setOpen(!open);
+  }
+  const rotate = spin.interpolate({ inputRange: [0, 1], outputRange: ["0deg", "180deg"] });
+  return (
+    <View style={[s.card, { padding: 16 }]}>
+      <TouchableOpacity
+        onPress={toggle}
+        accessibilityRole="button"
+        accessibilityLabel={title}
+        accessibilityState={{ expanded: open }}
+        style={{ flexDirection: "row", alignItems: "center", gap: 10 }}
+      >
+        <View style={{ width: 34, height: 34, borderRadius: 17, backgroundColor: COLOR.gardenWash, alignItems: "center", justifyContent: "center" }}>
+          <Ionicons name={icon as never} size={17} color={COLOR.textSoft} />
+        </View>
+        <View style={{ flex: 1, minWidth: 0 }}>
+          <Text style={{ fontFamily: FONT.bold, fontSize: 14.5, color: COLOR.text }}>{title}</Text>
+          {summary ? (
+            <Text numberOfLines={1} style={{ fontFamily: FONT.regular, fontSize: 12.5, color: COLOR.textSoft, marginTop: 1 }}>{summary}</Text>
+          ) : null}
+        </View>
+        <Animated.View style={{ transform: [{ rotate }] }}>
+          <Ionicons name="chevron-down" size={18} color={COLOR.textFaint} />
+        </Animated.View>
+      </TouchableOpacity>
+      {open ? <View style={{ marginTop: 13 }}>{children}</View> : null}
+    </View>
+  );
+}
 
 export default function TreeScreen() {
   const { state, dispatch, hydrated } = useLove();
@@ -140,7 +213,7 @@ export default function TreeScreen() {
         {/* Bệ cảnh cây — cây nhún vui + VFX theo hành động khi chăm; sâu hiện hình khi đang có đợt sâu */}
         <View style={{ backgroundColor: COLOR.gardenWash, borderRadius: RADIUS.scene, borderWidth: 1, borderColor: COLOR.border, overflow: "hidden" }}>
           <Animated.View style={{ transform: [{ scale: sceneScale }] }}>
-            <PlantScene stageIndex={stageIdx} status={health.status} height={308} imgHeight={284} />
+            <PlantScene stageIndex={stageIdx} status={health.status} height={252} imgHeight={236} />
           </Animated.View>
           <PestOverlay pestId={pestActive && state.treePest ? state.treePest.id : null} />
           {auraOn ? <GoldenAura /> : null}
@@ -150,44 +223,21 @@ export default function TreeScreen() {
           <BugScatter burstKey={scatterKey} pestId={scatterPestId} />
         </View>
 
-        {/* Trạng thái + chỉ số */}
-        <View style={s.card}>
-          <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
-            <Text style={{ ...TYPE.cardTitle, color: COLOR.text, flex: 1 }}>{stageDef.name}</Text>
-            {health.status === "wilted" ? <StatusChip label="Đang mệt" variant="waiting" /> : health.status === "need" ? <StatusChip label="Cần chăm" variant="waiting" /> : <StatusChip label="Khỏe mạnh" variant="done" />}
+        {/* Banner sâu — ngay dưới cảnh, trên cụm nút chăm: thấy sâu là bắt ngay */}
+        {pestActive ? (
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 8, backgroundColor: COLOR.warningSoft, borderRadius: RADIUS.tile, paddingHorizontal: 12, paddingVertical: 10 }}>
+            <Ionicons name="bug" size={16} color={COLOR.warning} />
+            <Text style={{ flex: 1, fontFamily: FONT.semibold, fontSize: 13, color: COLOR.text }}>
+              Có sâu trên cây! Bắt ngay kẻo cây héo — sâu đang làm cây hao sức nhanh hơn bình thường.
+            </Text>
           </View>
-          <Text style={{ ...TYPE.body, color: COLOR.textSoft, marginTop: 3 }}>{stageDef.desc}</Text>
-          <View style={{ marginTop: 12 }}>
-            <ProgressBar value={Math.round(stageForDay.progress * 100)} color={ROLE.partner} height={8} />
-          </View>
-          <Text style={{ fontFamily: FONT.regular, fontSize: 12.5, color: COLOR.textSoft, marginTop: 6 }}>
-            {stageForDay.daysToNextStage != null
-              ? `Ngày ${day} · còn ${stageForDay.daysToNextStage} ngày nữa cây lên giai đoạn mới`
-              : `Ngày ${day} · cây đang ở giai đoạn cao nhất rồi`}
-          </Text>
-          <Text style={{ fontFamily: FONT.regular, fontSize: 12.5, color: COLOR.textFaint, marginTop: 3 }}>
-            Cây lớn lên theo thời gian yêu của hai bạn — chăm cây là để cây luôn tươi khỏe.
-          </Text>
-          <View style={{ marginTop: 14, gap: 10 }}>
-            <StatBar label="Nước" value={stats.water} color={COLOR.water} />
-            <StatBar label="Nắng" value={stats.sun} color={COLOR.sun} />
-            <StatBar label="Yêu" value={stats.love} color={COLOR.primary} />
-          </View>
-          <Text style={{ fontFamily: FONT.regular, fontSize: 12.5, color: COLOR.textFaint, marginTop: 10 }}>{health.message}</Text>
-        </View>
+        ) : null}
 
-        {/* Chăm cây */}
-        <View style={s.card}>
+        {/* Bảng chăm cây gọn: nút chăm + lý do chặn/combo + 3 mini bar sức
+            sống — tất cả ngay dưới cảnh, không phải kéo trang mới chăm được. */}
+        <View style={[s.card, { padding: 16 }]}>
           <Text style={{ ...TYPE.micro, color: COLOR.textSoft }}>Chăm cây</Text>
-          {pestActive ? (
-            <View style={{ flexDirection: "row", alignItems: "center", gap: 8, marginTop: 12, backgroundColor: COLOR.warningSoft, borderRadius: RADIUS.tile, paddingHorizontal: 12, paddingVertical: 9 }}>
-              <Ionicons name="bug" size={16} color={COLOR.warning} />
-              <Text style={{ flex: 1, fontFamily: FONT.semibold, fontSize: 13, color: COLOR.text }}>
-                Có sâu trên cây! Bắt ngay kẻo cây héo — sâu đang làm cây hao sức nhanh hơn bình thường.
-              </Text>
-            </View>
-          ) : null}
-          <View style={{ flexDirection: "row", gap: 10, marginTop: 12 }}>
+          <View style={{ flexDirection: "row", gap: 10, marginTop: 10 }}>
             {statuses.slice(0, 2).map(({ def, cs }) => (
               <IconBtn key={def.kind} icon={def.icon} label={def.label} color={def.color} bg={def.bg} dimmed={!cs.ok} onPress={() => onCare(def.kind, cs.ok)} />
             ))}
@@ -198,7 +248,7 @@ export default function TreeScreen() {
             ))}
           </View>
           {firstBlocked ? (
-            <View style={{ flexDirection: "row", alignItems: "center", gap: 6, marginTop: 12 }}>
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 6, marginTop: 10 }}>
               <Ionicons name="information-circle-outline" size={15} color={COLOR.textFaint} />
               <Text style={{ flex: 1, fontFamily: FONT.regular, fontSize: 12.5, color: COLOR.textSoft }}>
                 {firstBlocked.def.label}: {firstBlocked.cs.reason}
@@ -206,26 +256,49 @@ export default function TreeScreen() {
             </View>
           ) : null}
           {comboWindowOpen ? (
-            <View style={{ flexDirection: "row", alignItems: "center", gap: 8, marginTop: 12, backgroundColor: ROLE.selfSoft, borderRadius: RADIUS.tile, paddingHorizontal: 12, paddingVertical: 9 }}>
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 8, marginTop: 10, backgroundColor: ROLE.selfSoft, borderRadius: RADIUS.tile, paddingHorizontal: 12, paddingVertical: 9 }}>
               <Ionicons name="sparkles" size={16} color={ROLE.selfDark} />
               <Text style={{ flex: 1, fontFamily: FONT.semibold, fontSize: 13, color: ROLE.selfDark }}>
                 {partner.name} vừa chăm cây xong — chăm ngay bây giờ để tạo combo Song chăm và làm rơi thư tình!
               </Text>
             </View>
-          ) : (
-            <Text style={{ fontFamily: FONT.regular, fontSize: 12.5, color: COLOR.textFaint, marginTop: 12 }}>
-              {"Mẹo: hai đứa chăm gần nhau trong 90 giây sẽ thành combo \"Song chăm\" — cây vui hơn và dễ rơi thư tình."}
-            </Text>
-          )}
+          ) : null}
+          <View style={{ borderTopWidth: 1, borderTopColor: COLOR.border, marginTop: 14, paddingTop: 12 }}>
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+              <Text style={{ ...TYPE.micro, color: COLOR.textSoft, flex: 1 }}>Sức sống</Text>
+              {health.status === "wilted" ? <StatusChip label="Đang mệt" variant="waiting" /> : health.status === "need" ? <StatusChip label="Cần chăm" variant="waiting" /> : <StatusChip label="Khỏe mạnh" variant="done" />}
+            </View>
+            <View style={{ flexDirection: "row", gap: 12, marginTop: 10 }}>
+              <MiniBar label="Nước" value={stats.water} color={COLOR.water} />
+              <MiniBar label="Nắng" value={stats.sun} color={COLOR.sun} />
+              <MiniBar label="Yêu" value={stats.love} color={COLOR.primary} />
+            </View>
+          </View>
         </View>
 
-        {/* Nhiệm vụ hôm nay — 3 việc nhỏ mỗi ngày, tiến độ từ hành động thật của cả hai */}
-        <View style={s.card}>
-          <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
-            <Text style={{ ...TYPE.micro, color: COLOR.textSoft, flex: 1 }}>Nhiệm vụ hôm nay</Text>
-            <StatusChip label={`${questsDone}/3`} variant={auraOn ? "done" : "accent"} />
+        {/* Giai đoạn cây — section gập: tóm tắt một dòng, mở ra mới thấy mô tả + tiến độ */}
+        <CollapsibleSection
+          icon="leaf"
+          title="Giai đoạn cây"
+          summary={`${stageDef.name} · Ngày ${day}${stageForDay.daysToNextStage != null ? ` · còn ${stageForDay.daysToNextStage} ngày lên giai đoạn mới` : " · giai đoạn cao nhất"}`}
+        >
+          <Text style={{ ...TYPE.body, color: COLOR.textSoft }}>{stageDef.desc}</Text>
+          <View style={{ marginTop: 12 }}>
+            <ProgressBar value={Math.round(stageForDay.progress * 100)} color={ROLE.partner} height={8} />
           </View>
-          <View style={{ marginTop: 12, gap: 11 }}>
+          <Text style={{ fontFamily: FONT.regular, fontSize: 12.5, color: COLOR.textSoft, marginTop: 8 }}>{health.message}</Text>
+          <Text style={{ fontFamily: FONT.regular, fontSize: 12.5, color: COLOR.textFaint, marginTop: 6 }}>
+            {"Cây lớn lên theo thời gian yêu của hai bạn — chăm cây là để cây luôn tươi khỏe. Mẹo: hai đứa chăm gần nhau trong 90 giây sẽ thành combo \"Song chăm\" — cây vui hơn và dễ rơi thư tình."}
+          </Text>
+        </CollapsibleSection>
+
+        {/* Nhiệm vụ hôm nay — section gập: đầu mục tóm tắt tiến độ + chuỗi ngày */}
+        <CollapsibleSection
+          icon="checkmark-circle"
+          title="Nhiệm vụ hôm nay"
+          summary={`${questsDone}/3 nhiệm vụ${streak > 0 ? ` · chuỗi ${streak} ngày chăm đủ` : ""}${auraOn ? " · cây đang tỏa hào quang" : ""}`}
+        >
+          <View style={{ gap: 11 }}>
             {dq.quests.map((q) => {
               const def = questDef(q.kind);
               const doneQ = q.count >= q.target;
@@ -263,20 +336,25 @@ export default function TreeScreen() {
                 : `Chuỗi ngày chăm đủ: ${streak} ngày — làm đủ 3 việc, cây sẽ nhận thêm sức sống và hào quang vàng.`}
             </Text>
           </View>
-        </View>
+        </CollapsibleSection>
 
-        {/* Dấu vết chăm cây */}
-        <View style={s.card}>
-          <Text style={{ ...TYPE.micro, color: COLOR.textSoft }}>Dấu vết chăm cây</Text>
+        {/* Dấu vết chăm cây — section gập: đầu mục là lần chăm gần nhất */}
+        <CollapsibleSection
+          icon="footsteps"
+          title="Dấu vết chăm cây"
+          summary={lastCareSlot && state.tree.lastCareAt
+            ? `${personOf(state, lastCareSlot).name} chăm gần nhất ${timeAgoText(state.tree.lastCareAt, now)} · tổng ${state.tree.careCount} lần chăm`
+            : "Chưa ai chăm cây lần nào"}
+        >
           {lastCareSlot && state.tree.lastCareAt ? (
-            <View style={{ flexDirection: "row", alignItems: "center", gap: 8, marginTop: 10 }}>
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
               <PersonChip state={state} slot={lastCareSlot} size={20} />
               <Text style={{ fontFamily: FONT.regular, fontSize: 13, color: COLOR.textSoft }}>
                 chăm gần nhất {timeAgoText(state.tree.lastCareAt, now)} · tổng {state.tree.careCount} lần chăm
               </Text>
             </View>
           ) : (
-            <Text style={{ ...TYPE.body, color: COLOR.textSoft, marginTop: 8 }}>Chưa ai chăm cây lần nào — bắt đầu bằng một lần tưới nước nhé.</Text>
+            <Text style={{ ...TYPE.body, color: COLOR.textSoft }}>Chưa ai chăm cây lần nào — bắt đầu bằng một lần tưới nước nhé.</Text>
           )}
           {careActs.length > 0 ? (
             <View style={{ marginTop: 12, gap: 9 }}>
@@ -305,7 +383,7 @@ export default function TreeScreen() {
             </Text>
             <Ionicons name="chevron-forward" size={15} color={COLOR.textFaint} />
           </TouchableOpacity>
-        </View>
+        </CollapsibleSection>
 
         {health.status === "wilted" ? (
           <ClosingBand art={<MascotArt size={64} />} line="Cây đang mệt vì chỉ số xuống quá thấp — tưới nước, phơi nắng và gửi lời yêu để cây tươi lại nhé. Cây vẫn lớn theo ngày yêu như thường." />

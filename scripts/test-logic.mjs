@@ -778,10 +778,19 @@ console.log("\n--- O) Sâu trên cây: xuất hiện theo seed + bắt + hết h
   };
   // Quét tối đa 30 ngày tới để tìm một ngày roll thăm "trúng" đợt sâu (xác suất
   // bỏ bê 50%/ngày — 30 ngày liên tiếp trượt là ~0). Test không phụ thuộc ngày cụ thể.
+  // Mốc dò của mỗi ngày neo ở 17:00 giờ địa phương của CHÍNH ngày đó — KHÔNG lấy
+  // NOW + d*24h: giờ xuất hiện theo seed luôn nằm trong 7h–15h và cửa sổ sống dài
+  // 12h, nên 17:00 rơi vào MỌI cửa sổ sống có thể của ngày (xuất hiện trễ nhất
+  // 15h, hết hạn sớm nhất 19h) và probe - appearedAt luôn < 12h như O2 đòi hỏi.
+  // Neo theo đồng hồ tường lúc chạy test là mong manh theo giờ: chạy lúc 0–7h
+  // sáng, mốc dò của cả 30 ngày đều đứng TRƯỚC giờ xuất hiện sớm nhất (7h) nên
+  // pestSpawnFor trả null dù roll trúng — O1 đã trượt đúng kiểu này lúc
+  // 2026-10-26 00:09 (Asia/Saigon), roll thực tế trúng cả 5 ngày đầu (0.18–0.19).
   let spawnProbe = 0;
   let spawnEvent = null;
   for (let d = 0; d < 30 && !spawnEvent; d++) {
-    spawnProbe = NOW + d * 24 * H;
+    const probeDayStart = T.parseDateKey(dayKeyAgo(-d));
+    spawnProbe = probeDayStart.getTime() + 17 * H;
     spawnEvent = F.pestSpawnFor(neglectedBase, spawnProbe);
   }
   check("O1 cây bị bỏ bê: trong 30 ngày phải có ngày sâu xuất hiện theo seed", spawnEvent !== null && spawnEvent.status === "active");

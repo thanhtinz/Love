@@ -1,12 +1,11 @@
 import { Image } from "expo-image";
 import { Text, View } from "react-native";
-import { FONT, SHADOW_FLOAT } from "./theme";
+import { FONT, RADIUS, SHADOW_FLOAT } from "./theme";
 
 /**
- * Khung POLAROID cho ảnh thật của hai đứa (đợt "chất app" 3): viền trắng dày,
- * góc bo nhẹ, bóng đổ mềm — không xoay, không hiệu ứng thừa, để tấm ảnh tự nó
- * là điểm ấm nhất trên màn. Dùng ở thẻ hồ sơ tab Hai đứa (lớn) và góc hero
- * trang Nhà (nhỏ, ~84px).
+ * Khung POLAROID NHỎ cho ảnh thật của hai đứa: viền trắng dày, góc bo nhẹ,
+ * bóng đổ mềm — không xoay, không hiệu ứng thừa. Hiện chỉ dùng ở góc hero
+ * trang Nhà (~84px); ở tab Hai đứa ảnh hiện khổ lớn bằng CouplePhotoLarge.
  */
 export function CouplePolaroid({ url, width, caption }: { url: string; width: number; caption?: string }) {
   const pad = Math.max(5, Math.round(width * 0.07));
@@ -26,5 +25,21 @@ export function CouplePolaroid({ url, width, caption }: { url: string; width: nu
         </Text>
       ) : null}
     </View>
+  );
+}
+
+/**
+ * Ảnh của hai đứa bản LỚN (tab Hai đứa): phủ kín bề ngang thẻ theo đúng tỉ lệ
+ * 4:3 lúc chọn ảnh, bo góc + bóng mềm — KHÔNG khung polaroid, KHÔNG ghi chú,
+ * để tấm ảnh hiện tự nhiên như một khung cảnh trong thẻ hồ sơ.
+ */
+export function CouplePhotoLarge({ url }: { url: string }) {
+  return (
+    <Image
+      source={{ uri: url }}
+      style={{ width: "100%", aspectRatio: 4 / 3, borderRadius: RADIUS.inner, backgroundColor: "#F6E8EC", ...SHADOW_FLOAT }}
+      contentFit="cover"
+      accessibilityLabel="Ảnh của hai đứa"
+    />
   );
 }
