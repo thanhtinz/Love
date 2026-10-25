@@ -14,7 +14,7 @@
     "extra": {
       "supabaseAnonKey": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhxeGN4bmN3c2ZkcWRqc21kcHVtIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTI2NjI3NTUsImV4cCI6MjEwODIzODc1NX0.HgtV8JlQdHzZw9SY8Afobp6DkSb5_I8d1iEB_S4RtsM",
       "supabaseUrl": "https://xqxcxncwsfdqdjsmdpum.supabase.co",
-      "webPushVapidPublicKey": ""
+      "webPushVapidPublicKey": "BBaqY_7h6wR7c74zcJFRU4IbwdiYrB3pbbChaDo_RORBrdRDnt5U3fhMUfdk13GO9kEsUYnR9u6sfcM2v_uL40Q"
     },
     "icon": "./assets/icon.png",
     "ios": {
@@ -80,7 +80,10 @@
               "displayName": "Khu Vườn Tình Yêu",
               "description": "Đếm ngày yêu, note của người ấy và cây tình yêu — chọn phần muốn hiện trong app, mục Tài khoản.",
               "ios": {
-                "supportedFamilies": ["systemSmall", "systemMedium"],
+                "supportedFamilies": [
+                  "systemSmall",
+                  "systemMedium"
+                ],
                 "initialLayout": "src/widgets/LoveWidget.ios.tsx"
               },
               "android": {
