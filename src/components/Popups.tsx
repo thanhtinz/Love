@@ -3,14 +3,16 @@ import { Animated, Modal, Text, TouchableOpacity, View } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Ionicons } from "@expo/vector-icons";
 import type { AppState } from "../lib/types";
-import { makeStageUpLetter, messageById } from "../lib/content";
-import { heartbeatPulse } from "../lib/feedback";
-import { dayCount } from "../lib/features";
+import { formatDateVN } from "../lib/types";
+import { makeStageUpLetter, messageById, milestoneLine } from "../lib/content";
+import { heartbeatPulse, success } from "../lib/feedback";
+import { dayCount, milestoneDateKey, milestoneReached } from "../lib/features";
 import { TREE_STAGE_COUNT, treeStageForDay } from "../lib/tree";
 import { useLove } from "../lib/store";
 import type { Action } from "../lib/store";
 import { personOf } from "./PersonChip";
 import { LetterEnvelopeImage } from "./Art";
+import { HeartBurst } from "./HeartBurst";
 import { Stamp, useNow } from "./ui";
 import { COLOR, FONT, RADIUS, SHADOW_FLOAT } from "./theme";
 
@@ -18,8 +20,9 @@ import { COLOR, FONT, RADIUS, SHADOW_FLOAT } from "./theme";
  * Các khoảnh khắc "bật lên" của bản rebuild — tất cả đều là HIỆU ỨNG TRONG APP
  * khi app đang mở (đồng bộ qua room_state), KHÔNG phải push notification thật:
  * 1) LetterPop — lá thư rơi (chăm cây/song chăm/lên giai đoạn): hiện 1 lần cho
- *    mỗi lá (ghi nhớ đã xem theo roomCode trong AsyncStorage). Thư KHÔNG có hộp
- *    thư/bộ sưu tập — đóng là xong, chỉ còn dòng dấu vết trong nhật ký.
+ *    mỗi lá (ghi nhớ đã xem theo roomCode trong AsyncStorage). Từ đợt "chất
+ *    app" 2, mỗi lá thư rơi còn được giữ thành KỶ VẬT trong "Hộp thư đã giữ"
+ *    (lib reducer ghi keptLetters) nên đóng pop không còn làm mất thư.
  * 2) PingPop — nhịp tim "Nhớ bạn" của người ấy: MỖI nhịp là một sự kiện riêng
  *    (không gộp chuỗi, không cooldown phía người nhận) nên pop hiện theo từng
  *    nhịp mới, tự tắt sau 6 giây. Đợt "chất app" 1: pop NẢY VÀO bằng spring và
@@ -28,10 +31,16 @@ import { COLOR, FONT, RADIUS, SHADOW_FLOAT } from "./theme";
  * 3) useStageUp — giai đoạn cây đi theo NGÀY YÊU: khi giai đoạn suy ra từ ngày
  *    yêu vượt mọi giai đoạn đã ăn mừng (couple.celebratedStages), dispatch
  *    CELEBRATE_TREE_STAGE đúng 1 lần để rơi lá thư xác định của giai đoạn đó.
+ * 4) MilestonePop (đợt "chất app" 2) — ăn mừng MỐC NGÀY YÊU: lần mở app đầu
+ *    tiên ở/ngay sau ngày mốc hiện pop đúng 1 lần cho mốc đó (đã-xem ghi theo
+ *    roomCode trong AsyncStorage; điều kiện "tươi" chặn pop cho các mốc cũ
+ *    được backfill từ bản lưu trước đợt này). Lịch sử mốc đầy đủ nằm ở tab
+ *    Hai đứa ("Hành trình của hai đứa"), ghi bởi MARK_MILESTONE.
  */
 
 const letterSeenKey = (roomCode: string) => `love-letter-seen-${roomCode}`;
 const pingSeenKey = (roomCode: string) => `love-ping-seen-${roomCode}`;
+const milestoneSeenKey = (roomCode: string) => `love-milestone-seen-${roomCode}`;
 
 export function LetterPop() {
   const { state } = useLove();
@@ -158,6 +167,95 @@ export function useStageUp(state: AppState, dispatch: React.Dispatch<Action>) {
     const drop = makeStageUpLetter(stage - 1, stage >= TREE_STAGE_COUNT, state.currentUser, new Date().toISOString());
     dispatch({ type: "CELEBRATE_TREE_STAGE", stage, drop });
   }, [stage, celebratedMax, state.currentUser, dispatch]);
+}
+
+/**
+ * Pop ăn mừng MỐC NGÀY YÊU (đợt "chất app" 2) — nâng cấp từ chip nhỏ ở Home:
+ * lần mở app đầu tiên chạm một mốc (MARK_MILESTONE đã ghi vào celebrated +
+ * milestoneHistory ở Home) thì hiện pop đúng 1 lần: ngôn ngữ thị giác của
+ * LetterPop (giấy thư) + mưa tim HeartBurst + rung success.
+ * Chặn pop oan cho cặp đôi lâu năm: mốc được backfill từ bản lưu cũ có
+ * reachedAt rỗng/xa — chỉ pop khi lịch sử ghi nhận mốc trong 48 giờ gần đây
+ * HOẶC số ngày hiện tại chỉ vừa qua mốc tối đa 2 ngày.
+ */
+export function MilestonePop() {
+  const { state } = useLove();
+  const count = dayCount(state.couple.startDate);
+  const reached = milestoneReached(count);
+  const nowTick = useNow(60000);
+  const [seenDays, setSeenDays] = useState<number[]>([]);
+  const [loaded, setLoaded] = useState(false);
+  const [dismissed, setDismissed] = useState(false);
+  const [burstKey, setBurstKey] = useState(0);
+  const celebratedForRef = useRef(0);
+
+  useEffect(() => {
+    let alive = true;
+    AsyncStorage.getItem(milestoneSeenKey(state.roomCode)).then((v) => {
+      if (!alive) return;
+      try { const parsed: unknown = v ? JSON.parse(v) : []; setSeenDays(Array.isArray(parsed) ? parsed.filter((n): n is number => typeof n === "number") : []); }
+      catch { setSeenDays([]); }
+      setLoaded(true);
+    }).catch(() => { if (alive) setLoaded(true); });
+    return () => { alive = false; };
+  }, [state.roomCode]);
+
+  const record = reached != null ? state.couple.milestoneHistory.find((h) => h.days === reached) : undefined;
+  const fresh = reached != null && (
+    record?.reachedAt
+      ? nowTick - new Date(record.reachedAt).getTime() < 48 * 3600 * 1000
+      : count - reached <= 2
+  );
+  const show = loaded && reached != null && state.couple.celebrated.includes(reached)
+    && !seenDays.includes(reached) && !dismissed && fresh;
+
+  // Rung + mưa tim đúng 1 lần cho mỗi mốc được ăn mừng.
+  useEffect(() => {
+    if (!show || reached == null || celebratedForRef.current === reached) return;
+    celebratedForRef.current = reached;
+    success();
+    setBurstKey(reached);
+  }, [show, reached]);
+
+  if (!show || reached == null) return null;
+  const self = personOf(state, "A");
+  const partner = personOf(state, "B");
+  const dateKey = milestoneDateKey(state.couple.startDate, reached);
+
+  async function close() {
+    setDismissed(true);
+    const next = [...seenDays, reached!];
+    setSeenDays(next);
+    try { await AsyncStorage.setItem(milestoneSeenKey(state.roomCode), JSON.stringify(next)); } catch { /* bỏ qua */ }
+  }
+
+  return (
+    <Modal visible transparent animationType="fade" onRequestClose={close}>
+      <View style={{ flex: 1, backgroundColor: "rgba(51,39,46,0.4)", alignItems: "center", justifyContent: "center", paddingHorizontal: 28 }}>
+        <View style={{ width: "100%", position: "relative", backgroundColor: COLOR.letterPaper, borderRadius: RADIUS.card, borderWidth: 1.5, borderColor: COLOR.letterLine, padding: 22, alignItems: "center", ...SHADOW_FLOAT }}>
+          <HeartBurst burstKey={burstKey} mode="hearts" />
+          <View style={{ width: 56, height: 56, borderRadius: 28, backgroundColor: COLOR.warningSoft, alignItems: "center", justifyContent: "center" }}>
+            <Ionicons name="sparkles" size={27} color={COLOR.warning} />
+          </View>
+          <Text style={{ fontFamily: FONT.extrabold, fontSize: 20, color: COLOR.text, marginTop: 12, textAlign: "center" }}>
+            Mốc {reached} ngày yêu
+          </Text>
+          <Text style={{ fontFamily: FONT.regular, fontSize: 13, color: COLOR.textSoft, marginTop: 3, textAlign: "center" }}>
+            {self.name} & {partner.name}{dateKey ? ` · ${formatDateVN(dateKey)}` : ""}
+          </Text>
+          <Text style={{ fontFamily: FONT.semibold, fontSize: 16, lineHeight: 24.5, color: COLOR.text, textAlign: "center", marginTop: 14 }}>
+            {milestoneLine(reached)}
+          </Text>
+          <Text style={{ fontFamily: FONT.regular, fontSize: 13, color: COLOR.textSoft, textAlign: "center", marginTop: 10 }}>
+            Khoảnh khắc này đã được ghi vào “Hành trình của hai đứa” ở tab Hai đứa.
+          </Text>
+          <TouchableOpacity onPress={close} style={{ backgroundColor: COLOR.primary, borderRadius: RADIUS.control, minHeight: 48, paddingHorizontal: 22, alignItems: "center", justifyContent: "center", marginTop: 18 }} accessibilityRole="button" accessibilityLabel="Giữ khoảnh khắc này">
+            <Text style={{ color: "#fff", fontFamily: FONT.bold, fontSize: 15 }}>Giữ khoảnh khắc này</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    </Modal>
+  );
 }
 
 export function LetterAndPingPops() {

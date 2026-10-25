@@ -22,9 +22,10 @@ import { SafeAreaProvider } from "react-native-safe-area-context";
 SplashScreen.preventAutoHideAsync().catch(() => {});
 
 /**
- * Bản rebuild 5 lõi — bản đồ route TOÀN APP (không còn route nào khác):
+ * Bản rebuild 5 lõi — bản đồ route TOÀN APP:
  * index (cổng) · auth · pair · (tabs)[Nhà index / Cây tree / (+) quick / Note notes /
- * Hai đứa couple] · location (định vị tạm thời) · account (tài khoản).
+ * Hai đứa couple] · location (định vị tạm thời) · account (tài khoản) ·
+ * letters (Hộp thư đã giữ — kỷ vật thư tình, đợt "chất app" 2).
  */
 function Navigator() {
   return (
@@ -35,6 +36,7 @@ function Navigator() {
       <Stack.Screen name="(tabs)" />
       <Stack.Screen name="location" />
       <Stack.Screen name="account" />
+      <Stack.Screen name="letters" />
     </Stack>
   );
 }

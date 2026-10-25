@@ -42,6 +42,14 @@
           "savePhotosPermission": "Cho phép Khu Vườn Tình Yêu lưu ảnh khung kỷ niệm vào thư viện ảnh của bạn."
         }
       ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Cho phép Khu Vườn Tình Yêu mở thư viện ảnh để hai bạn chọn một tấm ảnh chung của hai đứa. Ảnh chỉ được dùng trong vườn của hai bạn mà thôi.",
+          "cameraPermission": "Cho phép Khu Vườn Tình Yêu dùng máy ảnh để hai bạn chụp một tấm ảnh chung của hai đứa ngay trong app.",
+          "microphonePermission": false
+        }
+      ],
       "expo-font",
       [
         "expo-splash-screen",

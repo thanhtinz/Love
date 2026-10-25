@@ -1,10 +1,11 @@
 import {
-  AppState, LetterMoment, LoveNote, NOTE_MIN_INTERVAL_MS, NOTE_TEXT_MAX, NOTES_CAP,
+  AppState, CouplePhoto, LetterMoment, LoveNote, NOTE_MIN_INTERVAL_MS, NOTE_TEXT_MAX, NOTES_CAP,
   PersonId, WidgetPrefs, formatDateVN, isValidDateKey,
   parseDateKey, today, uid,
 } from "./types";
 import { defaultState, normalizeState } from "./model";
 import { applyCare, careStatus, materializeTree } from "./tree";
+import { addKeptLetter, keptLetterFromMoment, recordMilestone } from "./features";
 import { mergeStates, stampSections } from "./merge";
 import { nowIso } from "./time";
 
@@ -33,7 +34,8 @@ export type Action =
   | { type: "PRESENCE_START"; user: PersonId; durationMs: number | null; actor: string }
   | { type: "PRESENCE_STOP"; user: PersonId; actor: string; reason: "manual" | "expired" }
   | { type: "PRESENCE_SNAPSHOT"; user: PersonId; lat: number | null; lng: number | null; acc: number | null; battery: number | null; at: string }
-  | { type: "WIDGET_PREFS_SET"; user: PersonId; prefs: Partial<WidgetPrefs> };
+  | { type: "WIDGET_PREFS_SET"; user: PersonId; prefs: Partial<WidgetPrefs> }
+  | { type: "COUPLE_PHOTO_SET"; photo: CouplePhoto; user: PersonId; actor: string };
 
 function pushAct(s: AppState, actor: string, text: string, icon: string, slot?: PersonId): AppState["activities"] {
   return [{ id: uid(), actor, text, icon, time: nowIso(), slot }, ...s.activities].slice(0, 40);
@@ -98,8 +100,18 @@ export function gardenReducer(state: AppState, action: Action): AppState {
       return { ...state, couple, activities: pushAct(state, action.actor, `vừa đổi ngày bắt đầu yêu thành ${formatDateVN(action.date)}`, "heart", action.user) };
     }
     case "MARK_MILESTONE": {
-      if (state.couple.celebrated.includes(action.days)) return state;
-      const couple = { ...state.couple, celebrated: [...state.couple.celebrated, action.days].sort((a, b) => a - b) };
+      // Ghi mốc + LỊCH SỬ mốc (kỷ vật đợt 2) đúng 1 lần. Nếu cờ celebrated đã
+      // có mà lịch sử chưa có (dữ liệu cũ/backfill thiếu) thì chỉ bổ sung lịch
+      // sử, không thêm dòng dấu vết lần hai.
+      const hasDay = state.couple.celebrated.includes(action.days);
+      const hasHist = state.couple.milestoneHistory.some((h) => h.days === action.days);
+      if (hasDay && hasHist) return state;
+      const couple = {
+        ...state.couple,
+        celebrated: hasDay ? state.couple.celebrated : [...state.couple.celebrated, action.days].sort((a, b) => a - b),
+        milestoneHistory: recordMilestone(state.couple.milestoneHistory, action.days, nowIso()),
+      };
+      if (hasDay) return { ...state, couple };
       return { ...state, couple, activities: pushAct(state, action.actor, `vừa chạm mốc ${action.days} ngày yêu cùng nhau`, "sparkles", state.currentUser) };
     }
 
@@ -119,7 +131,15 @@ export function gardenReducer(state: AppState, action: Action): AppState {
         out = { ...out, activities };
       }
       if (action.drop) {
-        out = { ...out, lastLetter: action.drop, activities: pushAct(out, action.actor, "vừa làm rơi một lá thư tình", "mail", action.user) };
+        // Thư rơi = khoảnh khắc pop + KỶ VẬT (đợt 2): ghi ngay vào hộp thư đã
+        // giữ cùng hành động làm rơi thư, để thư giữ được kể cả khi pop bị bỏ
+        // lỡ; khử trùng theo id của khoảnh khắc khi merge 2 máy.
+        out = {
+          ...out,
+          lastLetter: action.drop,
+          keptLetters: addKeptLetter(out.keptLetters, keptLetterFromMoment(action.drop, action.combo ? "combo" : "care")),
+          activities: pushAct(out, action.actor, "vừa làm rơi một lá thư tình", "mail", action.user),
+        };
       }
       return out;
     }
@@ -135,7 +155,11 @@ export function gardenReducer(state: AppState, action: Action): AppState {
       let out: AppState = { ...state, couple };
       const actorSlot = action.drop ? action.drop.bySlot : state.currentUser;
       out = { ...out, activities: pushAct(out, nameOf(out, actorSlot), "Cây tình yêu đã lên giai đoạn mới", "sparkles", actorSlot) };
-      if (action.drop) out = { ...out, lastLetter: action.drop };
+      if (action.drop) {
+        // Thư lên giai đoạn cũng thành kỷ vật (kind "stage") — id xác định
+        // "stageup-N" nên 2 máy cùng ghi sẽ hội tụ về đúng 1 bản khi merge.
+        out = { ...out, lastLetter: action.drop, keptLetters: addKeptLetter(out.keptLetters, keptLetterFromMoment(action.drop, "stage")) };
+      }
       return out;
     }
 
@@ -236,6 +260,25 @@ export function gardenReducer(state: AppState, action: Action): AppState {
         ...(action.lat != null && action.lng != null ? { lat: action.lat, lng: action.lng, acc: action.acc, locAt: action.at } : null),
       };
       return { ...state, presence: { ...state.presence, [action.user]: slot } };
+    }
+
+    /* ---------- Ảnh của hai đứa (đợt 3): đặt SAU khi upload Storage thành công ---------- */
+    case "COUPLE_PHOTO_SET": {
+      // UI chỉ dispatch action này sau khi file đã lên Storage xong. Reducer
+      // vẫn khóa cứng shape: path không rỗng + updatedAt là mốc ISO đọc được +
+      // bySlot đúng người thao tác. Đặt lại đúng cùng một mốc -> no-op (tránh
+      // phát đồng bộ thừa khi 2 máy cùng nhận một sự kiện).
+      const p = action.photo;
+      if (!p || typeof p.path !== "string" || !p.path.trim()) return state;
+      if (p.bySlot !== action.user) return state;
+      if (!isFinite(new Date(p.updatedAt).getTime())) return state;
+      const prev = state.couplePhoto;
+      if (prev && prev.path === p.path && prev.updatedAt === p.updatedAt && prev.bySlot === p.bySlot) return state;
+      return {
+        ...state,
+        couplePhoto: { path: p.path, updatedAt: p.updatedAt, bySlot: p.bySlot },
+        activities: pushAct(state, action.actor, "vừa đặt ảnh của hai đứa", "heart", action.user),
+      };
     }
 
     /* ---------- Widget màn hình chính: công tắc RIÊNG của từng người ---------- */

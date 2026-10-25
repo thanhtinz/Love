@@ -1,11 +1,11 @@
 import {
-  AppState, Activity, LoveNote, PersonId, PingsState, PresenceSlot, WidgetPrefs,
+  AppState, Activity, CouplePhoto, KeptLetter, LoveNote, PersonId, PingsState, PresenceSlot, WidgetPrefs,
   AVATARS, boolOr, defaultPresenceSlot, defaultWidgetPrefs, finiteNum, isPlainObject, isValidDateKey,
   objArray, strOr, today,
 } from "./types";
 import { createTree, normalizeTree } from "./tree";
-import { isMoodId } from "./content";
-import { MILESTONES } from "./features";
+import { isMoodId, messageById } from "./content";
+import { MILESTONES, unionKeptLetters, unionMilestoneHistory } from "./features";
 
 /**
  * State mặc định + NORMALIZE cho bản rebuild 5 lõi.
@@ -34,7 +34,7 @@ export const defaultState: AppState = {
   avatarA: "svg-a",
   avatarB: "svg-b",
   currentUser: "A",
-  couple: { startDate: today(), startSetAt: "", startSetBy: "", celebrated: [], celebratedStages: [], pairedAt: new Date().toISOString() },
+  couple: { startDate: today(), startSetAt: "", startSetBy: "", celebrated: [], celebratedStages: [], milestoneHistory: [], pairedAt: new Date().toISOString() },
   tree: createTree(),
   notes: [],
   noteLog: { A: "", B: "" },
@@ -43,6 +43,8 @@ export const defaultState: AppState = {
   presence: { A: defaultPresenceSlot(), B: defaultPresenceSlot() },
   widgetPrefs: { A: defaultWidgetPrefs(), B: defaultWidgetPrefs() },
   lastLetter: null,
+  keptLetters: [],
+  couplePhoto: null,
 };
 
 const avatarOr = (v: unknown, fallback: string): string =>
@@ -108,6 +110,35 @@ function normalizeActivity(raw: unknown): Activity | null {
   };
 }
 
+/** Một kỷ vật thư đã giữ: id + messageId thuộc kho 36 thư là điều kiện cứng;
+ *  text thiếu/hỏng thì chụp lại từ kho theo messageId thay vì đánh rơi kỷ vật. */
+function normalizeKeptLetter(raw: unknown): KeptLetter | null {
+  if (!isPlainObject(raw)) return null;
+  if (typeof raw.id !== "string" || !raw.id) return null;
+  const messageId = Math.floor(finiteNum(raw.messageId, 0));
+  if (messageId < 1 || messageId > 36) return null;
+  return {
+    id: raw.id,
+    messageId,
+    text: typeof raw.text === "string" && raw.text.trim() ? raw.text : messageById(messageId).text,
+    rarity: raw.rarity === "rare" || raw.rarity === "legendary" ? raw.rarity : "common",
+    kind: raw.kind === "stage" || raw.kind === "combo" ? raw.kind : "care",
+    source: strOr(raw.source, ""),
+    bySlot: slotOr(raw.bySlot) || "A",
+    receivedAt: strOr(raw.receivedAt, ""),
+  };
+}
+
+/** Ảnh của hai đứa: chỉ nhận khi có path dạng chuỗi không rỗng + bySlot hợp lệ;
+ *  updatedAt thiếu/hỏng -> "" (vẫn giữ ảnh, chỉ yếu thế khi merge). */
+function normalizeCouplePhoto(raw: unknown): CouplePhoto | null {
+  if (!isPlainObject(raw)) return null;
+  if (typeof raw.path !== "string" || !raw.path.trim()) return null;
+  const bySlot = slotOr(raw.bySlot);
+  if (!bySlot) return null;
+  return { path: raw.path, updatedAt: strOr(raw.updatedAt, ""), bySlot };
+}
+
 export function normalizeState(rawInput: unknown): AppState {
   const raw: Record<string, unknown> = isPlainObject(rawInput) ? rawInput : {};
   const base: AppState = {
@@ -134,14 +165,23 @@ export function normalizeState(rawInput: unknown): AppState {
     : base.couple.startDate;
   const celebratedRaw = Array.isArray(rawCouple.celebrated) ? rawCouple.celebrated : [];
   const celebratedStagesRaw = Array.isArray(rawCouple.celebratedStages) ? rawCouple.celebratedStages : [];
+  const celebratedList = [...new Set(celebratedRaw.map((n) => Math.floor(finiteNum(n, 0))).filter((n) => MILESTONES.includes(n)))];
+  // Lịch sử mốc: parse các bản ghi hợp lệ rồi BACKFILL mọi mốc đã có trong
+  // celebrated mà chưa có lịch sử (bản lưu cũ) bằng reachedAt "" — ngày thật
+  // của mốc luôn suy ra được từ startDate (milestoneDateKey).
+  const historyRaw = Array.isArray(rawCouple.milestoneHistory) ? rawCouple.milestoneHistory : [];
+  const historyParsed = historyRaw
+    .filter((h) => isPlainObject(h))
+    .map((h) => ({ days: Math.floor(finiteNum((h as Record<string, unknown>).days, 0)), reachedAt: strOr((h as Record<string, unknown>).reachedAt, "") }));
   base.couple = {
     startDate,
     startSetAt: strOr(rawCouple.startSetAt, ""),
     startSetBy: slotOr(rawCouple.startSetBy),
-    celebrated: [...new Set(celebratedRaw.map((n) => Math.floor(finiteNum(n, 0))).filter((n) => MILESTONES.includes(n)))],
+    celebrated: celebratedList,
     // Mặc định [] cho dữ liệu cũ: cặp đôi đang ở giai đoạn nào sẽ nhận đúng MỘT
     // lá thư "lên giai đoạn" cho giai đoạn hiện tại ở lần mở app đầu tiên.
     celebratedStages: [...new Set(celebratedStagesRaw.map((n) => Math.floor(finiteNum(n, 0))).filter((n) => n >= 1 && n <= 7))].sort((a, b) => a - b),
+    milestoneHistory: unionMilestoneHistory(historyParsed, celebratedList.map((days) => ({ days, reachedAt: "" }))),
     pairedAt: strOr(rawCouple.pairedAt, "") || base.couple.pairedAt,
   };
 
@@ -184,6 +224,13 @@ export function normalizeState(rawInput: unknown): AppState {
   /* --- Widget: công tắc riêng theo slot (bản cũ không có -> mặc định tắt cả ba) --- */
   const rawWidgetPrefs = isPlainObject(raw.widgetPrefs) ? raw.widgetPrefs : {};
   base.widgetPrefs = { A: normalizeWidgetPrefs(rawWidgetPrefs.A), B: normalizeWidgetPrefs(rawWidgetPrefs.B) };
+
+  /* --- Hộp thư đã giữ (kỷ vật đợt 2): bản cũ chưa có trường -> [].
+   *  unionKeptLetters lo khử trùng theo id + sắp mới nhất trước + trần 100. --- */
+  base.keptLetters = unionKeptLetters([], objArray<unknown>(raw.keptLetters).map(normalizeKeptLetter).filter((k): k is KeptLetter => Boolean(k)));
+
+  /* --- Ảnh của hai đứa (đợt 3): bản cũ chưa có trường -> null (chưa đặt ảnh) --- */
+  base.couplePhoto = normalizeCouplePhoto(raw.couplePhoto);
 
   /* --- Thư rơi gần nhất: messageId phải thuộc kho 36 thư --- */
   const rawLetter = isPlainObject(raw.lastLetter) ? raw.lastLetter : null;

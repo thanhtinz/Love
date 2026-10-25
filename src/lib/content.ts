@@ -2,9 +2,9 @@ import { LetterMoment, Rarity, PersonId, today, uid } from "./types";
 
 /**
  * Nội dung tĩnh của bản rebuild: 12 mặt mood (cho Note tình yêu) + kho 36 thông
- * điệp thư tình. Thư ở bản này CHỈ là khoảnh khắc pop-up khi chăm cây (ngẫu
- * nhiên / combo Song chăm / lên giai đoạn / mốc chăm) — không hộp thư, không
- * sưu tập, không màn hình riêng.
+ * điệp thư tình. Thư rơi là KHOẢNH KHẮC pop-up khi chăm cây (ngẫu nhiên /
+ * combo Song chăm / lên giai đoạn / mốc chăm) — và từ đợt "chất app" 2, mỗi
+ * khoảnh khắc còn được giữ lại thành kỷ vật trong "Hộp thư đã giữ".
  */
 
 /* ---------- Mood (tranh thật ở assets/art/moods) ---------- */
@@ -167,4 +167,20 @@ export function makeStageUpLetter(stageIndex: number, mature: boolean, bySlot: P
   const rarity: Rarity = mature && seeded01(seed + ":mature") < 0.5 ? "legendary" : "rare";
   const msg = pickMessageSeeded(rarity, seed);
   return { id: seed, messageId: msg.id, rarity, source: mature ? "Cây trưởng thành" : "Lên giai đoạn mới", at: atIso, bySlot };
+}
+
+/* ---------- Lời mừng MỐC NGÀY YÊU (pop ăn mừng đợt "chất app" 2) ---------- */
+/** Chọn XÁC ĐỊNH theo số ngày mốc (hash) — 2 máy mở cùng mốc thấy cùng một lời. */
+export const MILESTONE_LINES: string[] = [
+  "Thêm một con số tròn nữa trên hành trình của hai đứa — và hai đứa vẫn đang đi cùng nhau.",
+  "Người ta đếm ngày để chờ đợi; hai đứa đếm ngày để biết mình đã may mắn bao lâu.",
+  "Mỗi mốc là một lời nhắc: tình yêu này được xây bằng từng ngày bình thường nhất.",
+  "Chừng này ngày bên nhau rồi mà vẫn còn muốn đếm tiếp — thế là yêu đúng người rồi.",
+  "Cột mốc này không tự đến; nó đến vì hai đứa đã chọn nhau suốt chặng đường qua.",
+  "Ngày thứ nhất là bắt đầu, còn hôm nay là bằng chứng: hai đứa đi được xa thật rồi.",
+  "Giữ khoảnh khắc này lại nhé — sau này nhìn lại, đây là những ngày đẹp nhất.",
+  "Một trăm ngày hay một nghìn ngày, điều quý nhất vẫn là: vẫn là nhau.",
+];
+export function milestoneLine(days: number): string {
+  return MILESTONE_LINES[hashString(`milestone-${days}`) % MILESTONE_LINES.length];
 }

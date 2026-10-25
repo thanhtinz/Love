@@ -3,16 +3,18 @@ import { ScrollView, Text, TouchableOpacity, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { myName, useLove } from "../../lib/store";
+import { useCouplePhotoUrl } from "../../lib/photo";
 import { notifyPartnerOfHeartbeat } from "../../lib/push";
 import { heartbeatPulse } from "../../lib/feedback";
 import { dailyQuote, greetingLine } from "../../lib/content";
 import { dayKeyLocal, today } from "../../lib/types";
 import { MILESTONES, dayCount, milestoneReached, nextMilestone, timeAgoText } from "../../lib/features";
 import { HomeGardenScene } from "../../components/Art";
+import { CouplePolaroid } from "../../components/CouplePhoto";
 import Avatar from "../../components/Avatar";
 import { HeartBurst } from "../../components/HeartBurst";
 import { PersonChip, partnerOf, personOf, selfOf } from "../../components/PersonChip";
-import { LetterAndPingPops, useStageUp } from "../../components/Popups";
+import { LetterAndPingPops, MilestonePop, useStageUp } from "../../components/Popups";
 import { COLOR, FONT, RADIUS, ROLE, SPACE, TYPE } from "../../components/theme";
 import { ProgressBar, SkeletonCard, StatusChip, s, tabBarPad, useNow } from "../../components/ui";
 
@@ -47,6 +49,7 @@ export default function HomeScreen() {
   const insets = useSafeAreaInsets();
   const nowTick = useNow(60000);
   const [burst, setBurst] = useState(0);
+  const photoUrl = useCouplePhotoUrl(state.couplePhoto);
   useStageUp(state, dispatch);
 
   const me = state.currentUser;
@@ -99,6 +102,7 @@ export default function HomeScreen() {
     <View style={s.screen}>
       <ScrollView contentContainerStyle={{ paddingHorizontal: SPACE.screenX, paddingTop: insets.top + 10, paddingBottom: tabBarPad(insets.bottom), gap: SPACE.cardGap }} showsVerticalScrollIndicator={false}>
         {/* (1) HERO — cảnh vườn + Ngày N trên scrim mềm */}
+        <View style={{ position: "relative" }}>
         <View style={{ borderRadius: RADIUS.scene, borderWidth: 1, borderColor: COLOR.border, overflow: "hidden", backgroundColor: COLOR.gardenWash }}>
           <HomeGardenScene height={336} />
           <View style={{ position: "absolute", left: 0, right: 0, bottom: 0 }}>
@@ -130,6 +134,15 @@ export default function HomeScreen() {
               </View>
             </View>
           </View>
+        </View>
+        {/* Ảnh của hai đứa (đợt 3): polaroid nhỏ gác lên góc dưới-phải của hero,
+            ngay cạnh hàng avatar — CHỈ hiện khi đã đặt ảnh và xin được URL;
+            chưa đặt thì hero giữ nguyên như đợt 1. */}
+        {state.couplePhoto && photoUrl ? (
+          <View style={{ position: "absolute", right: 12, bottom: -10, zIndex: 5 }} pointerEvents="none">
+            <CouplePolaroid url={photoUrl} width={84} />
+          </View>
+        ) : null}
         </View>
 
         {/* (2) Hôm nay — lời chào gọi tên hai đứa + nhịp nhớ + tóm tắt chăm cây (tĩnh) + 1 CTA */}
@@ -197,6 +210,7 @@ export default function HomeScreen() {
         ) : null}
       </ScrollView>
       <LetterAndPingPops />
+      <MilestonePop />
     </View>
   );
 }

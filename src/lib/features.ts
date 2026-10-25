@@ -1,8 +1,9 @@
 import {
-  AppState, LetterMoment, PersonId, dayKeyLocal, localDayNumber, parseDateKey,
+  AppState, KEPT_LETTERS_CAP, KeptLetter, KeptLetterKind, LetterMoment, MilestoneRecord,
+  PersonId, dayKeyLocal, localDayNumber, parseDateKey,
 } from "./types";
 import { treeStageForDay } from "./tree";
-import { makeLetterMoment } from "./content";
+import { makeLetterMoment, messageById } from "./content";
 
 /**
  * Logic tính năng THUẦN của các lõi (không React):
@@ -30,6 +31,15 @@ export function milestoneReached(count: number): number | null {
   let found: number | null = null;
   for (const m of MILESTONES) if (m <= count) found = m;
   return found;
+}
+/** Khóa ngày dương lịch mà số ngày yêu chạm đúng `days` (ngày bắt đầu = Ngày 1):
+ *  mốc 100 của cặp bắt đầu 14/02 rơi vào ngày thứ 100 kể từ 14/02. */
+export function milestoneDateKey(startDate: string, days: number): string {
+  const start = parseDateKey(startDate);
+  if (!start || !isFinite(days) || days < 1) return "";
+  const ms = Date.UTC(start.getFullYear(), start.getMonth(), start.getDate()) + (Math.floor(days) - 1) * 86400000;
+  const d = new Date(ms);
+  return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}-${String(d.getUTCDate()).padStart(2, "0")}`;
 }
 
 /* ================= CORE 2 — THƯ RƠI KHI CHĂM CÂY ================= */
@@ -68,6 +78,71 @@ export function decideCareLetter(state: AppState, kind: "water" | "sun" | "love"
     return { drop: makeLetterMoment(rarity, "Rơi khi chăm cây", me, atIso), combo };
   }
   return { drop: null, combo };
+}
+
+/* ================= KỶ VẬT (đợt "chất app" 2) — HỘP THƯ ĐÃ GIỮ + LỊCH SỬ MỐC ================= */
+/** Chụp một khoảnh khắc thư rơi thành kỷ vật (nội dung chụp tại thời điểm giữ). */
+export function keptLetterFromMoment(moment: LetterMoment, kind: KeptLetterKind): KeptLetter {
+  return {
+    id: moment.id,
+    messageId: moment.messageId,
+    text: messageById(moment.messageId).text,
+    rarity: moment.rarity,
+    kind,
+    source: moment.source,
+    bySlot: moment.bySlot,
+    receivedAt: moment.at,
+  };
+}
+const keptSortDesc = (a: KeptLetter, b: KeptLetter): number => (b.receivedAt || "").localeCompare(a.receivedAt || "");
+/**
+ * Thêm 1 kỷ vật vào bộ sưu tập: khử trùng theo id — cùng một sự kiện thư được
+ * ghi ở cả 2 máy (đặc biệt thư lên giai đoạn có id xác định) thì giữ bản
+ * receivedAt SỚM hơn (sự kiện chỉ xảy ra 1 lần). Sắp mới nhất trước, chặn
+ * KEPT_LETTERS_CAP bằng cách bỏ cũ nhất.
+ */
+export function addKeptLetter(list: KeptLetter[], kept: KeptLetter): KeptLetter[] {
+  const existing = list.find((k) => k.id === kept.id);
+  if (existing && (existing.receivedAt || "") <= (kept.receivedAt || "")) return list;
+  const rest = existing ? list.filter((k) => k.id !== kept.id) : list;
+  return [...rest, kept].sort(keptSortDesc).slice(0, KEPT_LETTERS_CAP);
+}
+/** Hợp nhất 2 bộ sưu tập (merge 2 máy / normalize): cùng luật khử trùng với addKeptLetter. */
+export function unionKeptLetters(a: KeptLetter[], b: KeptLetter[]): KeptLetter[] {
+  const byId = new Map<string, KeptLetter>();
+  for (const k of [...a, ...b]) {
+    const prev = byId.get(k.id);
+    if (!prev || (k.receivedAt || "") < (prev.receivedAt || "")) byId.set(k.id, k);
+  }
+  return [...byId.values()].sort(keptSortDesc).slice(0, KEPT_LETTERS_CAP);
+}
+/**
+ * Ghi 1 mốc vào lịch sử — idempotent: mốc đã có thì giữ nguyên (chỉ bổ sung
+ * reachedAt nếu bản cũ đang trống mà lần ghi này có mốc thật). Mốc ngoài bảng
+ * MILESTONES bị bỏ qua. Trả về mảng MỚI chỉ khi thật sự thay đổi.
+ */
+export function recordMilestone(history: MilestoneRecord[], days: number, reachedAtIso: string): MilestoneRecord[] {
+  const d = Math.floor(days);
+  if (!MILESTONES.includes(d)) return history;
+  const existing = history.find((h) => h.days === d);
+  if (existing) {
+    // Đã ghi rồi: chỉ bổ sung reachedAt khi bản cũ đang trống mà lần này có mốc thật.
+    if (existing.reachedAt || !reachedAtIso) return history;
+    return history.map((h) => (h.days === d ? { days: d, reachedAt: reachedAtIso } : h));
+  }
+  return [...history, { days: d, reachedAt: reachedAtIso }].sort((x, y) => x.days - y.days);
+}
+/** Hợp nhất lịch sử mốc 2 máy theo `days`: reachedAt lấy bản có mốc thật sớm hơn. */
+export function unionMilestoneHistory(a: MilestoneRecord[], b: MilestoneRecord[]): MilestoneRecord[] {
+  const byDays = new Map<number, MilestoneRecord>();
+  for (const h of [...a, ...b]) {
+    if (!MILESTONES.includes(h.days)) continue;
+    const prev = byDays.get(h.days);
+    if (!prev) { byDays.set(h.days, h); continue; }
+    if (!prev.reachedAt && h.reachedAt) byDays.set(h.days, h);
+    else if (prev.reachedAt && h.reachedAt && h.reachedAt < prev.reachedAt) byDays.set(h.days, h);
+  }
+  return [...byDays.values()].sort((x, y) => x.days - y.days);
 }
 
 /* ================= CORE 5 — ĐỊNH VỊ TẠM THỜI ================= */

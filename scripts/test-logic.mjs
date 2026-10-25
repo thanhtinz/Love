@@ -551,5 +551,141 @@ console.log("\n--- K) Câu tình hôm nay + lời chào theo buổi ---");
     new Set([7, 12, 16, 21].map((h) => CT.greetingLine(h, "An", "Bình"))).size === 4);
 }
 
+/* ================= L) KỶ VẬT (đợt "chất app" 2): HỘP THƯ ĐÃ GIỮ + HÀNH TRÌNH MỐC ================= */
+console.log("\n--- L) Kỷ vật: hộp thư đã giữ + lịch sử mốc ---");
+{
+  // L1: chăm cây rơi thư -> ghi kỷ vật kind "care", nội dung chụp từ kho thư
+  const dropCare = CT.makeLetterMoment("common", "Rơi khi chăm cây", "A", iso(NOW));
+  const stL1 = R.gardenReducer({ ...fresh(), tree: mkTree({ water: 50, sun: 50, love: 50 }) },
+    { type: "TREE_CARE", kind: "water", user: "A", actor: "An", drop: dropCare, combo: false });
+  check("L1 TREE_CARE có drop -> keptLetters +1, kind 'care', id/nội dung/thời điểm khớp khoảnh khắc",
+    stL1.keptLetters.length === 1 && stL1.keptLetters[0].id === dropCare.id && stL1.keptLetters[0].kind === "care"
+    && stL1.keptLetters[0].text === CT.messageById(dropCare.messageId).text && stL1.keptLetters[0].receivedAt === dropCare.at);
+
+  // L2: combo Song chăm -> kind "combo"
+  const dropCombo = CT.makeLetterMoment("rare", "Combo Song chăm", "A", iso(NOW));
+  const stL2 = R.gardenReducer({ ...fresh(), tree: mkTree({ water: 50, sun: 50, love: 50 }) },
+    { type: "TREE_CARE", kind: "sun", user: "A", actor: "An", drop: dropCombo, combo: true });
+  check("L2 TREE_CARE combo -> kỷ vật kind 'combo'", stL2.keptLetters.length === 1 && stL2.keptLetters[0].kind === "combo");
+
+  // L3: thư lên giai đoạn -> kind "stage"; 2 máy cùng ghi sự kiện xác định -> merge còn đúng 1 bản, receivedAt sớm hơn thắng
+  const sDrop = CT.makeStageUpLetter(3, false, "A", iso(NOW));
+  const phoneA = R.gardenReducer(fresh(), { type: "CELEBRATE_TREE_STAGE", stage: 4, drop: sDrop });
+  const phoneB = R.gardenReducer(fresh(), { type: "CELEBRATE_TREE_STAGE", stage: 4, drop: { ...sDrop, at: iso(NOW + 5000) } });
+  const mergedL3 = M.mergeStates(phoneA, phoneB, "A");
+  check("L3 thư giai đoạn kind 'stage'; 2 máy ghi trùng -> merge đúng 1 bản, giữ receivedAt sớm hơn",
+    phoneA.keptLetters.length === 1 && phoneA.keptLetters[0].kind === "stage"
+    && mergedL3.keptLetters.filter((k) => k.id === sDrop.id).length === 1 && mergedL3.keptLetters[0].receivedAt === sDrop.at);
+
+  // L4: addKeptLetter khử trùng theo id — bản receivedAt sớm hơn thắng bất kể thứ tự thêm
+  const kEarly = F.keptLetterFromMoment({ id: "dup1", messageId: 3, rarity: "common", source: "s", at: iso(NOW), bySlot: "A" }, "care");
+  const kLate = { ...kEarly, receivedAt: iso(NOW + 60000) };
+  const listL4 = F.addKeptLetter(F.addKeptLetter([], kLate), kEarly);
+  check("L4 addKeptLetter trùng id -> 1 bản, receivedAt sớm hơn thắng",
+    listL4.length === 1 && listL4[0].receivedAt === kEarly.receivedAt);
+
+  // L5: trần 100 — thêm 105 lá thì giữ 100 lá MỚI nhất, cũ nhất rơi ra
+  let listL5 = [];
+  for (let i = 0; i < 105; i++) {
+    listL5 = F.addKeptLetter(listL5, { id: `k${i}`, messageId: 1, text: "t", rarity: "common", kind: "care", source: "", bySlot: "A", receivedAt: iso(NOW + i * 1000) });
+  }
+  check("L5 trần 100: 105 lá -> còn 100, mới nhất đứng đầu, 5 lá cũ nhất bị rơi",
+    listL5.length === 100 && listL5[0].id === "k104" && listL5[listL5.length - 1].id === "k5");
+
+  // L6: MARK_MILESTONE ghi lịch sử đúng 1 lần (idempotent, không thêm dấu vết lần 2)
+  let stL6 = R.gardenReducer(fresh(), { type: "MARK_MILESTONE", days: 100, actor: "An" });
+  const actsL6 = stL6.activities.length;
+  stL6 = R.gardenReducer(stL6, { type: "MARK_MILESTONE", days: 100, actor: "An" });
+  check("L6 MARK_MILESTONE ghi milestoneHistory 1 lần, có reachedAt, gọi lại không đổi",
+    stL6.couple.milestoneHistory.length === 1 && stL6.couple.milestoneHistory[0].days === 100
+    && stL6.couple.milestoneHistory[0].reachedAt !== "" && stL6.activities.length === actsL6);
+
+  // L7: merge lịch sử mốc — union theo days, reachedAt có mốc thật thắng bản trống
+  const hBase = fresh().couple;
+  const hA = { ...fresh(), couple: { ...hBase, celebrated: [100], milestoneHistory: [{ days: 100, reachedAt: iso(NOW) }] } };
+  const hB = { ...fresh(), couple: { ...hBase, celebrated: [200], milestoneHistory: [{ days: 200, reachedAt: iso(NOW + 1000) }, { days: 100, reachedAt: "" }] } };
+  const hM = M.mergeStates(hA, hB, "A");
+  check("L7 merge milestoneHistory: union [100,200] tăng dần, mốc 100 giữ reachedAt thật",
+    hM.couple.milestoneHistory.map((h) => h.days).join(",") === "100,200" && hM.couple.milestoneHistory[0].reachedAt === iso(NOW));
+
+  // L8: bản lưu CŨ (chưa có keptLetters/milestoneHistory) migrate sạch: [] + backfill từ celebrated
+  const oldSave = MO.normalizeState({ couple: { startDate: "2026-02-14", celebrated: [100, 200] } });
+  check("L8 normalize bản cũ: keptLetters [] + milestoneHistory backfill reachedAt rỗng",
+    oldSave.keptLetters.length === 0
+    && oldSave.couple.milestoneHistory.map((h) => h.days).join(",") === "100,200"
+    && oldSave.couple.milestoneHistory.every((h) => h.reachedAt === ""));
+
+  // L9: normalize lọc kỷ vật hỏng + khử trùng (bản trùng muộn hơn bị loại)
+  const messy = MO.normalizeState({ keptLetters: [
+    { id: "ok1", messageId: 5, text: "x", rarity: "rare", kind: "stage", source: "s", bySlot: "B", receivedAt: iso(NOW) },
+    { id: "", messageId: 5 },
+    { id: "bad", messageId: 99 },
+    "junk",
+    { id: "ok1", messageId: 5, text: "x", rarity: "rare", kind: "stage", source: "s", bySlot: "B", receivedAt: iso(NOW + 9999) },
+  ] });
+  check("L9 normalize keptLetters: lọc hỏng, trùng id giữ bản sớm hơn",
+    messy.keptLetters.length === 1 && messy.keptLetters[0].id === "ok1" && messy.keptLetters[0].receivedAt === iso(NOW));
+
+  // L10: milestoneDateKey — ngày thứ N của cặp đôi rơi đúng khóa ngày có dayCount = N
+  check("L10 milestoneDateKey: dayCount tại trưa của khóa ngày trả về === đúng số mốc",
+    [100, 200, 365].every((n) => F.dayCount("2026-02-14", new Date(`${F.milestoneDateKey("2026-02-14", n)}T12:00:00`).getTime()) === n)
+    && F.milestoneDateKey("2026-02-14", 100) === "2026-05-24");
+}
+
+/* ================= M) ẢNH CỦA HAI ĐỨA (đợt "chất app" 3) ================= */
+console.log("\n--- M) Ảnh của hai đứa: state + merge LWW theo updatedAt ---");
+{
+  const photoOld = { path: "couple-1/photo.jpg", updatedAt: iso(NOW - H), bySlot: "A" };
+  const photoNew = { path: "couple-1/photo.jpg", updatedAt: iso(NOW), bySlot: "B" };
+
+  // M1: merge hai phía đều có ảnh — updatedAt mới hơn thắng, bất kể phía local/remote
+  const mNewLocal = M.mergeStates({ ...fresh(), couplePhoto: photoNew }, { ...fresh(), couplePhoto: photoOld }, "A");
+  const mNewRemote = M.mergeStates({ ...fresh(), couplePhoto: photoOld }, { ...fresh(), couplePhoto: photoNew }, "A");
+  check("M1 merge ảnh: updatedAt mới hơn thắng ở cả hai chiều local/remote",
+    mNewLocal.couplePhoto?.updatedAt === photoNew.updatedAt && mNewLocal.couplePhoto?.bySlot === "B"
+    && mNewRemote.couplePhoto?.updatedAt === photoNew.updatedAt && mNewRemote.couplePhoto?.bySlot === "B");
+
+  // M2: một phía chưa có ảnh — phía đã có thắng (null không bao giờ đè ảnh thật)
+  const mNullLocal = M.mergeStates({ ...fresh(), couplePhoto: null }, { ...fresh(), couplePhoto: photoOld }, "A");
+  const mNullRemote = M.mergeStates({ ...fresh(), couplePhoto: photoOld }, { ...fresh(), couplePhoto: null }, "A");
+  check("M2 merge ảnh: null thua ảnh đã đặt ở cả hai chiều",
+    mNullLocal.couplePhoto?.updatedAt === photoOld.updatedAt && mNullRemote.couplePhoto?.updatedAt === photoOld.updatedAt);
+
+  // M3: cả hai phía chưa có -> vẫn null
+  check("M3 merge ảnh: hai phía đều null -> null",
+    M.mergeStates(fresh(), fresh(), "A").couplePhoto === null);
+
+  // M4: hoà updatedAt -> giữ bản local (ổn định, không nhảy qua lại giữa 2 máy)
+  const tieA = { path: "couple-1/photo.jpg", updatedAt: iso(NOW), bySlot: "A" };
+  const tieB = { path: "couple-1/photo.jpg", updatedAt: iso(NOW), bySlot: "B" };
+  check("M4 merge ảnh: hoà mốc -> giữ local",
+    M.mergeCouplePhoto(tieA, tieB) === tieA && M.mergeCouplePhoto(null, null) === null);
+
+  // M5: normalize — bản lưu CŨ (chưa có couplePhoto) migrate về null, không crash
+  check("M5 normalize bản cũ: couplePhoto mặc định null",
+    MO.normalizeState(null).couplePhoto === null
+    && MO.normalizeState({ couple: { startDate: "2026-02-14" } }).couplePhoto === null);
+
+  // M6: normalize — ảnh hợp lệ được giữ nguyên; shape hỏng -> null
+  const okNorm = MO.normalizeState({ couplePhoto: photoNew });
+  const badNorm = MO.normalizeState({ couplePhoto: { path: "", updatedAt: iso(NOW), bySlot: "A" } });
+  const badSlot = MO.normalizeState({ couplePhoto: { path: "x/photo.jpg", updatedAt: iso(NOW), bySlot: "C" } });
+  check("M6 normalize ảnh: hợp lệ giữ nguyên, path rỗng/bySlot sai -> null",
+    okNorm.couplePhoto?.path === photoNew.path && okNorm.couplePhoto?.bySlot === "B"
+    && badNorm.couplePhoto === null && badSlot.couplePhoto === null);
+
+  // M7: reducer COUPLE_PHOTO_SET — đặt được + dấu vết; bySlot lệch người thao tác -> chặn; đặt lại y hệt -> no-op
+  const stP = R.gardenReducer(fresh(), { type: "COUPLE_PHOTO_SET", photo: photoNew, user: "B", actor: "Bình" });
+  const stPBad = R.gardenReducer(fresh(), { type: "COUPLE_PHOTO_SET", photo: photoNew, user: "A", actor: "An" });
+  const stPAgain = R.gardenReducer(stP, { type: "COUPLE_PHOTO_SET", photo: photoNew, user: "B", actor: "Bình" });
+  check("M7 COUPLE_PHOTO_SET: hợp lệ -> có ảnh + 1 dấu vết; bySlot != user -> chặn; trùng lặp -> no-op",
+    stP.couplePhoto?.bySlot === "B" && stP.activities.length === 1
+    && stPBad.couplePhoto === null && stPAgain === stP);
+
+  // M8: đường dẫn theo quy ước "{coupleId}/photo.jpg" nằm ngay trong state đã ghi
+  check("M8 quy ước đường dẫn: state giữ đúng '{coupleId}/photo.jpg'",
+    stP.couplePhoto?.path === "couple-1/photo.jpg");
+}
+
 console.log(`\n===== TỔNG: ${count - failures}/${count} PASS =====`);
 if (failures > 0) { console.log(`CÓ ${failures} TEST FAIL`); process.exit(1); }

@@ -1,7 +1,8 @@
 import {
-  AppState, LoveNote, PersonId, PresenceSlot, SecStamp, TreePlant, WidgetPrefs, defaultWidgetPrefs,
+  AppState, CouplePhoto, LoveNote, PersonId, PresenceSlot, SecStamp, TreePlant, WidgetPrefs, defaultWidgetPrefs,
 } from "./types";
 import { totalGrowthMs } from "./tree";
+import { unionKeptLetters, unionMilestoneHistory } from "./features";
 
 /**
  * MERGE STATE GIỮA 2 MÁY — chống mất thao tác khi đồng bộ full-state qua
@@ -17,6 +18,12 @@ import { totalGrowthMs } from "./tree";
  * 4) Ngày bắt đầu yêu: last-writer-wins theo startSetAt; celebrated hợp nhất.
  * 5) Thư rơi gần nhất: bản `at` mới hơn thắng (cùng một sự kiện lên giai đoạn có
  *    id xác định nên 2 máy hội tụ về đúng một lá).
+ * 6) Kỷ vật (đợt 2): hộp thư đã giữ hợp nhất theo id (receivedAt sớm hơn thắng),
+ *    lịch sử mốc hợp nhất theo số ngày — cả hai đều thuần union, không máy nào
+ *    làm mất kỷ vật của máy kia.
+ * 7) Ảnh của hai đứa (đợt 3): last-writer-wins theo couplePhoto.updatedAt —
+ *    ảnh là MỘT vật duy nhất ghi đè tại chỗ trên Storage, nên mốc mới hơn là
+ *    chân lý; phía chưa có ảnh luôn thua phía đã có.
  */
 
 const SLOTS: PersonId[] = ["A", "B"];
@@ -82,6 +89,13 @@ export function mergeTreePair(l: TreePlant, r: TreePlant): TreePlant {
   };
 }
 
+/* ---------- Ảnh của hai đứa: LWW theo updatedAt ---------- */
+export function mergeCouplePhoto(l: CouplePhoto | null, r: CouplePhoto | null): CouplePhoto | null {
+  if (!l) return r;
+  if (!r) return l;
+  return (r.updatedAt || "") > (l.updatedAt || "") ? r : l;
+}
+
 /* ---------- Merge chính ---------- */
 export function mergeStates(local: AppState, remote: AppState, mySlot: PersonId): AppState {
   const lt = local.updatedAt || "";
@@ -115,6 +129,7 @@ export function mergeStates(local: AppState, remote: AppState, mySlot: PersonId)
     startSetBy: coupleSide.couple.startSetBy,
     celebrated: [...new Set([...local.couple.celebrated, ...remote.couple.celebrated])].sort((a, b) => a - b),
     celebratedStages: [...new Set([...(local.couple.celebratedStages || []), ...(remote.couple.celebratedStages || [])])].sort((a, b) => a - b),
+    milestoneHistory: unionMilestoneHistory(local.couple.milestoneHistory || [], remote.couple.milestoneHistory || []),
     pairedAt: [local.couple.pairedAt, remote.couple.pairedAt].filter(Boolean).sort()[0] || "",
   };
   if (coupleSide === remote) stampFrom("couple", remote); else stampFrom("couple", local);
@@ -167,13 +182,20 @@ export function mergeStates(local: AppState, remote: AppState, mySlot: PersonId)
     : !remote.lastLetter ? local.lastLetter
     : (remote.lastLetter.at || "") > (local.lastLetter.at || "") ? remote.lastLetter : local.lastLetter;
 
+  /* --- Hộp thư đã giữ: union theo id (bản receivedAt sớm hơn thắng), trần 100 --- */
+  const keptLetters = unionKeptLetters(local.keptLetters || [], remote.keptLetters || []);
+
+  /* --- Ảnh của hai đứa: LWW theo updatedAt (null luôn thua ảnh đã đặt) --- */
+  const couplePhoto = mergeCouplePhoto(local.couplePhoto ?? null, remote.couplePhoto ?? null);
+  if (couplePhoto === remote.couplePhoto) stampFrom("couplePhoto", remote); else stampFrom("couplePhoto", local);
+
   return {
     ...newer,
     currentUser: local.currentUser,
     roomCode: newer.roomCode,
     personA: newer.personA, personB: newer.personB,
     avatarA: newer.avatarA, avatarB: newer.avatarB,
-    couple, tree, notes, noteLog, pings, activities, presence, widgetPrefs, lastLetter,
+    couple, tree, notes, noteLog, pings, activities, presence, widgetPrefs, lastLetter, keptLetters, couplePhoto,
     updatedAt: lt >= rt ? lt : rt,
     secTs,
   };
@@ -193,6 +215,8 @@ const SHARED_SPECS: { key: string; get: (s: AppState) => unknown }[] = [
   { key: "notes", get: (s) => s.notes },
   { key: "activities", get: (s) => s.activities },
   { key: "lastLetter", get: (s) => s.lastLetter },
+  { key: "keptLetters", get: (s) => s.keptLetters },
+  { key: "couplePhoto", get: (s) => s.couplePhoto },
 ];
 
 function sameValue(a: unknown, b: unknown): boolean {

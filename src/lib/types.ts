@@ -186,10 +186,59 @@ export const defaultWidgetPrefs = (): WidgetPrefs => ({ day: false, note: false,
 export interface Activity { id: string; actor: string; slot?: PersonId; text: string; icon: string; time: string }
 export const ACTIVITIES_CAP = 40;
 
-/** Một lá thư tình VỪA RƠI — chỉ là khoảnh khắc pop-up (không hộp thư, không sưu tập).
- *  Lưu bản mới nhất trong state để máy người kia cũng thấy thư rơi khi mở app. */
+/** Một lá thư tình VỪA RƠI — khoảnh khắc pop-up dùng chung 2 máy.
+ *  Từ đợt "chất app" 2, mỗi khoảnh khắc thư rơi còn được GHI LẠI thành kỷ vật
+ *  trong hộp thư đã giữ (KeptLetter bên dưới) — pop-up vẫn là khoảnh khắc,
+ *  nhưng thư không còn tan biến khi đóng pop nữa. */
 export interface LetterMoment {
   id: string; messageId: number; rarity: Rarity; source: string; at: string; bySlot: PersonId;
+}
+
+/* ================= KỶ VẬT (đợt "chất app" 2) ================= */
+/** Nguồn gốc của một lá thư đã giữ: chăm cây rơi · combo Song chăm · cây lên giai đoạn. */
+export type KeptLetterKind = "care" | "stage" | "combo";
+export const KEPT_LETTERS_CAP = 100;
+
+/**
+ * Một lá thư tình ĐÃ GIỮ — kỷ vật chỉ-đọc trong "Hộp thư đã giữ".
+ * `id` TÁI DÙNG id của LetterMoment gây ra nó: thư lên giai đoạn có id xác
+ * định ("stageup-N") nên 2 máy ghi trùng sẽ khử trùng về đúng 1 bản khi
+ * union-merge; thư chăm cây mang uid của khoảnh khắc đã đồng bộ qua lastLetter
+ * nên cả 2 máy cũng hội tụ về cùng một id. `text` chụp lại tại thời điểm giữ.
+ */
+export interface KeptLetter {
+  id: string;
+  messageId: number;
+  text: string;
+  rarity: Rarity;
+  kind: KeptLetterKind;
+  /** Nhãn nguồn của khoảnh khắc ("Rơi khi chăm cây", "Mốc 25 lần chăm"...) */
+  source: string;
+  /** Người đã làm rơi lá thư này */
+  bySlot: PersonId;
+  /** ISO thời điểm thư rơi (= LetterMoment.at) */
+  receivedAt: string;
+}
+
+/** Một mốc ngày yêu đã chạm tới + mốc thời gian ghi nhận (ISO).
+ *  reachedAt có thể là "" với mốc được backfill từ bản lưu cũ (chỉ có
+ *  celebrated, chưa có lịch sử) — ngày dương lịch thật của mốc luôn suy ra
+ *  được từ startDate qua milestoneDateKey (lib/features). */
+export interface MilestoneRecord { days: number; reachedAt: string }
+
+/* ================= ẢNH CỦA HAI ĐỨA (đợt "chất app" 3) ================= */
+/**
+ * MỘT tấm ảnh thật của hai đứa, lưu ở Supabase Storage (bucket RIÊNG TƯ
+ * "couple-photos", đường dẫn cố định "{coupleId}/photo.jpg" — đổi ảnh là ghi
+ * đè tại chỗ). State chỉ giữ ĐƯỜNG DẪN + mốc sửa: hiển thị qua signed URL tạo
+ * mới mỗi phiên; `updatedAt` vừa là khóa last-writer-wins khi merge 2 máy,
+ * vừa làm khóa phá cache (ảnh đổi nhưng đường dẫn không đổi).
+ * `bySlot` = người đã đặt ảnh gần nhất (hiển thị "do X đặt" + dấu vết).
+ */
+export interface CouplePhoto {
+  path: string;
+  updatedAt: string;
+  bySlot: PersonId;
 }
 
 /* ================= STATE TỔNG ================= */
@@ -209,6 +258,9 @@ export interface AppState {
     /** Các GIAI ĐOẠN CÂY (1..7, theo ngày yêu — treeStageForDay) đã ăn mừng bằng
      *  thư rơi: union-merge 2 máy, mỗi giai đoạn bắn đúng 1 lần khi mở app. */
     celebratedStages: number[];
+    /** Lịch sử mốc ngày yêu đã chạm (kỷ vật đợt 2): union-merge theo `days`,
+     *  idempotent — song hành với `celebrated` (cờ chống ăn mừng lại). */
+    milestoneHistory: MilestoneRecord[];
     pairedAt: string;
   };
   /** CORE 2 — cây tình yêu */
@@ -227,6 +279,12 @@ export interface AppState {
   widgetPrefs: { A: WidgetPrefs; B: WidgetPrefs };
   /** Lá thư rơi gần nhất (khoảnh khắc pop-up dùng chung 2 máy) */
   lastLetter: LetterMoment | null;
+  /** HỘP THƯ ĐÃ GIỮ — kỷ vật thư tình (mới nhất đứng đầu, trần 100): union-merge
+   *  theo id giữa 2 máy, xem lib/features (addKeptLetter/unionKeptLetters). */
+  keptLetters: KeptLetter[];
+  /** ẢNH CỦA HAI ĐỨA (đợt 3): một ảnh thật duy nhất ở Storage; merge theo
+   *  updatedAt (mới hơn thắng); bản lưu cũ chưa có trường -> null. */
+  couplePhoto: CouplePhoto | null;
   updatedAt?: string;
   secTs?: Record<string, SecStamp>;
 }

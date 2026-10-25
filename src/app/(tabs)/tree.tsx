@@ -1,5 +1,6 @@
 import React, { useState } from "react";
-import { Animated, ScrollView, Text, View } from "react-native";
+import { Animated, ScrollView, Text, TouchableOpacity, View } from "react-native";
+import { router } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { myName, useLove } from "../../lib/store";
@@ -189,6 +190,20 @@ export default function TreeScreen() {
               ))}
             </View>
           ) : null}
+          {/* Lối vào Hộp thư đã giữ (kỷ vật đợt 2): thư rơi khi chăm cây được giữ tại đây */}
+          <TouchableOpacity
+            onPress={() => router.push("/letters")}
+            style={{ flexDirection: "row", alignItems: "center", gap: 9, marginTop: 14, backgroundColor: COLOR.letterPaper, borderWidth: 1, borderColor: COLOR.letterLine, borderRadius: RADIUS.tile, paddingHorizontal: 12, paddingVertical: 10 }}
+            accessibilityRole="button"
+            accessibilityLabel="Mở hộp thư đã giữ"
+          >
+            <Ionicons name="mail" size={16} color={COLOR.primary} />
+            <Text style={{ flex: 1, fontFamily: FONT.semibold, fontSize: 13.5, color: COLOR.text }}>Hộp thư đã giữ</Text>
+            <Text style={{ fontFamily: FONT.regular, fontSize: 12.5, color: COLOR.textFaint }}>
+              {state.keptLetters.length > 0 ? `${state.keptLetters.length} lá thư` : "chưa có lá nào"}
+            </Text>
+            <Ionicons name="chevron-forward" size={15} color={COLOR.textFaint} />
+          </TouchableOpacity>
         </View>
 
         {health.status === "wilted" ? (

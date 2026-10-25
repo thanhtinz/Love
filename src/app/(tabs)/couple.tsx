@@ -1,19 +1,26 @@
 import React, { useEffect, useState } from "react";
-import { ScrollView, Text, TextInput, TouchableOpacity, View } from "react-native";
+import { ActivityIndicator, ScrollView, Text, TextInput, TouchableOpacity, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
+import * as ImagePicker from "expo-image-picker";
 import { myName, useLove } from "../../lib/store";
+import { useAuth } from "../../lib/auth";
+import { uploadCouplePhoto, useCouplePhotoUrl } from "../../lib/photo";
+import { success } from "../../lib/feedback";
 import { formatDateVN, isValidDateKey } from "../../lib/types";
-import { dayCount, nextMilestone, shareStatus, timeAgoText } from "../../lib/features";
+import { dayCount, milestoneDateKey, nextMilestone, shareStatus, timeAgoText } from "../../lib/features";
 import Avatar from "../../components/Avatar";
-import { MascotArt } from "../../components/Art";
-import { partnerOf, selfOf } from "../../components/PersonChip";
+import { HeroBand, MascotArt } from "../../components/Art";
+import { CouplePolaroid } from "../../components/CouplePhoto";
+import { partnerOf, personOf, selfOf } from "../../components/PersonChip";
 import { COLOR, FONT, RADIUS, ROLE, SPACE, TYPE } from "../../components/theme";
 import { ClosingBand, FeatureCard, ProgressBar, s, tabBarPad } from "../../components/ui";
 
 /**
  * Tab "Hai đứa" — hub của cặp đôi trong bản rebuild:
  * - Thẻ hồ sơ navy "Chúng mình": avatar hai người, Ngày N, ngày bắt đầu, mốc tiếp theo.
+ * - Ảnh của hai đứa (đợt 3) ngay trong thẻ navy: ảnh thật khung polaroid khi đã
+ *   đặt (Storage, bucket riêng tư), chưa đặt thì tranh couple-hero + nút thêm ảnh.
  * - Sửa ngày bắt đầu yêu ngay tại đây (cả hai đều sửa được, máy kia thấy qua nhật ký).
  * - Hàng Bản đồ hai đứa (kèm trạng thái phiên đang chạy) -> /location.
  * - Hàng Tài khoản & ghép cặp -> /account.
@@ -28,10 +35,15 @@ function displayToKey(text: string): string | null {
 
 export default function CoupleScreen() {
   const { state, dispatch, hydrated } = useLove();
+  const { couple } = useAuth();
   const insets = useSafeAreaInsets();
   const [dateText, setDateText] = useState("");
   const [dateDirty, setDateDirty] = useState(false);
   const [dateMsg, setDateMsg] = useState("");
+  const [photoBusy, setPhotoBusy] = useState(false);
+  const [photoMsg, setPhotoMsg] = useState("");
+  const [photoOk, setPhotoOk] = useState(false);
+  const photoUrl = useCouplePhotoUrl(state.couplePhoto);
 
   // eslint-disable-next-line react-hooks/set-state-in-effect -- đồng bộ ô ngày từ state, trừ khi đang sửa
   useEffect(() => { if (!dateDirty && hydrated) setDateText(formatDateVN(state.couple.startDate)); }, [state.couple.startDate, dateDirty, hydrated]);
@@ -44,6 +56,42 @@ export default function CoupleScreen() {
   const myShare = shareStatus(state.presence[me]);
   const partnerShare = shareStatus(state.presence[partner.slot]);
   const shareBadge = partnerShare.active ? `${partner.name} đang chia sẻ vị trí` : myShare.active ? "Bạn đang chia sẻ vị trí" : undefined;
+
+  /* Ảnh của hai đứa: chọn từ thư viện (cắt 4:3) -> tải lên Storage -> ghi sổ
+   * vào state. Lỗi nào cũng thành một dòng chữ ấm áp ngay dưới khung ảnh. */
+  async function pickCouplePhoto() {
+    if (photoBusy) return;
+    setPhotoMsg("");
+    setPhotoOk(false);
+    try {
+      const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (!perm.granted) {
+        setPhotoMsg("App cần quyền mở thư viện ảnh để hai bạn chọn ảnh chung. Cho phép rồi thử lại nhé.");
+        return;
+      }
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ["images"],
+        allowsEditing: true,
+        aspect: [4, 3],
+        quality: 0.8,
+      });
+      if (result.canceled || !result.assets?.[0]?.uri) return; // người dùng đổi ý — lặng lẽ thôi
+      if (!couple?.id) {
+        setPhotoMsg("Chưa có vườn chung để lưu ảnh — hãy ghép cặp trước nhé.");
+        return;
+      }
+      setPhotoBusy(true);
+      const photo = await uploadCouplePhoto(couple.id, result.assets[0].uri, me);
+      dispatch({ type: "COUPLE_PHOTO_SET", photo, user: me, actor: myName(state) });
+      success();
+      setPhotoOk(true);
+      setPhotoMsg("Đã đặt ảnh của hai đứa — người ấy sẽ thấy ngay trong vườn chung.");
+    } catch (e) {
+      setPhotoMsg(e instanceof Error ? e.message : "Có chút trục trặc khi đặt ảnh. Thử lại giúp mình nhé.");
+    } finally {
+      setPhotoBusy(false);
+    }
+  }
 
   function saveStartDate() {
     const key = displayToKey(dateText);
@@ -78,6 +126,41 @@ export default function CoupleScreen() {
               </Text>
             </View>
           </View>
+          {/* Ảnh của hai đứa: có ảnh thật thì khung polaroid trắng trên nền navy;
+              chưa có (hoặc đang tải/chưa xin được URL) thì dùng tranh vẽ cặp đôi. */}
+          <View style={{ marginTop: 18, alignItems: "center" }}>
+            {state.couplePhoto && photoUrl ? (
+              <CouplePolaroid url={photoUrl} width={228} caption={`Ảnh do ${personOf(state, state.couplePhoto.bySlot).name} đặt`} />
+            ) : (
+              <View style={{ width: "100%", borderRadius: RADIUS.card, overflow: "hidden" }}>
+                <HeroBand height={132} />
+              </View>
+            )}
+            {state.couplePhoto && !photoUrl ? (
+              <Text style={{ fontFamily: FONT.regular, fontSize: 12.5, color: COLOR.onNavySoft, marginTop: 9 }}>
+                Đang tải ảnh của hai đứa...
+              </Text>
+            ) : null}
+            <TouchableOpacity
+              onPress={pickCouplePhoto}
+              disabled={photoBusy}
+              style={{ flexDirection: "row", alignItems: "center", gap: 7, marginTop: 13, backgroundColor: "rgba(255,255,255,0.14)", borderWidth: 1, borderColor: "rgba(255,255,255,0.35)", borderRadius: RADIUS.control, paddingHorizontal: 16, paddingVertical: 10, opacity: photoBusy ? 0.6 : 1 }}
+              accessibilityRole="button"
+              accessibilityLabel={state.couplePhoto ? "Đổi ảnh hai đứa" : "Thêm ảnh của hai đứa"}
+            >
+              {photoBusy
+                ? <ActivityIndicator size="small" color="#fff" />
+                : <Ionicons name="image" size={16} color="#fff" />}
+              <Text style={{ fontFamily: FONT.bold, fontSize: 13.5, color: "#fff" }}>
+                {photoBusy ? "Đang tải ảnh lên..." : state.couplePhoto ? "Đổi ảnh hai đứa" : "Thêm ảnh của hai đứa"}
+              </Text>
+            </TouchableOpacity>
+            {photoMsg ? (
+              <Text style={{ fontFamily: FONT.regular, fontSize: 12.5, color: photoOk ? COLOR.onNavySoft : "#FFC4CE", marginTop: 9, textAlign: "center" }}>
+                {photoMsg}
+              </Text>
+            ) : null}
+          </View>
           <View style={{ flexDirection: "row", alignItems: "flex-end", gap: 10, marginTop: 16 }}>
             <Text style={{ ...TYPE.displaySm, color: "#fff" }}>Ngày {count}</Text>
             <Text style={{ fontFamily: FONT.regular, fontSize: 13, color: COLOR.onNavySoft, paddingBottom: 6 }}>
@@ -89,6 +172,47 @@ export default function CoupleScreen() {
               <ProgressBar value={Math.min(100, Math.round((count / next.days) * 100))} color="#F2789A" height={7} />
             </View>
           ) : null}
+        </View>
+
+        {/* Hành trình của hai đứa — lịch sử mốc ngày yêu (kỷ vật đợt 2) */}
+        <View style={s.card}>
+          <Text style={{ ...TYPE.micro, color: COLOR.textSoft }}>Hành trình của hai đứa</Text>
+          {state.couple.milestoneHistory.length === 0 ? (
+            <Text style={{ ...TYPE.body, color: COLOR.textSoft, marginTop: 8 }}>
+              {next
+                ? `Hành trình còn ở phía trước — mốc ${next.days} ngày đang chờ hai đứa vào ${formatDateVN(milestoneDateKey(state.couple.startDate, next.days))}.`
+                : "Hành trình của hai đứa vẫn đang được viết tiếp mỗi ngày."}
+            </Text>
+          ) : (
+            <View style={{ marginTop: 11, gap: 10 }}>
+              {state.couple.milestoneHistory.map((h) => (
+                <View key={h.days} style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
+                  <View style={{ width: 30, height: 30, borderRadius: 15, backgroundColor: COLOR.successSoft, alignItems: "center", justifyContent: "center" }}>
+                    <Ionicons name="checkmark" size={15} color={COLOR.successText} />
+                  </View>
+                  <Text style={{ flex: 1, fontFamily: FONT.semibold, fontSize: 13.5, color: COLOR.text }}>
+                    Mốc {h.days} ngày yêu
+                  </Text>
+                  <Text style={{ fontFamily: FONT.regular, fontSize: 12.5, color: COLOR.textFaint }}>
+                    {formatDateVN(milestoneDateKey(state.couple.startDate, h.days))}
+                  </Text>
+                </View>
+              ))}
+              {next ? (
+                <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
+                  <View style={{ width: 30, height: 30, borderRadius: 15, backgroundColor: COLOR.warningSoft, alignItems: "center", justifyContent: "center" }}>
+                    <Ionicons name="flag" size={14} color={COLOR.warning} />
+                  </View>
+                  <Text style={{ flex: 1, fontFamily: FONT.semibold, fontSize: 13.5, color: ROLE.shared }}>
+                    Mốc {next.days} ngày — còn {next.remaining} ngày
+                  </Text>
+                  <Text style={{ fontFamily: FONT.regular, fontSize: 12.5, color: COLOR.textFaint }}>
+                    {formatDateVN(milestoneDateKey(state.couple.startDate, next.days))}
+                  </Text>
+                </View>
+              ) : null}
+            </View>
+          )}
         </View>
 
         {/* Sửa ngày bắt đầu */}
@@ -132,6 +256,16 @@ export default function CoupleScreen() {
             title="Tài khoản & ghép cặp"
             desc="Hồ sơ của bạn, mã mời, danh sách thành viên, rời vườn hoặc đăng xuất."
             route="/account"
+          />
+          <FeatureCard
+            icon="mail"
+            title="Hộp thư đã giữ"
+            desc={state.keptLetters.length > 0
+              ? "Đọc lại những lá thư tình đã rơi khi hai đứa chăm cây và khi cây lên giai đoạn mới."
+              : "Nơi giữ những lá thư tình rơi khi chăm cây và lên giai đoạn. Chưa có lá nào — lá đầu tiên đang chờ hai đứa."}
+            route="/letters"
+            badge={state.keptLetters.length > 0 ? `${state.keptLetters.length} lá` : undefined}
+            badgeVariant="accent"
           />
         </View>
 
