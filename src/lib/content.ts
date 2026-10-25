@@ -25,6 +25,24 @@ export const MOODS: { id: string; label: string }[] = [
 export const moodLabel = (id: string): string => MOODS.find((m) => m.id === id)?.label || id;
 export const isMoodId = (id: unknown): id is string => typeof id === "string" && MOODS.some((m) => m.id === id);
 
+/* ---------- Trạng thái của nhau: bộ mood preset (đợt "hiện diện sống") ----------
+ * 8 tâm trạng ấm, mỗi mood một icon Ionicons (KHÔNG emoji). Đây là bộ chọn
+ * nhanh khi đặt trạng thái — khác MOODS ở trên (mặt tranh vẽ đính kèm Note). */
+export interface StatusMood { id: string; label: string; icon: string }
+export const STATUS_MOODS: StatusMood[] = [
+  { id: "vui", label: "Vui vẻ", icon: "sunny" },
+  { id: "binh-yen", label: "Bình yên", icon: "leaf" },
+  { id: "nho", label: "Đang nhớ người ấy", icon: "heart" },
+  { id: "met", label: "Hơi mệt", icon: "battery-low" },
+  { id: "ban", label: "Bận một chút", icon: "briefcase" },
+  { id: "doi", label: "Đói bụng", icon: "restaurant" },
+  { id: "buon-ngu", label: "Buồn ngủ", icon: "moon" },
+  { id: "yeu-doi", label: "Đang yêu đời", icon: "sparkles" },
+];
+export const statusMoodById = (id: string): StatusMood | undefined => STATUS_MOODS.find((m) => m.id === id);
+/** Dòng chữ tự viết kèm trạng thái: tối đa 40 ký tự */
+export const STATUS_TEXT_MAX = 40;
+
 /* ---------- Kho 36 thông điệp thư tình (3 độ hiếm) ---------- */
 export interface LoveMessage { id: number; text: string; rarity: Rarity }
 export const LOVE_MESSAGES: LoveMessage[] = [
@@ -148,7 +166,7 @@ export function greetingLine(hour: number, selfName: string, partnerName: string
     case "sang":
       return `Chào buổi sáng, ${selfName}. ${partnerName} đang ở ngay đây thôi — bắt đầu ngày mới cùng nhau nhé.`;
     case "trua":
-      return `Chào buổi trưa, ${selfName}. Nhớ nghỉ ngơi một chút, ${partnerName} đang nhớ bạn đó.`;
+      return `Chào buổi trưa, ${selfName}. Nhớ nghỉ ngơi một chút — rảnh tay thì gửi ${partnerName} một nhịp nhớ nhé.`;
     case "chieu":
       return `Chào buổi chiều, ${selfName}. Thêm một buổi nữa bên nhau rồi — ${partnerName} vẫn ở ngay đây thôi.`;
     default:

@@ -117,6 +117,31 @@ export interface TreePlant {
   matureAt: string;
 }
 
+/* ================= SỰ KIỆN SÂU TRÊN CÂY (đợt "chăm cây 2") ================= */
+/**
+ * MỘT đợt sâu đang/đã xảy ra trên cây — sự kiện DÙNG CHUNG 2 máy.
+ * - `id` xác định theo ngày xuất hiện ("pest-{dateKey}") nên 2 máy tự tính ra
+ *   cùng một sự kiện (pestSpawnFor ở features.ts là hàm thuần theo seed) và
+ *   merge hội tụ về đúng một bản (mergeTreePest ở merge.ts).
+ * - Tối đa 1 đợt đang hoạt động; mỗi ngày tối đa 1 đợt (kể cả đã bắt/hết hạn).
+ * - Sâu CHỈ ảnh hưởng sức sống (hao nhanh hơn một chút) — KHÔNG BAO GIỜ ảnh
+ *   hưởng giai đoạn cây (giai đoạn chỉ đi theo ngày yêu).
+ * - Không bắt kịp thì tự hết hạn sau ~12 giờ — không trừng phạt thêm.
+ */
+export interface TreePestEvent {
+  /** "pest-{dateKey}" */
+  id: string;
+  /** Ngày địa phương của mốc xuất hiện */
+  dateKey: string;
+  /** ISO thời điểm sâu xuất hiện */
+  appearedAt: string;
+  status: "active" | "caught" | "expired";
+  /** Người đã bắt ("" khi chưa bắt) */
+  caughtBy: PersonId | "";
+  caughtAt: string;
+  expiredAt: string;
+}
+
 /* ================= CORE 3 — NOTE TÌNH YÊU ================= */
 export interface LoveNote {
   id: string;
@@ -145,28 +170,26 @@ export interface PingsState { A: PingSlotState; B: PingSlotState; day: { date: s
  * bị gỡ hẳn — đừng thêm lại mà không có spec mới.
  */
 
-/* ================= CORE 5 — ĐỊNH VỊ TẠM THỜI ================= */
+/* ================= CORE 5 — VỊ TRÍ TRỰC TIẾP ================= */
 /**
- * Phiên chia sẻ vị trí TẠM THỜI của một người (per-slot, chính chủ ghi).
- * Chỉ snapshot (điểm mới nhất thắng) — KHÔNG lịch sử đường đi, KHÔNG theo dõi nền.
- * Hết hạn được SUY RA từ expiresAt ở mọi nơi hiển thị (shareStatus ở features.ts)
- * nên phiên hết hạn không bao giờ còn hiện "đang chia sẻ".
+ * Vị trí TRỰC TIẾP của một người (per-slot, chính chủ ghi) — KHÔNG phiên,
+ * KHÔNG công tắc trong app: app đang mở + quyền vị trí của hệ điều hành đã
+ * cấp là máy tự publish điểm mới nhất của mình vào đây (LocationSync lo),
+ * người ấy mở "Bản đồ hai đứa" là thấy luôn. Chỉ giữ ĐIỂM MỚI NHẤT của mỗi
+ * người (+ mốc của nó) — KHÔNG lịch sử đường đi, KHÔNG theo dõi nền.
+ * Bản lưu cũ (mô hình phiên chia sẻ) bị normalize VỨT HẾT: vị trí bắt đầu
+ * trống cho tới lần publish tiếp theo.
  */
 export interface PresenceSlot {
-  sharing: boolean;
-  startedAt: string;
-  /** ISO lúc hết phiên; "" = chia sẻ đến khi tự tắt */
-  expiresAt: string;
   lat: number | null; lng: number | null; acc: number | null;
   /** Mốc của điểm vị trí gần nhất (tách khỏi `at` vì snapshot pin có thể mới hơn vị trí) */
   locAt: string;
   /** % pin 0..100; null = máy không đọc được (nhiều trình duyệt web) */
   battery: number | null;
-  /** Mốc snapshot gần nhất (vị trí hoặc pin) */
+  /** Mốc publish gần nhất (vị trí hoặc pin) */
   at: string;
 }
 export const defaultPresenceSlot = (): PresenceSlot => ({
-  sharing: false, startedAt: "", expiresAt: "",
   lat: null, lng: null, acc: null, locAt: "", battery: null, at: "",
 });
 
@@ -241,6 +264,48 @@ export interface CouplePhoto {
   bySlot: PersonId;
 }
 
+/* ================= NHIỆM VỤ MỖI NGÀY (đợt "nhiệm vụ chăm cây") ================= */
+export type QuestKind = "water" | "sun" | "love" | "ping" | "note" | "care3" | "bothcare";
+
+/** Tiến độ của MỘT nhiệm vụ trong ngày — dùng chung 2 máy (merge lấy max/union,
+ *  xem lib/quests.ts). `count` tiến theo hành động thật; `byA`/`byB` ghi ai đã
+ *  đóng góp (riêng "bothcare": count = mỗi người đã chăm ít nhất 1 lần chưa). */
+export interface QuestProgress {
+  kind: QuestKind;
+  target: number;
+  count: number;
+  byA: number;
+  byB: number;
+  /** ISO lúc nhiệm vụ này hoàn thành; "" = chưa xong */
+  completedAt: string;
+}
+
+/** Bộ nhiệm vụ của MỘT ngày: đúng 3 nhiệm vụ, chọn xác định theo dateKey
+ *  (questsForDay) nên 2 máy luôn có cùng một bộ cho cùng một ngày. */
+export interface DailyQuestsState {
+  dateKey: string;
+  quests: QuestProgress[];
+  /** ISO lúc CẢ 3 nhiệm vụ xong; "" = chưa hoàn thành ngày */
+  allCompletedAt: string;
+}
+
+export const QUEST_HISTORY_CAP = 120;
+
+/* ================= TRẠNG THÁI CỦA NHAU (đợt "hiện diện sống") ================= */
+/**
+ * Trạng thái tự đặt của MỘT người (per-slot, CHỈ chính chủ ghi — reducer khóa):
+ * một mood trong bộ preset (lib/content STATUS_MOODS) + một dòng tự viết ngắn
+ * tùy chọn (<= STATUS_TEXT_MAX ký tự). Đồng bộ trực tiếp qua kênh sẵn có nên
+ * người ấy thấy gần như ngay. Trạng thái quá ~24 giờ vẫn hiện nhưng MỜ đi kèm
+ * nhãn độ tươi ("từ hôm qua") — không tự xoá (xem statusStale ở features.ts).
+ */
+export interface PersonStatus {
+  /** id mood trong STATUS_MOODS */
+  mood: string;
+  text: string;
+  updatedAt: string;
+}
+
 /* ================= STATE TỔNG ================= */
 export interface AppState {
   roomCode: string;
@@ -265,6 +330,15 @@ export interface AppState {
   };
   /** CORE 2 — cây tình yêu */
   tree: TreePlant;
+  /** Đợt sâu gần nhất trên cây (sự kiện dùng chung, xem TreePestEvent);
+   *  null = chưa từng có đợt sâu nào (bản lưu cũ cũng về null). */
+  treePest: TreePestEvent | null;
+  /** NHIỆM VỤ HÔM NAY (dùng chung 2 máy): bộ 3 nhiệm vụ của ngày hiện tại —
+   *  hết ngày tự lăn sang bộ mới theo dateKey (không cần reset thủ công). */
+  dailyQuests: DailyQuestsState;
+  /** Các dateKey đã hoàn thành đủ 3 nhiệm vụ (mới nhất trước, trần 120) —
+   *  dùng để tính chuỗi ngày chăm đủ (questStreak ở lib/quests.ts). */
+  questHistory: string[];
   /** CORE 3 — note tình yêu (mới nhất đứng đầu) */
   notes: LoveNote[];
   /** Mốc gửi note gần nhất của từng người (chống spam 5 giây) */
@@ -272,7 +346,7 @@ export interface AppState {
   /** CORE 4 — nhịp tim + dấu vết (activities) */
   pings: PingsState;
   activities: Activity[];
-  /** CORE 5 — định vị tạm thời */
+  /** CORE 5 — vị trí trực tiếp */
   presence: { A: PresenceSlot; B: PresenceSlot };
   /** Widget màn hình chính — công tắc RIÊNG của từng người (mỗi người chỉ sửa
    *  phần của chính mình; xem WidgetPrefs) */
@@ -282,6 +356,9 @@ export interface AppState {
   /** HỘP THƯ ĐÃ GIỮ — kỷ vật thư tình (mới nhất đứng đầu, trần 100): union-merge
    *  theo id giữa 2 máy, xem lib/features (addKeptLetter/unionKeptLetters). */
   keptLetters: KeptLetter[];
+  /** TRẠNG THÁI CỦA NHAU (per-slot, chính chủ ghi): cảm xúc hiện tại mỗi
+   *  người tự đặt cho người ấy thấy; null = chưa đặt (bản lưu cũ -> null). */
+  status: { A: PersonStatus | null; B: PersonStatus | null };
   /** ẢNH CỦA HAI ĐỨA (đợt 3): một ảnh thật duy nhất ở Storage; merge theo
    *  updatedAt (mới hơn thắng); bản lưu cũ chưa có trường -> null. */
   couplePhoto: CouplePhoto | null;

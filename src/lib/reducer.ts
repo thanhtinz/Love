@@ -1,11 +1,13 @@
 import {
   AppState, CouplePhoto, LetterMoment, LoveNote, NOTE_MIN_INTERVAL_MS, NOTE_TEXT_MAX, NOTES_CAP,
-  PersonId, WidgetPrefs, formatDateVN, isValidDateKey,
+  PersonId, PersonStatus, PresenceSlot, TreePestEvent, WidgetPrefs, formatDateVN, isValidDateKey,
   parseDateKey, today, uid,
 } from "./types";
 import { defaultState, normalizeState } from "./model";
-import { applyCare, careStatus, materializeTree } from "./tree";
+import { applyCare, applyVitalityBonus, careStatus, isPestActive, pestAdjustedTree } from "./tree";
 import { addKeptLetter, keptLetterFromMoment, recordMilestone } from "./features";
+import { advanceDailyQuests, emptyDailyQuests, unionQuestHistory, type QuestEvent } from "./quests";
+import { STATUS_TEXT_MAX, statusMoodById } from "./content";
 import { mergeStates, stampSections } from "./merge";
 import { nowIso } from "./time";
 
@@ -13,7 +15,7 @@ import { nowIso } from "./time";
  * Reducer THUẦN của bản rebuild (không React/Supabase/AsyncStorage) — kiểm chứng
  * trực tiếp bằng Node (scripts/test-logic.mjs). Mọi "khóa cứng" chống spam/lỗi
  * logic nằm ở đây, không chỉ ở UI: cooldown chăm cây, trần note 300 ký tự +
- * giãn cách 5 giây, hết hạn phiên vị trí. Ngoại lệ có chủ đích: nhịp nhớ
+ * giãn cách 5 giây. Ngoại lệ có chủ đích: nhịp nhớ
  * KHÔNG khóa gì cả — không trần, không chờ, mỗi nhịp là một sự kiện riêng.
  */
 
@@ -27,13 +29,14 @@ export type Action =
   | { type: "SET_START_DATE"; date: string; user: PersonId; actor: string }
   | { type: "MARK_MILESTONE"; days: number; actor: string }
   | { type: "TREE_CARE"; kind: CareKind; user: PersonId; actor: string; drop?: LetterMoment | null; combo?: boolean }
+  | { type: "PEST_SPAWN"; event: TreePestEvent }
+  | { type: "PEST_EXPIRE"; id: string }
   | { type: "CELEBRATE_TREE_STAGE"; stage: number; drop?: LetterMoment | null }
   | { type: "NOTE_ADD"; note: LoveNote; user: PersonId }
   | { type: "NOTE_READ"; id: string; user: PersonId }
   | { type: "PING_SEND"; user: PersonId; actor: string }
-  | { type: "PRESENCE_START"; user: PersonId; durationMs: number | null; actor: string }
-  | { type: "PRESENCE_STOP"; user: PersonId; actor: string; reason: "manual" | "expired" }
   | { type: "PRESENCE_SNAPSHOT"; user: PersonId; lat: number | null; lng: number | null; acc: number | null; battery: number | null; at: string }
+  | { type: "STATUS_SET"; user: PersonId; status: PersonStatus | null }
   | { type: "WIDGET_PREFS_SET"; user: PersonId; prefs: Partial<WidgetPrefs> }
   | { type: "COUPLE_PHOTO_SET"; photo: CouplePhoto; user: PersonId; actor: string };
 
@@ -41,6 +44,28 @@ function pushAct(s: AppState, actor: string, text: string, icon: string, slot?: 
   return [{ id: uid(), actor, text, icon, time: nowIso(), slot }, ...s.activities].slice(0, 40);
 }
 const nameOf = (s: AppState, slot: PersonId): string => (slot === "A" ? s.personA : s.personB);
+
+/**
+ * Gắn tiến độ NHIỆM VỤ NGÀY vào kết quả của một hành động thật (chăm cây /
+ * nhịp nhớ / note — chỉ gọi SAU khi hành động đã qua khóa cứng của nó). Khi
+ * hành động này làm đủ 3/3: ghi ngày vào lịch sử chuỗi + cây nhận +8 sức sống
+ * + 1 dòng dấu vết — tất cả đúng 1 lần (advanceDailyQuests chỉ bật cờ
+ * justCompletedAll ở lần chuyển trạng thái đó).
+ */
+function withQuestProgress(out: AppState, ev: QuestEvent, actor: string, nowIsoStr: string): AppState {
+  const { dq, justCompletedAll } = advanceDailyQuests(out.dailyQuests, ev, nowIsoStr);
+  if (!justCompletedAll) return dq === out.dailyQuests ? out : { ...out, dailyQuests: dq };
+  const rewarded: AppState = {
+    ...out,
+    dailyQuests: dq,
+    questHistory: unionQuestHistory(out.questHistory, [dq.dateKey]),
+    tree: applyVitalityBonus(out.tree),
+  };
+  return {
+    ...rewarded,
+    activities: pushAct(rewarded, actor, "vừa hoàn thành đủ 3 nhiệm vụ hôm nay — cây nhận thêm sức sống và hào quang vàng", "sparkles", ev.slot),
+  };
+}
 
 const CARE_TEXT: Record<CareKind, { text: string; icon: string }> = {
   water: { text: "vừa tưới nước cho cây", icon: "water" },
@@ -71,17 +96,20 @@ export function gardenReducer(state: AppState, action: Action): AppState {
     }
     case "TICK": {
       const nowMs = Date.now();
-      const m = materializeTree(state.tree, nowMs);
+      // Ghi sổ hao — kể cả phần hao THÊM vì sâu (tính từ cây gốc nên không trừ trùng).
+      const m = pestAdjustedTree(state.tree, state.treePest, nowMs);
       const treeChanged = Math.abs(m.growthRecordedMs - state.tree.growthRecordedMs) > 1000
         || Math.abs(m.water - state.tree.water) + Math.abs(m.sun - state.tree.sun) + Math.abs(m.love - state.tree.love) >= 0.5
         || m.matureAt !== state.tree.matureAt;
       const t = today();
       const dayRolled = state.pings.day.date !== t;
-      if (!treeChanged && !dayRolled) return state;
+      const questsRolled = state.dailyQuests.dateKey !== t;
+      if (!treeChanged && !dayRolled && !questsRolled) return state;
       return {
         ...state,
         tree: treeChanged ? m : state.tree,
         pings: dayRolled ? { ...state.pings, day: { date: t, A: 0, B: 0 } } : state.pings,
+        dailyQuests: questsRolled ? emptyDailyQuests(t) : state.dailyQuests,
       };
     }
     case "SET_IDENTITY": {
@@ -116,16 +144,48 @@ export function gardenReducer(state: AppState, action: Action): AppState {
     }
 
     /* ---------- CORE 2: cây tình yêu ---------- */
+    case "PEST_SPAWN": {
+      // Ghi sổ một đợt sâu — IDEMPOTENT tuyệt đối: đang có sâu sống / trùng id /
+      // cùng ngày đã có đợt sâu thì bỏ qua. Sự kiện do pestSpawnFor (thuần,
+      // theo seed) tính nên 2 máy dispatch cùng một sự kiện và hội tụ.
+      const ev = action.event;
+      if (!ev || typeof ev.id !== "string" || !ev.id || !isValidDateKey(ev.dateKey)) return state;
+      if (!isFinite(new Date(ev.appearedAt).getTime())) return state;
+      const nowMs = Date.now();
+      if (isPestActive(state.treePest, nowMs)) return state;
+      if (state.treePest && (state.treePest.id === ev.id || state.treePest.dateKey === ev.dateKey)) return state;
+      const clean: TreePestEvent = {
+        id: ev.id, dateKey: ev.dateKey, appearedAt: ev.appearedAt,
+        status: "active", caughtBy: "", caughtAt: "", expiredAt: "",
+      };
+      return { ...state, treePest: clean };
+    }
+    case "PEST_EXPIRE": {
+      const pest = state.treePest;
+      if (!pest || pest.id !== action.id || pest.status !== "active") return state;
+      return {
+        ...state,
+        treePest: { ...pest, status: "expired", expiredAt: nowIso() },
+      };
+    }
     case "TREE_CARE": {
       const nowMs = Date.now();
-      const mat = materializeTree(state.tree, nowMs);
+      // Materialize KÈM hao thêm vì sâu (từ cây gốc) để lần chăm ghi sổ đúng
+      // sức sống thật tại now — phần hao-sâu không bị "tha" khi chăm cây.
+      const mat = pestAdjustedTree(state.tree, state.treePest, nowMs);
       // Khóa cứng tại reducer: cooldown 60s/người + chỉ số đã đầy thì lần chăm VÔ HIỆU
       // (không boost, không thư, không dấu vết) — UI chỉ là lớp hiển thị của luật này.
-      const cs = careStatus(mat, action.kind, action.user, nowMs);
+      // "Bắt sâu" còn khóa theo SỰ KIỆN: không có sâu sống trên cây thì vô hiệu.
+      const cs = careStatus(mat, action.kind, action.user, nowMs, state.treePest);
       if (!cs.ok) return state;
       const cared = applyCare(mat, action.kind, action.user, nowMs);
+      // Bắt sâu thành công -> KẾT THÚC đợt sâu ngay trong cùng hành động chăm
+      // (ghi người bắt + mốc bắt); các lần chăm khác không đụng vào sự kiện.
+      const treePest = action.kind === "bug" && isPestActive(state.treePest, nowMs) && state.treePest
+        ? { ...state.treePest, status: "caught" as const, caughtBy: action.user, caughtAt: new Date(nowMs).toISOString() }
+        : state.treePest;
       let activities = pushAct(state, action.actor, CARE_TEXT[action.kind].text, CARE_TEXT[action.kind].icon, action.user);
-      let out: AppState = { ...state, tree: cared, activities };
+      let out: AppState = { ...state, tree: cared, treePest, activities };
       if (action.combo) {
         activities = pushAct(out, action.actor, "vừa tạo combo Song chăm với người ấy", "sparkles", action.user);
         out = { ...out, activities };
@@ -141,7 +201,8 @@ export function gardenReducer(state: AppState, action: Action): AppState {
           activities: pushAct(out, action.actor, "vừa làm rơi một lá thư tình", "mail", action.user),
         };
       }
-      return out;
+      // Hành động chăm THÀNH CÔNG tính vào nhiệm vụ ngày (kể cả bắt sâu).
+      return withQuestProgress(out, { type: "care", kind: action.kind, slot: action.user }, action.actor, new Date(nowMs).toISOString());
     }
     case "CELEBRATE_TREE_STAGE": {
       // Giai đoạn cây nay ĐI THEO NGÀY YÊU (treeStageForDay): khi mở app thấy
@@ -176,12 +237,13 @@ export function gardenReducer(state: AppState, action: Action): AppState {
       if (last && createdMs - new Date(last).getTime() < NOTE_MIN_INTERVAL_MS) return state;
       if (state.notes.some((n) => n.id === note.id)) return state;
       const clean: LoveNote = { ...note, text, readAt: "" };
-      return {
+      const out: AppState = {
         ...state,
         notes: [clean, ...state.notes].slice(0, NOTES_CAP),
         noteLog: { ...state.noteLog, [action.user]: note.createdAt },
         activities: pushAct(state, nameOf(state, action.user), "vừa gửi một note tình yêu", "document-text", action.user),
       };
+      return withQuestProgress(out, { type: "note", slot: action.user }, nameOf(state, action.user), note.createdAt);
     }
     case "NOTE_READ": {
       const target = state.notes.find((n) => n.id === action.id);
@@ -204,62 +266,48 @@ export function gardenReducer(state: AppState, action: Action): AppState {
       const prev = state.pings[action.user];
       const slot = { total: prev.total + 1, lastAt: nowStr, lastBurstAt: nowStr, burst: 1 };
       const pings = { ...state.pings, day: { ...day, [action.user]: day[action.user] + 1 }, [action.user]: slot };
-      const activities = pushAct(state, action.actor, "vừa gửi một nhịp tim nhớ bạn", "heart", action.user);
-      return { ...state, pings, activities };
+      const activities = pushAct(state, action.actor, "đang nhớ bạn", "heart", action.user);
+      const out: AppState = { ...state, pings, activities };
+      return withQuestProgress(out, { type: "ping", slot: action.user }, action.actor, nowStr);
     }
 
-    /* ---------- CORE 5: định vị tạm thời ---------- */
-    case "PRESENCE_START": {
-      const nowMs = Date.now();
-      const prev = state.presence[action.user];
-      const slot = {
-        ...prev, sharing: true,
-        startedAt: new Date(nowMs).toISOString(),
-        expiresAt: action.durationMs ? new Date(nowMs + action.durationMs).toISOString() : "",
-        // Phiên mới bắt đầu sạch: toạ độ của phiên cũ không được "sống lại" trước
-        // khi snapshot đầu tiên của phiên này tới.
-        lat: null, lng: null, acc: null, locAt: "", at: "",
-      };
-      return {
-        ...state,
-        presence: { ...state.presence, [action.user]: slot },
-        activities: pushAct(state, action.actor, "bắt đầu chia sẻ vị trí tạm thời", "location", action.user),
-      };
-    }
-    case "PRESENCE_STOP": {
-      const prev = state.presence[action.user];
-      if (!prev.sharing) return state;
-      // Kết thúc phiên = xoá toạ độ khỏi state đồng bộ: vị trí tạm thời thì khi
-      // hết phiên, phía người ấy không còn thấy vị trí nữa (kể cả trong dữ liệu thô).
-      const slot = { ...prev, sharing: false, lat: null, lng: null, acc: null, locAt: "" };
-      return {
-        ...state,
-        presence: { ...state.presence, [action.user]: slot },
-        activities: pushAct(state, action.actor, action.reason === "expired" ? "đã hết phiên chia sẻ vị trí tạm thời" : "đã dừng chia sẻ vị trí", "location", action.user),
-      };
-    }
+    /* ---------- CORE 5: vị trí trực tiếp ---------- */
     case "PRESENCE_SNAPSHOT": {
+      // Publish ĐIỂM MỚI NHẤT của chính chủ slot (LocationSync gọi khi app
+      // đang mở + đã có quyền vị trí) — không phiên, không cổng bật/tắt.
+      // Snapshot không có điểm vị trí (chỉ pin/giờ) thì giữ nguyên điểm cũ.
       const prev = state.presence[action.user];
-      if (!prev.sharing) return state; // phiên đã dừng thì snapshot đến muộn cũng không hồi sinh
       const atMs = new Date(action.at).getTime();
       if (!isFinite(atMs)) return state;
-      // Snapshot đến SAU lúc hết hạn: phiên tự kết thúc tại đây (kèm dấu vết, đúng 1 lần).
-      if (prev.expiresAt && atMs > new Date(prev.expiresAt).getTime()) {
-        return {
-          ...state,
-          presence: { ...state.presence, [action.user]: { ...prev, sharing: false, lat: null, lng: null, acc: null, locAt: "" } },
-          activities: pushAct(state, nameOf(state, action.user), "đã hết phiên chia sẻ vị trí tạm thời", "location", action.user),
-        };
-      }
       const sameFix = action.lat === prev.lat && action.lng === prev.lng && action.battery === prev.battery;
-      if (sameFix && atMs - new Date(prev.at || 0).getTime() < 60000) return state; // chụp trùng trong 1 phút — bỏ qua cho khỏi phát đồng bộ thừa
-      const slot = {
-        ...prev,
+      if (sameFix && atMs - new Date(prev.at || 0).getTime() < 60000) return state; // publish trùng trong 1 phút — bỏ qua cho khỏi phát đồng bộ thừa
+      const slot: PresenceSlot = {
+        lat: prev.lat, lng: prev.lng, acc: prev.acc, locAt: prev.locAt,
         battery: action.battery ?? prev.battery,
         at: action.at,
         ...(action.lat != null && action.lng != null ? { lat: action.lat, lng: action.lng, acc: action.acc, locAt: action.at } : null),
       };
       return { ...state, presence: { ...state.presence, [action.user]: slot } };
+    }
+
+    /* ---------- TRẠNG THÁI CỦA NHAU ---------- */
+    case "STATUS_SET": {
+      // Mỗi người CHỈ ghi trạng thái của CHÍNH slot mình: action luôn ghi vào
+      // đúng slot action.user (store chỉ dispatch với user = currentUser của
+      // máy gửi) — không có đường nào ghi hộ trạng thái của slot kia.
+      // status null = xoá trạng thái. Mood lạ (ngoài bộ preset) bị từ chối.
+      const raw = action.status;
+      let clean: PersonStatus | null = null;
+      if (raw) {
+        if (!statusMoodById(raw.mood)) return state;
+        clean = {
+          mood: raw.mood,
+          text: (raw.text || "").trim().slice(0, STATUS_TEXT_MAX),
+          updatedAt: raw.updatedAt && isFinite(new Date(raw.updatedAt).getTime()) ? raw.updatedAt : nowIso(),
+        };
+      }
+      if (JSON.stringify(state.status[action.user]) === JSON.stringify(clean)) return state;
+      return { ...state, status: { ...state.status, [action.user]: clean } };
     }
 
     /* ---------- Ảnh của hai đứa (đợt 3): đặt SAU khi upload Storage thành công ---------- */

@@ -4,6 +4,8 @@ import { Tabs } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { COLOR, FONT, ROLE, SHADOW_FLOAT } from "../../components/theme";
 import { QuickActions } from "../../components/QuickActions";
+import { StatusEditor } from "../../components/StatusEditor";
+import { LetterAndPingPops, MilestonePop, QuestCompletePop } from "../../components/Popups";
 import { useLove } from "../../lib/store";
 
 /**
@@ -26,6 +28,7 @@ function TabIcon({ name, focused }: { name: string; focused: boolean }) {
 
 export default function TabsLayout() {
   const [quickOpen, setQuickOpen] = useState(false);
+  const [statusOpen, setStatusOpen] = useState(false);
   const { state } = useLove();
   const me = state.currentUser;
   const unread = state.notes.filter((n) => n.authorSlot !== me && !n.readAt).length;
@@ -83,7 +86,15 @@ export default function TabsLayout() {
         />
         <Tabs.Screen name="couple" options={{ title: "Hai đứa", tabBarIcon: ({ focused }) => <TabIcon name={focused ? "people" : "people-outline"} focused={focused} /> }} />
       </Tabs>
-      <QuickActions visible={quickOpen} onClose={() => setQuickOpen(false)} />
+      <QuickActions visible={quickOpen} onClose={() => setQuickOpen(false)} onSetStatus={() => setStatusOpen(true)} />
+      <StatusEditor visible={statusOpen} onClose={() => setStatusOpen(false)} />
+      {/* Pop nhận (thư rơi / nhịp nhớ / mốc ngày) mount ĐÚNG MỘT NƠI ở layout
+          tabs: các màn tab đã thăm vẫn mounted song song, nếu mỗi màn tự mount
+          pop thì có 2 bản Modal chồng nhau — bấm tắt bản trên lại lộ bản dưới
+          (lỗi "phải bấm 2 lần mới tắt"). Một bản duy nhất ở đây = bấm 1 lần tắt. */}
+      <LetterAndPingPops />
+      <MilestonePop />
+      <QuestCompletePop />
     </>
   );
 }

@@ -8,7 +8,9 @@ import { useAuth } from "../../lib/auth";
 import { uploadCouplePhoto, useCouplePhotoUrl } from "../../lib/photo";
 import { success } from "../../lib/feedback";
 import { formatDateVN, isValidDateKey } from "../../lib/types";
-import { dayCount, milestoneDateKey, nextMilestone, shareStatus, timeAgoText } from "../../lib/features";
+import { dayCount, freshnessText, milestoneDateKey, nextMilestone, statusFreshnessLabel, statusStale, timeAgoText } from "../../lib/features";
+import { statusMoodById } from "../../lib/content";
+import { StatusEditor } from "../../components/StatusEditor";
 import Avatar from "../../components/Avatar";
 import { HeroBand, MascotArt } from "../../components/Art";
 import { CouplePolaroid } from "../../components/CouplePhoto";
@@ -43,6 +45,7 @@ export default function CoupleScreen() {
   const [photoBusy, setPhotoBusy] = useState(false);
   const [photoMsg, setPhotoMsg] = useState("");
   const [photoOk, setPhotoOk] = useState(false);
+  const [statusOpen, setStatusOpen] = useState(false);
   const photoUrl = useCouplePhotoUrl(state.couplePhoto);
 
   // eslint-disable-next-line react-hooks/set-state-in-effect -- đồng bộ ô ngày từ state, trừ khi đang sửa
@@ -53,9 +56,9 @@ export default function CoupleScreen() {
   const partner = partnerOf(state);
   const count = dayCount(state.couple.startDate);
   const next = nextMilestone(count);
-  const myShare = shareStatus(state.presence[me]);
-  const partnerShare = shareStatus(state.presence[partner.slot]);
-  const shareBadge = partnerShare.active ? `${partner.name} đang chia sẻ vị trí` : myShare.active ? "Bạn đang chia sẻ vị trí" : undefined;
+  const partnerSlotState = state.presence[partner.slot];
+  const partnerHasPos = partnerSlotState.lat != null && partnerSlotState.lng != null;
+  const shareBadge = partnerHasPos ? `${partner.name} · ${freshnessText(partnerSlotState.locAt)}` : undefined;
 
   /* Ảnh của hai đứa: chọn từ thư viện (cắt 4:3) -> tải lên Storage -> ghi sổ
    * vào state. Lỗi nào cũng thành một dòng chữ ấm áp ngay dưới khung ảnh. */
@@ -125,6 +128,42 @@ export default function CoupleScreen() {
                 Yêu nhau từ {formatDateVN(state.couple.startDate)}
               </Text>
             </View>
+          </View>
+          {/* Trạng thái của nhau (hiện diện sống): dưới tên mỗi người là trạng
+              thái CỦA CHÍNH người đó — của mình thì có nút đặt/sửa ngay tại đây. */}
+          <View style={{ marginTop: 14, gap: 8 }}>
+            {[self, partner].map((person) => {
+              const st = state.status[person.slot];
+              const mood = st ? statusMoodById(st.mood) : undefined;
+              const stale = st ? statusStale(st) : false;
+              const mine = person.slot === me;
+              return (
+                <View key={person.slot} style={{ flexDirection: "row", alignItems: "center", gap: 9 }}>
+                  <Avatar id={person.avatar} size={24} ring="#fff" />
+                  <Text style={{ fontFamily: FONT.bold, fontSize: 13, color: "#fff" }}>{person.name}</Text>
+                  {st && mood ? (
+                    <View style={{ flex: 1, flexDirection: "row", alignItems: "center", gap: 5, opacity: stale ? 0.6 : 1 }}>
+                      <Ionicons name={mood.icon as never} size={13} color="#FFE3EC" />
+                      <Text numberOfLines={1} style={{ flex: 1, fontFamily: FONT.medium, fontSize: 12.5, color: COLOR.onNavySoft }}>
+                        {mood.label}{st.text ? ` — “${st.text}”` : ""}{stale ? ` · ${statusFreshnessLabel(st)}` : ""}
+                      </Text>
+                    </View>
+                  ) : (
+                    <Text style={{ flex: 1, fontFamily: FONT.regular, fontSize: 12.5, color: COLOR.onNavySoft }}>Chưa đặt trạng thái</Text>
+                  )}
+                  {mine ? (
+                    <TouchableOpacity
+                      onPress={() => setStatusOpen(true)}
+                      accessibilityRole="button"
+                      accessibilityLabel={st ? "Sửa trạng thái của bạn" : "Đặt trạng thái của bạn"}
+                      style={{ backgroundColor: "rgba(255,255,255,0.14)", borderWidth: 1, borderColor: "rgba(255,255,255,0.35)", borderRadius: 999, paddingHorizontal: 11, paddingVertical: 5 }}
+                    >
+                      <Text style={{ fontFamily: FONT.bold, fontSize: 12, color: "#fff" }}>{st ? "Sửa" : "Đặt trạng thái"}</Text>
+                    </TouchableOpacity>
+                  ) : null}
+                </View>
+              );
+            })}
           </View>
           {/* Ảnh của hai đứa: có ảnh thật thì khung polaroid trắng trên nền navy;
               chưa có (hoặc đang tải/chưa xin được URL) thì dùng tranh vẽ cặp đôi. */}
@@ -242,11 +281,9 @@ export default function CoupleScreen() {
           <FeatureCard
             icon="location"
             title="Bản đồ hai đứa"
-            desc={partnerShare.active
-              ? `${partner.name} đang chia sẻ vị trí — chạm để xem bản đồ, khoảng cách và thời gian còn lại.`
-              : myShare.active
-                ? "Bạn đang chia sẻ vị trí — chạm để xem bản đồ hoặc dừng phiên."
-                : "Xem vị trí của nhau trên bản đồ khi đang chia sẻ tạm thời (15 phút, 1 giờ, 4 giờ hoặc đến khi tự tắt). Không theo dõi nền."}
+            desc={partnerHasPos
+              ? `Đang thấy ${partner.name} trên bản đồ trực tiếp (${freshnessText(partnerSlotState.locAt).toLowerCase()}) — chạm để xem ghim chạy theo thời gian thực.`
+              : "Mở là thấy vị trí trực tiếp của hai đứa trên bản đồ — chỉ cần app đang mở và đã cấp quyền vị trí, không cần bật tắt gì thêm."}
             route="/location"
             badge={shareBadge}
             badgeVariant="partner"
@@ -295,6 +332,7 @@ export default function CoupleScreen() {
 
         <ClosingBand art={<MascotArt size={56} />} line="Khu vườn này chỉ có hai người thôi — mỗi ngày bên nhau, cây lại lớn thêm một chút." />
       </ScrollView>
+      <StatusEditor visible={statusOpen} onClose={() => setStatusOpen(false)} />
     </View>
   );
 }

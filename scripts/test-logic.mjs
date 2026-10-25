@@ -17,6 +17,7 @@ const R = require("./.build/reducer.js");
 const M = require("./.build/merge.js");
 const MT = require("./.build/maptiles.js");
 const WG = require("./.build/widget.js");
+const Q = require("./.build/quests.js");
 
 const H = 3600000;
 const MIN = 60000;
@@ -235,40 +236,58 @@ console.log("\n--- E) Nhịp tim Nhớ bạn ---");
   check("E8 gửi 45 nhịp liền: đếm đủ 45 nhưng nhật ký vẫn chặn ở 40 dòng như mọi hoạt động", spam.pings.day.A === 45 && spam.pings.A.total === 45 && spam.activities.length === 40);
 }
 
-/* ================= F) ĐỊNH VỊ TẠM THỜI ================= */
-console.log("\n--- F) Định vị tạm thời ---");
+/* ================= F) VỊ TRÍ TRỰC TIẾP =================
+ * ADAPT từ section F cũ ("Định vị tạm thời" — phiên chia sẻ 15p/1h/4h):
+ * mô hình phiên đã bị GỠ theo yêu cầu của chủ app ("không cần bật tắt, vô
+ * phần đó là thấy luôn vị trí của nhau"). Các test F1–F6/F9/F10 của bản cũ
+ * (PRESENCE_START/STOP, shareStatus, SHARE_DURATIONS, hết hạn phiên) được
+ * THAY bằng test cho cổng tiết lưu publish + publish/lưu điểm mới nhất +
+ * nhãn độ tươi + migration vứt phiên cũ; F7/F8 (haversine/distanceText) giữ
+ * nguyên vì toán khoảng cách không đổi. */
+console.log("\n--- F) Vị trí trực tiếp: tiết lưu publish + điểm mới nhất + độ tươi ---");
 {
+  const A0 = { lat: 21.0285, lng: 105.8542 };
+  check("F1 shouldPublishLive: chưa từng publish -> publish ngay", F.shouldPublishLive(null, A0, NOW) === true);
+  check("F2 shouldPublishLive: mới 5 giây (dù đi xa 100m+) -> CHƯA publish (cổng 10 giây)",
+    F.shouldPublishLive({ ...A0, atMs: NOW }, { lat: 21.0295, lng: 105.8542 }, NOW + 5000) === false);
+  check("F3 shouldPublishLive: đủ 15 giây nhưng mới đi ~5m -> CHƯA publish (cổng 20m)",
+    F.shouldPublishLive({ ...A0, atMs: NOW - 15000 }, { lat: 21.02855, lng: 105.8542 }, NOW) === false);
+  check("F4 shouldPublishLive: đủ 15 giây + đi ~55m -> publish",
+    F.shouldPublishLive({ ...A0, atMs: NOW - 15000 }, { lat: 21.029, lng: 105.8542 }, NOW) === true);
+
   let st = fresh();
-  st = R.gardenReducer(st, { type: "PRESENCE_START", user: "A", durationMs: 15 * MIN, actor: "An" });
-  const exp = new Date(st.presence.A.expiresAt).getTime();
-  check("F1 bắt đầu phiên 15 phút: sharing=true, expiresAt ~ +15 phút, toạ độ sạch", st.presence.A.sharing === true && Math.abs(exp - (NOW + 15 * MIN)) < 5000 && st.presence.A.lat === null);
-  st = R.gardenReducer(st, { type: "PRESENCE_SNAPSHOT", user: "A", lat: 21.0285, lng: 105.8542, acc: 12, battery: 77, at: iso(NOW + 1000) });
-  check("F2 snapshot trong phiên -> lưu vị trí + pin + locAt", st.presence.A.lat === 21.0285 && st.presence.A.battery === 77 && st.presence.A.locAt === iso(NOW + 1000));
-  const notSharing = fresh();
-  const snapLate = R.gardenReducer(notSharing, { type: "PRESENCE_SNAPSHOT", user: "A", lat: 1, lng: 2, acc: 5, battery: 50, at: iso(NOW) });
-  check("F3 snapshot khi KHÔNG chia sẻ -> no-op (không hồi sinh phiên)", snapLate === notSharing);
-  let stExp = fresh();
-  stExp = R.gardenReducer(stExp, { type: "PRESENCE_START", user: "A", durationMs: 15 * MIN, actor: "An" });
-  stExp = R.gardenReducer(stExp, { type: "PRESENCE_SNAPSHOT", user: "A", lat: 21, lng: 105, acc: 10, battery: 60, at: iso(NOW + 1000) });
-  const afterExp = R.gardenReducer(stExp, { type: "PRESENCE_SNAPSHOT", user: "A", lat: 21.1, lng: 105.1, acc: 10, battery: 59, at: iso(NOW + 16 * MIN) });
-  check("F4 snapshot tới SAU expiresAt -> phiên tự kết thúc + xoá toạ độ", afterExp.presence.A.sharing === false && afterExp.presence.A.lat === null);
-  const stopped = R.gardenReducer(st, { type: "PRESENCE_STOP", user: "A", actor: "An", reason: "manual" });
-  check("F5 dừng thủ công -> sharing=false + xoá toạ độ khỏi state", stopped.presence.A.sharing === false && stopped.presence.A.lat === null && stopped.presence.A.locAt === "");
-  const ssExpired = F.shareStatus({ sharing: true, expiresAt: iso(NOW - 1000) }, NOW);
-  const ssOpen = F.shareStatus({ sharing: true, expiresAt: "" }, NOW);
-  const ssTimed = F.shareStatus({ sharing: true, expiresAt: iso(NOW + 30 * MIN) }, NOW);
-  check("F6 shareStatus: hết hạn -> expired; không hạn -> active vô hạn; có hạn -> remainingMs", ssExpired.expired === true && ssExpired.active === false && ssOpen.active === true && ssOpen.remainingMs === null && ssTimed.active === true && Math.abs((ssTimed.remainingMs || 0) - 30 * MIN) < 2000);
+  st = R.gardenReducer(st, { type: "PRESENCE_SNAPSHOT", user: "A", lat: 21.0285, lng: 105.8542, acc: 12, battery: 77, at: iso(NOW) });
+  check("F5 publish KHÔNG cần phiên/công tắc: snapshot ghi luôn điểm mới nhất + pin + locAt",
+    st.presence.A.lat === 21.0285 && st.presence.A.battery === 77 && st.presence.A.locAt === iso(NOW));
+  st = R.gardenReducer(st, { type: "PRESENCE_SNAPSHOT", user: "A", lat: 21.03, lng: 105.86, acc: 9, battery: 76, at: iso(NOW + 70000) });
+  check("F6 publish tiếp theo GHI ĐÈ điểm cũ (chỉ giữ điểm mới nhất, không lịch sử)",
+    st.presence.A.lat === 21.03 && st.presence.A.locAt === iso(NOW + 70000) && st.presence.A.battery === 76);
+  const batteryOnly = R.gardenReducer(st, { type: "PRESENCE_SNAPSHOT", user: "A", lat: null, lng: null, acc: null, battery: 70, at: iso(NOW + 140000) });
+  check("F7 snapshot không có điểm (chỉ pin) -> giữ nguyên vị trí cũ, chỉ mới pin/mốc",
+    batteryOnly.presence.A.lat === 21.03 && batteryOnly.presence.A.locAt === iso(NOW + 70000) && batteryOnly.presence.A.battery === 70);
+
   const hnHcm = F.haversineKm({ lat: 21.0285, lng: 105.8542 }, { lat: 10.8231, lng: 106.6297 });
-  check("F7 haversine Hà Nội -> TP.HCM ~ 1.100-1.200 km; cùng điểm = 0", hnHcm > 1100 && hnHcm < 1200 && F.haversineKm({ lat: 21, lng: 105 }, { lat: 21, lng: 105 }) === 0, `${hnHcm.toFixed(0)} km`);
-  check("F8 distanceText: <0.3km thân thiện, 550m, 5,3 km", F.distanceText(0.2) === "Đang ở rất gần nhau" && F.distanceText(0.55) === "550 m" && F.distanceText(5.26) === "5,3 km");
-  check("F9 các mốc thời lượng đúng spec: 15p / 1h / 4h / tự tắt", F.SHARE_DURATIONS.map((d) => d.ms).join(",") === [15 * MIN, 60 * MIN, 4 * H, null].join(","));
+  check("F8 haversine Hà Nội -> TP.HCM ~ 1.100-1.200 km; cùng điểm = 0", hnHcm > 1100 && hnHcm < 1200 && F.haversineKm({ lat: 21, lng: 105 }, { lat: 21, lng: 105 }) === 0, `${hnHcm.toFixed(0)} km`);
+  check("F9 distanceText: <0.3km thân thiện, 550m, 5,3 km", F.distanceText(0.2) === "Đang ở rất gần nhau" && F.distanceText(0.55) === "550 m" && F.distanceText(5.26) === "5,3 km");
+
+  check("F10 freshnessText: rỗng -> ''; 30 giây -> 'Vừa cập nhật'; 10 phút -> 'Cập nhật 10 phút trước'; 3 giờ -> 'Vị trí gần nhất · ...'",
+    F.freshnessText("", NOW) === ""
+    && F.freshnessText(iso(NOW - 30000), NOW) === "Vừa cập nhật"
+    && F.freshnessText(iso(NOW - 10 * MIN), NOW) === "Cập nhật 10 phút trước"
+    && F.freshnessText(iso(NOW - 3 * H), NOW).startsWith("Vị trí gần nhất · "));
+
+  const oldSession = MO.normalizeState({ presence: { A: { sharing: true, startedAt: iso(NOW), expiresAt: "", lat: 21.5, lng: 105.5, locAt: iso(NOW), battery: 50, at: iso(NOW) }, B: { sharing: false } } });
+  const newShape = MO.normalizeState({ presence: { A: { lat: 21.5, lng: 105.5, acc: 8, battery: 50, locAt: iso(NOW), at: iso(NOW) } } });
+  check("F11 migration: state PHIÊN cũ -> vị trí bị vứt, bắt đầu trống; shape trực tiếp mới -> giữ nguyên điểm",
+    oldSession.presence.A.lat === null && oldSession.presence.A.locAt === ""
+    && newShape.presence.A.lat === 21.5 && newShape.presence.A.locAt === iso(NOW));
 }
 
 /* ================= G) MERGE 2 MÁY + NORMALIZE + STAMP ================= */
 console.log("\n--- G) Merge / normalize / đóng dấu ---");
 {
   const def = MO.normalizeState(null);
-  check("G1 normalize(null) -> mặc định an toàn", def.couple.startDate === todayStr && def.notes.length === 0 && def.tree.growthRecordedMs === 0 && def.presence.A.sharing === false);
+  check("G1 normalize(null) -> mặc định an toàn", def.couple.startDate === todayStr && def.notes.length === 0 && def.tree.growthRecordedMs === 0 && def.presence.A.lat === null);
   let threw = false;
   try { MO.normalizeState("rác"); MO.normalizeState(42); MO.normalizeState([1, 2]); MO.normalizeState({ couple: "x", tree: 7, notes: "y" }); } catch { threw = true; }
   check("G2 normalize không bao giờ throw với dữ liệu rác", !threw);
@@ -279,7 +298,7 @@ console.log("\n--- G) Merge / normalize / đóng dấu ---");
     presence: { me: { sharing: true } },
     xu: 9999, level: 5,
   });
-  check("G3 state BẢN CŨ nạp an toàn: cứu ngày bắt đầu + cây ở plants[0], note cũ bị loại, presence cũ về mặc định", legacy.couple.startDate === "2024-02-14" && legacy.tree.careCount === 12 && legacy.notes.length === 0 && legacy.presence.A.sharing === false && legacy.currentUser === "B");
+  check("G3 state BẢN CŨ nạp an toàn: cứu ngày bắt đầu + cây ở plants[0], note cũ bị loại, presence cũ về mặc định", legacy.couple.startDate === "2024-02-14" && legacy.tree.careCount === 12 && legacy.notes.length === 0 && legacy.presence.A.lat === null && legacy.currentUser === "B");
   const v4 = MO.normalizeState({ tree: { xp: 1234, level: 9 } });
   check("G4 tree kiểu V4 (không plantedAt) -> cây mới tinh, không crash", v4.tree.growthRecordedMs === 0 && Boolean(v4.tree.plantedAt));
 
@@ -744,6 +763,200 @@ console.log("\n--- N) Web Push: base64url + chuẩn hoá đăng ký + nhận di�
   const statusNative = await WP.getWebPushStatus();
   check("N8 ngoài nền tảng web: getWebPushStatus = 'unsupported' và vapidPublicKey = '' khi extra trống",
     statusNative === "unsupported" && WP.vapidPublicKey() === "");
+}
+
+/* ================= O) SÂU TRÊN CÂY (đợt "chăm cây 2") ================= */
+console.log("\n--- O) Sâu trên cây: xuất hiện theo seed + bắt + hết hạn ---");
+{
+  // Cây bị bỏ bê: lần chăm cuối cách đây 30 giờ, chỉ số đã hao.
+  const neglectedBase = {
+    ...fresh(),
+    tree: mkTree({
+      plantedAt: iso(NOW - 200 * H), growthAt: iso(NOW - 30 * H), statsAt: iso(NOW - 30 * H),
+      water: 60, sun: 60, love: 60, lastCareAt: iso(NOW - 30 * H), lastCareBySlot: "A",
+    }),
+  };
+  // Quét tối đa 30 ngày tới để tìm một ngày roll thăm "trúng" đợt sâu (xác suất
+  // bỏ bê 50%/ngày — 30 ngày liên tiếp trượt là ~0). Test không phụ thuộc ngày cụ thể.
+  let spawnProbe = 0;
+  let spawnEvent = null;
+  for (let d = 0; d < 30 && !spawnEvent; d++) {
+    spawnProbe = NOW + d * 24 * H;
+    spawnEvent = F.pestSpawnFor(neglectedBase, spawnProbe);
+  }
+  check("O1 cây bị bỏ bê: trong 30 ngày phải có ngày sâu xuất hiện theo seed", spawnEvent !== null && spawnEvent.status === "active");
+  const again = F.pestSpawnFor(neglectedBase, spawnProbe);
+  check("O2 pestSpawnFor XÁC ĐỊNH: cùng state + cùng mốc -> cùng một sự kiện (2 máy khớp nhau)",
+    JSON.stringify(again) === JSON.stringify(spawnEvent)
+    && new Date(spawnEvent.appearedAt).getTime() <= spawnProbe
+    && spawnProbe - new Date(spawnEvent.appearedAt).getTime() < 12 * H);
+  const withActive = { ...neglectedBase, treePest: spawnEvent };
+  check("O3 đang có sâu sống -> không sinh đợt mới chồng lên", F.pestSpawnFor(withActive, spawnProbe) === null);
+  const withCaught = { ...neglectedBase, treePest: { ...spawnEvent, status: "caught", caughtBy: "A", caughtAt: iso(spawnProbe) } };
+  check("O4 ngày đó đã có đợt sâu (dù đã bắt) -> không sinh đợt thứ hai trong ngày", F.pestSpawnFor(withCaught, spawnProbe) === null);
+
+  const activeNow = { id: `pest-${todayStr}`, dateKey: todayStr, appearedAt: iso(NOW - H), status: "active", caughtBy: "", caughtAt: "", expiredAt: "" };
+  let st = { ...fresh(), treePest: activeNow };
+  const spawned = R.gardenReducer(fresh(), { type: "PEST_SPAWN", event: activeNow });
+  const spawnedTwice = R.gardenReducer(spawned, { type: "PEST_SPAWN", event: activeNow });
+  check("O5 PEST_SPAWN idempotent: ghi 1 lần, dispatch lại cùng sự kiện -> no-op",
+    spawned.treePest?.status === "active" && spawnedTwice === spawned);
+  const caught = R.gardenReducer(st, { type: "TREE_CARE", kind: "bug", user: "A", actor: "An" });
+  check("O6 bắt sâu khi CÓ sâu: sự kiện -> caught + ghi người bắt + dấu vết 'vừa bắt sâu cho cây'",
+    caught.treePest?.status === "caught" && caught.treePest?.caughtBy === "A"
+    && caught.activities[0]?.text === "vừa bắt sâu cho cây");
+  const noPest = fresh();
+  const blockedCatch = R.gardenReducer(noPest, { type: "TREE_CARE", kind: "bug", user: "A", actor: "An" });
+  check("O7 bắt sâu khi KHÔNG có sâu: reducer chặn cứng (trả nguyên state)", blockedCatch === noPest);
+  const csNoPest = TR.careStatus(noPest.tree, "bug", "A", NOW, null);
+  const csPest = TR.careStatus(mkTree({ water: 100, sun: 100, love: 100 }), "bug", "A", NOW, activeNow);
+  check("O8 careStatus: không sâu -> chặn kèm lý do 'đang sạch'; có sâu -> bắt được kể cả cây đang đầy chỉ số",
+    csNoPest.ok === false && csNoPest.reason.includes("đang sạch") && csPest.ok === true);
+
+  const oldPest = { ...activeNow, appearedAt: iso(NOW - 13 * H), dateKey: T.dayKeyLocal(new Date(NOW - 13 * H)) };
+  check("O9 quá 12 giờ -> sâu không còn 'sống' (isPestActive=false)", TR.isPestActive(oldPest, NOW) === false && TR.isPestActive(activeNow, NOW) === true);
+  const expired = R.gardenReducer(st, { type: "PEST_EXPIRE", id: activeNow.id });
+  const expiredTwice = R.gardenReducer(expired, { type: "PEST_EXPIRE", id: activeNow.id });
+  check("O10 PEST_EXPIRE ghi hết hạn đúng 1 lần (lần 2 no-op)",
+    expired.treePest?.status === "expired" && Boolean(expired.treePest?.expiredAt) && expiredTwice === expired);
+
+  const mL = { ...fresh(), treePest: activeNow };
+  const mR = { ...fresh(), treePest: { ...activeNow, status: "caught", caughtBy: "B", caughtAt: iso(NOW - 10 * MIN) } };
+  const mergedPest = M.mergeStates(mL, mR, "A");
+  const laterPest = { ...activeNow, id: "pest-2099-01-01", dateKey: "2099-01-01", appearedAt: iso(NOW + 24 * H) };
+  const mergedDiff = M.mergeStates(mL, { ...fresh(), treePest: laterPest }, "A");
+  check("O11 merge sâu: cùng id -> 'đã bắt' thắng 'đang sống'; khác id -> đợt xuất hiện muộn hơn thắng",
+    mergedPest.treePest?.status === "caught" && mergedPest.treePest?.caughtBy === "B" && mergedDiff.treePest?.id === "pest-2099-01-01");
+
+  const decayTree = mkTree({ statsAt: iso(NOW - 10 * H), water: 90, sun: 90, love: 90 });
+  const plain = TR.decayedStats(decayTree, NOW);
+  const withPestDecay = TR.decayedStats(decayTree, NOW, { ...activeNow, appearedAt: iso(NOW - 10 * H), dateKey: T.dayKeyLocal(new Date(NOW - 10 * H)) });
+  check("O12 có sâu: hao NHANH hơn — nước hao thêm (hệ số 1.6): 90 - 25 - 15 = 50",
+    Math.abs(plain.water - 65) < 0.11 && Math.abs(withPestDecay.water - 50) < 0.11, `plain=${plain.water} pest=${withPestDecay.water}`);
+
+  check("O13 migration: bản lưu cũ/không có treePest -> null; dữ liệu rác -> null; sự kiện hợp lệ được giữ",
+    MO.normalizeState({}).treePest === null
+    && MO.normalizeState({ treePest: { junk: 1 } }).treePest === null
+    && MO.normalizeState({ treePest: activeNow }).treePest?.id === activeNow.id);
+}
+
+/* ================= P) NHIỆM VỤ MỖI NGÀY ================= */
+console.log("\n--- P) Nhiệm vụ mỗi ngày: bộ xác định + tiến độ + merge + chuỗi ---");
+{
+  const set1 = Q.questsForDay(todayStr);
+  const set2 = Q.questsForDay(todayStr);
+  check("P1 questsForDay XÁC ĐỊNH: cùng ngày -> cùng bộ 3 nhiệm vụ, kind không trùng, đều thuộc pool",
+    JSON.stringify(set1) === JSON.stringify(set2) && set1.length === 3
+    && new Set(set1.map((q) => q.kind)).size === 3
+    && set1.every((q) => Q.QUEST_POOL.some((d) => d.kind === q.kind)));
+
+  const mkQ = (kind, target, over = {}) => ({ kind, target, count: 0, byA: 0, byB: 0, completedAt: "", ...over });
+  const base = { dateKey: todayStr, quests: [mkQ("water", 1), mkQ("ping", 1), mkQ("care3", 3)], allCompletedAt: "" };
+  const afterCare = Q.advanceDailyQuests(base, { type: "care", kind: "water", slot: "A" }, iso(NOW));
+  const wq = afterCare.dq.quests.find((q) => q.kind === "water");
+  const c3 = afterCare.dq.quests.find((q) => q.kind === "care3");
+  const pq = afterCare.dq.quests.find((q) => q.kind === "ping");
+  check("P2 chăm nước: nhiệm vụ 'water' xong (completedAt có) + 'care3' +1 + 'ping' không đổi + chưa đủ 3/3",
+    wq.count === 1 && Boolean(wq.completedAt) && wq.byA === 1 && c3.count === 1 && pq.count === 0 && afterCare.justCompletedAll === false);
+
+  let bc = { dateKey: todayStr, quests: [mkQ("bothcare", 2)], allCompletedAt: "" };
+  bc = Q.advanceDailyQuests(bc, { type: "care", kind: "sun", slot: "A" }, iso(NOW)).dq;
+  const bcMid = bc.quests[0];
+  bc = Q.advanceDailyQuests(bc, { type: "care", kind: "sun", slot: "A" }, iso(NOW)).dq;
+  const bcSame = bc.quests[0];
+  const bcDone = Q.advanceDailyQuests(bc, { type: "care", kind: "love", slot: "B" }, iso(NOW));
+  check("P3 'bothcare': 1 người chăm 2 lần vẫn 1/2 (count theo NGƯỜI); người kia chăm -> 2/2 + hoàn thành",
+    bcMid.count === 1 && bcSame.count === 1 && bcSame.byA === 2
+    && bcDone.dq.quests[0].count === 2 && Boolean(bcDone.dq.quests[0].completedAt) && bcDone.justCompletedAll === true);
+
+  const bugCount = Q.advanceDailyQuests({ dateKey: todayStr, quests: [mkQ("care3", 3)], allCompletedAt: "" }, { type: "care", kind: "bug", slot: "B" }, iso(NOW));
+  check("P4 bắt sâu cũng tính là 1 lần chăm cho 'care3'", bugCount.dq.quests[0].count === 1 && bugCount.dq.quests[0].byB === 1);
+
+  const daySet = Q.questsForDay(todayStr);
+  const lDq = { dateKey: todayStr, quests: daySet.map((q) => ({ ...q })), allCompletedAt: "" };
+  const rDq = { dateKey: todayStr, quests: daySet.map((q) => ({ ...q })), allCompletedAt: "" };
+  const firstKind = daySet[0].kind;
+  lDq.quests[0] = { ...lDq.quests[0], count: Math.min(1, lDq.quests[0].target), byA: 1 };
+  rDq.quests[0] = { ...rDq.quests[0], byB: 1 };
+  const mergedDq = Q.mergeDailyQuests(lDq, rDq);
+  const mergedFirst = mergedDq.quests.find((q) => q.kind === firstKind);
+  const otherDay = { dateKey: dayKeyAgo(1), quests: Q.questsForDay(dayKeyAgo(1)), allCompletedAt: "" };
+  const mergedDays = Q.mergeDailyQuests(otherDay, lDq);
+  check("P5 merge nhiệm vụ: cùng ngày -> byA/byB hợp nhất (không mất đóng góp của máy nào); khác ngày -> ngày mới thắng",
+    mergedFirst.byA === 1 && mergedFirst.byB === 1 && mergedDays.dateKey === todayStr);
+
+  const yDq = Q.emptyDailyQuests(dayKeyAgo(1));
+  const todaySet = Q.questsForDay(todayStr);
+  const evFor = (kind) => (kind === "ping" ? { type: "ping", slot: "A" } : kind === "note" ? { type: "note", slot: "A" } : { type: "care", kind: kind === "sun" || kind === "love" ? kind : "water", slot: "A" });
+  const rolled = Q.advanceDailyQuests(yDq, evFor(todaySet[0].kind), iso(NOW));
+  check("P6 qua ngày: bộ nhiệm vụ tự lăn sang hôm nay rồi mới cộng hành động",
+    rolled.dq.dateKey === todayStr && rolled.dq.quests[0].count === 1);
+
+  const doneQ = (kind) => mkQ(kind, 1, { count: 1, byA: 1, completedAt: iso(NOW - H) });
+  let stQ = {
+    ...fresh(),
+    tree: mkTree({ water: 50, sun: 50, love: 50 }),
+    dailyQuests: { dateKey: todayStr, quests: [doneQ("water"), doneQ("note"), mkQ("ping", 1)], allCompletedAt: "" },
+  };
+  stQ = R.gardenReducer(stQ, { type: "PING_SEND", user: "A", actor: "An" });
+  const bonusOnce = stQ.tree.water === 58 && stQ.tree.sun === 58 && stQ.tree.love === 58;
+  const histOnce = stQ.questHistory.filter((k) => k === todayStr).length === 1 && Boolean(stQ.dailyQuests.allCompletedAt);
+  stQ = R.gardenReducer(stQ, { type: "PING_SEND", user: "A", actor: "An" });
+  check("P7 đủ 3/3 qua reducer: thưởng +8 sức sống + ghi lịch sử + allCompletedAt — và CHỈ 1 lần (nhịp tiếp theo không thưởng lại)",
+    bonusOnce && histOnce && stQ.tree.water === 58 && stQ.questHistory.length === 1);
+
+  const caredState = R.gardenReducer(fresh(), { type: "TREE_CARE", kind: "water", user: "A", actor: "An" });
+  const careQuestsOk = caredState.dailyQuests.quests.every((q) => (["water", "care3", "bothcare"].includes(q.kind) ? q.byA === 1 : true));
+  check("P8 TREE_CARE thành công qua reducer cũng đẩy tiến độ nhiệm vụ chăm (byA=1)", careQuestsOk && caredState.dailyQuests.dateKey === todayStr);
+
+  check("P9 questStreak: 3 ngày liền = 3; hôm nay chưa xong tính từ hôm qua = 1; đứt 1 ngày = 0; rỗng = 0",
+    Q.questStreak([todayStr, dayKeyAgo(1), dayKeyAgo(2)], todayStr) === 3
+    && Q.questStreak([dayKeyAgo(1), dayKeyAgo(2)], todayStr) === 2
+    && Q.questStreak([dayKeyAgo(2)], todayStr) === 0
+    && Q.questStreak([], todayStr) === 0);
+
+  const storedDq = Q.emptyDailyQuests(todayStr);
+  storedDq.quests[0] = { ...storedDq.quests[0], count: 1, byA: 1, completedAt: iso(NOW - H) };
+  const migrated = MO.normalizeState({ dailyQuests: storedDq, questHistory: [todayStr, "không-phải-ngày", todayStr] });
+  check("P10 migration: bản cũ -> bộ nhiệm vụ hôm nay 3 việc + lịch sử rỗng; bản đã lưu -> tiến độ giữ nguyên, lịch sử lọc ngày rác + khử trùng",
+    MO.normalizeState({}).dailyQuests.quests.length === 3 && MO.normalizeState({}).questHistory.length === 0
+    && migrated.dailyQuests.quests[0].count === 1 && JSON.stringify(migrated.questHistory) === JSON.stringify([todayStr]));
+}
+
+/* ================= R) TRẠNG THÁI CỦA NHAU (hiện diện sống) ================= */
+console.log("\n--- R) Trạng thái của nhau: ghi theo slot + merge chủ slot + độ tươi ---");
+{
+  let st = fresh();
+  st = R.gardenReducer(st, { type: "STATUS_SET", user: "A", status: { mood: "nho", text: "  chờ em về ăn cơm  ", updatedAt: iso(NOW) } });
+  check("R1 STATUS_SET ghi đúng slot của người đặt (A), chữ được trim, slot B không bị đụng",
+    st.status.A?.mood === "nho" && st.status.A?.text === "chờ em về ăn cơm" && st.status.B === null);
+  const invalid = R.gardenReducer(st, { type: "STATUS_SET", user: "A", status: { mood: "không-có-mood-này", text: "", updatedAt: iso(NOW) } });
+  check("R2 mood ngoài bộ preset -> bị từ chối (trả nguyên state)", invalid === st);
+  const long = R.gardenReducer(st, { type: "STATUS_SET", user: "B", status: { mood: "vui", text: "x".repeat(60), updatedAt: iso(NOW) } });
+  check("R3 dòng tự viết bị cắt đúng 40 ký tự", long.status.B?.text.length === 40 && long.status.A?.mood === "nho");
+  const cleared = R.gardenReducer(long, { type: "STATUS_SET", user: "B", status: null });
+  check("R4 xoá trạng thái (status null) chỉ xoá đúng slot mình", cleared.status.B === null && cleared.status.A?.mood === "nho");
+
+  const localSt = { ...fresh(), currentUser: "A", status: { A: { mood: "vui", text: "", updatedAt: iso(NOW) }, B: { mood: "met", text: "", updatedAt: iso(NOW - 3 * H) } } };
+  const remoteSt = { ...fresh(), currentUser: "B", status: { A: { mood: "ban", text: "", updatedAt: iso(NOW - 3 * H) }, B: { mood: "nho", text: "nhớ anh", updatedAt: iso(NOW) } } };
+  const mergedSt = M.mergeStates(localSt, remoteSt, "A");
+  check("R5 merge trạng thái: CHỦ SLOT thắng tuyệt đối từng slot (A lấy của máy A, B lấy của máy B)",
+    mergedSt.status.A?.mood === "vui" && mergedSt.status.B?.mood === "nho" && mergedSt.status.B?.text === "nhớ anh");
+
+  check("R6 migration: bản cũ -> status null cả hai; mood rác -> null; trạng thái hợp lệ được giữ nguyên",
+    MO.normalizeState({}).status.A === null && MO.normalizeState({}).status.B === null
+    && MO.normalizeState({ status: { A: { mood: "rác", text: "", updatedAt: iso(NOW) } } }).status.A === null
+    && MO.normalizeState({ status: { B: { mood: "doi", text: "ăn cơm chưa", updatedAt: iso(NOW) } } }).status.B?.mood === "doi");
+
+  check("R7 độ tươi: <24h chưa cũ; 25h là cũ + nhãn 'từ hôm qua'; 3 ngày -> 'từ 3 ngày trước'; null -> không cũ, không nhãn",
+    F.statusStale({ updatedAt: iso(NOW - 2 * H) }, NOW) === false
+    && F.statusStale({ updatedAt: iso(NOW - 25 * H) }, NOW) === true
+    && F.statusFreshnessLabel({ updatedAt: iso(NOW - 30 * H) }, NOW) === "từ hôm qua"
+    && F.statusFreshnessLabel({ updatedAt: iso(NOW - 3 * 24 * H) }, NOW) === "từ 3 ngày trước"
+    && F.statusStale(null, NOW) === false && F.statusFreshnessLabel(null, NOW) === "");
+  check("R8 bộ preset trạng thái: đúng 8 mood, nhãn tiếng Việt ấm, mọi mood có icon",
+    CT.STATUS_MOODS.length === 8 && CT.STATUS_MOODS.every((m) => m.label && m.icon)
+    && CT.STATUS_MOODS.map((m) => m.label).join("|") === "Vui vẻ|Bình yên|Đang nhớ người ấy|Hơi mệt|Bận một chút|Đói bụng|Buồn ngủ|Đang yêu đời");
 }
 
 console.log(`\n===== TỔNG: ${count - failures}/${count} PASS =====`);

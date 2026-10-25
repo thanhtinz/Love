@@ -1,11 +1,12 @@
 import {
-  AppState, Activity, CouplePhoto, KeptLetter, LoveNote, PersonId, PingsState, PresenceSlot, WidgetPrefs,
+  AppState, Activity, CouplePhoto, DailyQuestsState, KeptLetter, LoveNote, PersonId, PersonStatus, PingsState, PresenceSlot, QuestProgress, TreePestEvent, WidgetPrefs, QUEST_HISTORY_CAP,
   AVATARS, boolOr, defaultPresenceSlot, defaultWidgetPrefs, finiteNum, isPlainObject, isValidDateKey,
   objArray, strOr, today,
 } from "./types";
 import { createTree, normalizeTree } from "./tree";
-import { isMoodId, messageById } from "./content";
+import { STATUS_TEXT_MAX, isMoodId, messageById, statusMoodById } from "./content";
 import { MILESTONES, unionKeptLetters, unionMilestoneHistory } from "./features";
+import { emptyDailyQuests } from "./quests";
 
 /**
  * State mặc định + NORMALIZE cho bản rebuild 5 lõi.
@@ -36,12 +37,16 @@ export const defaultState: AppState = {
   currentUser: "A",
   couple: { startDate: today(), startSetAt: "", startSetBy: "", celebrated: [], celebratedStages: [], milestoneHistory: [], pairedAt: new Date().toISOString() },
   tree: createTree(),
+  treePest: null,
+  dailyQuests: emptyDailyQuests(),
+  questHistory: [],
   notes: [],
   noteLog: { A: "", B: "" },
   pings: defaultPings(),
   activities: [],
   presence: { A: defaultPresenceSlot(), B: defaultPresenceSlot() },
   widgetPrefs: { A: defaultWidgetPrefs(), B: defaultWidgetPrefs() },
+  status: { A: null, B: null },
   lastLetter: null,
   keptLetters: [],
   couplePhoto: null,
@@ -61,14 +66,77 @@ function normalizePingSlot(raw: unknown): PingsState["A"] {
   };
 }
 
+/** Sự kiện sâu: chỉ nhận đúng shape (id + dateKey hợp lệ + mốc xuất hiện đọc
+ *  được); bản lưu cũ chưa có trường / dữ liệu lạ -> null (chưa từng có sâu). */
+function normalizeTreePest(raw: unknown): TreePestEvent | null {
+  if (!isPlainObject(raw)) return null;
+  if (typeof raw.id !== "string" || !raw.id) return null;
+  if (!isValidDateKey(raw.dateKey)) return null;
+  if (typeof raw.appearedAt !== "string" || !isFinite(new Date(raw.appearedAt).getTime())) return null;
+  const status = raw.status === "caught" || raw.status === "expired" ? raw.status : "active";
+  return {
+    id: raw.id,
+    dateKey: raw.dateKey as string,
+    appearedAt: raw.appearedAt,
+    status,
+    caughtBy: slotOr(raw.caughtBy),
+    caughtAt: strOr(raw.caughtAt, ""),
+    expiredAt: strOr(raw.expiredAt, ""),
+  };
+}
+
+/** Bộ nhiệm vụ ngày: chỉ nhận dateKey hợp lệ + từng nhiệm vụ khớp pool
+ *  (kind/target theo đúng định nghĩa hiện tại — tiến độ do bản app khác ghi
+ *  lệch pool thì vẫn giữ count/by nhưng target chuẩn hoá về pool). Bản lưu cũ
+ *  chưa có trường -> bộ mới của hôm nay ở tiến độ 0. */
+function normalizeDailyQuests(raw: unknown): DailyQuestsState {
+  if (!isPlainObject(raw) || !isValidDateKey(raw.dateKey)) return emptyDailyQuests();
+  const dateKey = raw.dateKey as string;
+  const base = emptyDailyQuests(dateKey);
+  const rawByKind = new Map<string, Record<string, unknown>>();
+  if (Array.isArray(raw.quests)) {
+    for (const q of raw.quests) if (isPlainObject(q) && typeof q.kind === "string") rawByKind.set(q.kind, q);
+  }
+  const countOr = (v: unknown): number => Math.max(0, Math.floor(finiteNum(v, 0)));
+  const quests: QuestProgress[] = base.quests.map((def) => {
+    const r = rawByKind.get(def.kind);
+    if (!r) return def;
+    return {
+      kind: def.kind,
+      target: def.target,
+      count: Math.min(def.target, countOr(r.count)),
+      byA: countOr(r.byA),
+      byB: countOr(r.byB),
+      completedAt: strOr(r.completedAt, ""),
+    };
+  });
+  const allCompletedAt = strOr(raw.allCompletedAt, "");
+  return { dateKey, quests, allCompletedAt: quests.every((q) => q.count >= q.target) ? allCompletedAt : "" };
+}
+
+/** Trạng thái của một người: chỉ nhận mood thuộc bộ preset (STATUS_MOODS) +
+ *  mốc đặt đọc được; dòng chữ cắt đúng STATUS_TEXT_MAX. Bản lưu cũ chưa có
+ *  trường / dữ liệu lạ -> null (chưa đặt trạng thái). */
+function normalizePersonStatus(raw: unknown): PersonStatus | null {
+  if (!isPlainObject(raw)) return null;
+  if (!statusMoodById(strOr(raw.mood, ""))) return null;
+  if (typeof raw.updatedAt !== "string" || !isFinite(new Date(raw.updatedAt).getTime())) return null;
+  return {
+    mood: raw.mood as string,
+    text: strOr(raw.text, "").slice(0, STATUS_TEXT_MAX),
+    updatedAt: raw.updatedAt,
+  };
+}
+
 function normalizePresenceSlot(raw: unknown): PresenceSlot {
   const base = defaultPresenceSlot();
-  if (!isPlainObject(raw) || typeof raw.sharing !== "boolean") return base;
+  if (!isPlainObject(raw)) return base;
+  // Shape CŨ (phiên chia sẻ — có cờ `sharing`): VỨT HẾT, vị trí bắt đầu trống.
+  // Mô hình mới là vị trí TRỰC TIẾP: app tự publish lại điểm mới nhất khi đang
+  // mở, nên không cần (và không được) hồi sinh toạ độ của phiên cũ.
+  if (typeof raw.sharing === "boolean") return base;
   const num = (v: unknown): number | null => (typeof v === "number" && Number.isFinite(v) ? v : null);
   return {
-    sharing: raw.sharing,
-    startedAt: strOr(raw.startedAt, ""),
-    expiresAt: strOr(raw.expiresAt, ""),
     lat: num(raw.lat), lng: num(raw.lng), acc: num(raw.acc),
     locAt: strOr(raw.locAt, ""),
     battery: num(raw.battery),
@@ -195,6 +263,11 @@ export function normalizeState(rawInput: unknown): AppState {
     ? rawPlants[0]
     : null;
   base.tree = normalizeTree(rawTree ?? legacyPlant ?? undefined);
+  base.treePest = normalizeTreePest(raw.treePest);
+  base.dailyQuests = normalizeDailyQuests(raw.dailyQuests);
+  base.questHistory = [...new Set(
+    (Array.isArray(raw.questHistory) ? raw.questHistory : []).filter((k): k is string => isValidDateKey(k)),
+  )].sort().reverse().slice(0, QUEST_HISTORY_CAP);
 
   /* --- CORE 3: notes (chỉ nhận mục khớp shape mới — note bản cũ dùng tên tác giả, bỏ) --- */
   const notes = objArray<unknown>(raw.notes).map(normalizeNote).filter((n): n is LoveNote => Boolean(n && n.id));
@@ -217,13 +290,17 @@ export function normalizeState(rawInput: unknown): AppState {
   base.activities = objArray<unknown>(raw.activities).map(normalizeActivity).filter((a): a is Activity => Boolean(a && a.id))
     .sort((a, b) => (b.time || "").localeCompare(a.time || "")).slice(0, 40);
 
-  /* --- CORE 5: presence (chỉ nhận slot có cờ sharing dạng boolean — shape cũ khác hẳn, bỏ) --- */
+  /* --- CORE 5: presence — shape mới (điểm mới nhất) được giữ; shape phiên cũ bị vứt về trống --- */
   const rawPresence = isPlainObject(raw.presence) ? raw.presence : {};
   base.presence = { A: normalizePresenceSlot(rawPresence.A), B: normalizePresenceSlot(rawPresence.B) };
 
   /* --- Widget: công tắc riêng theo slot (bản cũ không có -> mặc định tắt cả ba) --- */
   const rawWidgetPrefs = isPlainObject(raw.widgetPrefs) ? raw.widgetPrefs : {};
   base.widgetPrefs = { A: normalizeWidgetPrefs(rawWidgetPrefs.A), B: normalizeWidgetPrefs(rawWidgetPrefs.B) };
+
+  /* --- Trạng thái của nhau: riêng theo slot (bản cũ không có -> null cả hai) --- */
+  const rawStatus = isPlainObject(raw.status) ? raw.status : {};
+  base.status = { A: normalizePersonStatus(rawStatus.A), B: normalizePersonStatus(rawStatus.B) };
 
   /* --- Hộp thư đã giữ (kỷ vật đợt 2): bản cũ chưa có trường -> [].
    *  unionKeptLetters lo khử trùng theo id + sắp mới nhất trước + trần 100. --- */

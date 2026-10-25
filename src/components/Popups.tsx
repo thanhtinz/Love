@@ -3,11 +3,12 @@ import { Animated, Modal, Text, TouchableOpacity, View } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Ionicons } from "@expo/vector-icons";
 import type { AppState } from "../lib/types";
-import { formatDateVN } from "../lib/types";
+import { formatDateVN, today } from "../lib/types";
 import { makeStageUpLetter, messageById, milestoneLine } from "../lib/content";
 import { heartbeatPulse, success } from "../lib/feedback";
-import { dayCount, milestoneDateKey, milestoneReached } from "../lib/features";
-import { TREE_STAGE_COUNT, treeStageForDay } from "../lib/tree";
+import { dayCount, milestoneDateKey, milestoneReached, pestSpawnFor } from "../lib/features";
+import { currentDailyQuests, questStreak } from "../lib/quests";
+import { PEST_EXPIRE_MS, TREE_STAGE_COUNT, treeStageForDay } from "../lib/tree";
 import { useLove } from "../lib/store";
 import type { Action } from "../lib/store";
 import { personOf } from "./PersonChip";
@@ -170,6 +171,29 @@ export function useStageUp(state: AppState, dispatch: React.Dispatch<Action>) {
 }
 
 /**
+ * Theo dõi SÂU TRÊN CÂY (đợt "chăm cây 2") — cùng khuôn với useStageUp, gọi ở
+ * Home + tab Cây: pestSpawnFor (thuần, theo seed) tính đợt sâu của hôm nay từ
+ * state dùng chung — máy nào mở app trước thì ghi sổ (PEST_SPAWN idempotent),
+ * máy kia hội tụ qua sync và tự nó cũng tính ra cùng sự kiện. Đợt sâu đang
+ * sống mà đã quá hạn 12h -> PEST_EXPIRE ghi "đã hết hạn" đúng 1 lần.
+ */
+export function usePestWatch(state: AppState, dispatch: React.Dispatch<Action>) {
+  const nowTick = useNow(30000);
+  const spawn = pestSpawnFor(state, nowTick);
+  const pest = state.treePest;
+  const spawnId = spawn?.id;
+  useEffect(() => {
+    if (spawn) dispatch({ type: "PEST_SPAWN", event: spawn });
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- chỉ dispatch khi xuất hiện đợt sâu MỚI (theo id)
+  }, [spawnId, dispatch]);
+  const expiredId = pest && pest.status === "active"
+    && nowTick >= new Date(pest.appearedAt).getTime() + PEST_EXPIRE_MS ? pest.id : "";
+  useEffect(() => {
+    if (expiredId) dispatch({ type: "PEST_EXPIRE", id: expiredId });
+  }, [expiredId, dispatch]);
+}
+
+/**
  * Pop ăn mừng MỐC NGÀY YÊU (đợt "chất app" 2) — nâng cấp từ chip nhỏ ở Home:
  * lần mở app đầu tiên chạm một mốc (MARK_MILESTONE đã ghi vào celebrated +
  * milestoneHistory ở Home) thì hiện pop đúng 1 lần: ngôn ngữ thị giác của
@@ -251,6 +275,84 @@ export function MilestonePop() {
           </Text>
           <TouchableOpacity onPress={close} style={{ backgroundColor: COLOR.primary, borderRadius: RADIUS.control, minHeight: 48, paddingHorizontal: 22, alignItems: "center", justifyContent: "center", marginTop: 18 }} accessibilityRole="button" accessibilityLabel="Giữ khoảnh khắc này">
             <Text style={{ color: "#fff", fontFamily: FONT.bold, fontSize: 15 }}>Giữ khoảnh khắc này</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    </Modal>
+  );
+}
+
+const questsSeenKey = (roomCode: string) => `love-quests-seen-${roomCode}`;
+
+/**
+ * Pop ăn mừng HOÀN THÀNH ĐỦ 3 NHIỆM VỤ NGÀY (đợt "nhiệm vụ chăm cây") — cùng
+ * ngôn ngữ thị giác với MilestonePop (giấy thư + mưa tim + rung success), hiện
+ * ĐÚNG 1 LẦN cho mỗi ngày hoàn thành: khóa "đã xem" là chính dateKey của ngày
+ * đó (AsyncStorage theo phòng). Phần thưởng KHÔNG tiền tệ: pop này + hào
+ * quang vàng trên cây + +8 sức sống + chuỗi ngày (reducer đã ghi khi đủ 3/3).
+ */
+export function QuestCompletePop() {
+  const { state } = useLove();
+  const dq = currentDailyQuests(state.dailyQuests);
+  const todayKey = today();
+  const done = dq.dateKey === todayKey && Boolean(dq.allCompletedAt);
+  const [seenKey, setSeenKey] = useState("");
+  const [loaded, setLoaded] = useState(false);
+  const [dismissed, setDismissed] = useState(false);
+  const [burstKey, setBurstKey] = useState(0);
+  const celebratedForRef = useRef("");
+
+  useEffect(() => {
+    let alive = true;
+    AsyncStorage.getItem(questsSeenKey(state.roomCode)).then((v) => {
+      if (!alive) return;
+      setSeenKey(v || "");
+      setLoaded(true);
+    }).catch(() => { if (alive) setLoaded(true); });
+    return () => { alive = false; };
+  }, [state.roomCode]);
+
+  const show = loaded && done && seenKey !== todayKey && !dismissed;
+  const streak = questStreak(state.questHistory, todayKey);
+
+  useEffect(() => {
+    if (!show || celebratedForRef.current === todayKey) return;
+    celebratedForRef.current = todayKey;
+    success();
+    setBurstKey(1);
+  }, [show, todayKey]);
+
+  if (!show) return null;
+
+  async function close() {
+    setDismissed(true);
+    try { await AsyncStorage.setItem(questsSeenKey(state.roomCode), todayKey); } catch { /* bỏ qua */ }
+  }
+
+  return (
+    <Modal visible transparent animationType="fade" onRequestClose={close}>
+      <View style={{ flex: 1, backgroundColor: "rgba(51,39,46,0.4)", alignItems: "center", justifyContent: "center", paddingHorizontal: 28 }}>
+        <View style={{ width: "100%", position: "relative", backgroundColor: COLOR.letterPaper, borderRadius: RADIUS.card, borderWidth: 1.5, borderColor: COLOR.letterLine, padding: 22, alignItems: "center", ...SHADOW_FLOAT }}>
+          <HeartBurst burstKey={burstKey} mode="hearts" />
+          <View style={{ width: 56, height: 56, borderRadius: 28, backgroundColor: COLOR.warningSoft, alignItems: "center", justifyContent: "center" }}>
+            <Ionicons name="sparkles" size={27} color={COLOR.warning} />
+          </View>
+          <Text style={{ fontFamily: FONT.extrabold, fontSize: 20, color: COLOR.text, marginTop: 12, textAlign: "center" }}>
+            Hoàn thành nhiệm vụ hôm nay!
+          </Text>
+          <Text style={{ fontFamily: FONT.regular, fontSize: 13.5, lineHeight: 20, color: COLOR.textSoft, marginTop: 8, textAlign: "center" }}>
+            Ba việc nhỏ đã xong — cây nhận thêm sức sống và tỏa hào quang vàng đến hết hôm nay.
+          </Text>
+          {streak > 0 ? (
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 6, marginTop: 10 }}>
+              <Ionicons name="flame" size={15} color={COLOR.warning} />
+              <Text style={{ fontFamily: FONT.semibold, fontSize: 13.5, color: COLOR.text }}>
+                Chuỗi ngày chăm đủ: {streak} ngày
+              </Text>
+            </View>
+          ) : null}
+          <TouchableOpacity onPress={close} style={{ backgroundColor: COLOR.primary, borderRadius: RADIUS.control, minHeight: 48, paddingHorizontal: 22, alignItems: "center", justifyContent: "center", marginTop: 18 }} accessibilityRole="button" accessibilityLabel="Tuyệt vời">
+            <Text style={{ color: "#fff", fontFamily: FONT.bold, fontSize: 15 }}>Tuyệt vời</Text>
           </TouchableOpacity>
         </View>
       </View>

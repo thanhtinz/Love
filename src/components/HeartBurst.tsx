@@ -8,13 +8,16 @@ import { COLOR, ROLE } from "./theme";
  * - mode "hearts": ~12 trái tim hồng bay lên + mờ dần + lượn nhẹ (~900ms) —
  *   dùng khi GỬI nhịp nhớ (Trang Nhà + sheet hành động nhanh).
  * - mode "petals": ~12 cánh hoa/lá rơi xuống + xoay nhẹ quanh cây — dùng khi
- *   CHĂM CÂY thành công, đi cùng cú "nhún vui" của cây ở tab Cây.
+ *   CHĂM CÂY (bản cũ: mọi lần chăm đều bắn cánh hoa; đợt "chăm cây 2" chỉ còn
+ *   dùng ở nơi cần hiệu ứng lá rơi chung).
+ * - mode "droplets": ~12 GIỌT NƯỚC xanh rơi từ trên tán xuống chậu — dùng RIÊNG
+ *   cho hành động TƯỚI NƯỚC (đợt "chăm cây 2": mỗi hành động chăm một VFX riêng).
  * Cách dùng: đặt <HeartBurst burstKey={n} /> phủ lên vùng muốn ăn mừng (cha
  * position relative / overflow tùy ý), tăng n mỗi lần muốn bắn một đợt. Lớp này
  * pointerEvents="none" — không bao giờ chặn chạm. Hạt sinh bằng rand có seed
  * theo burstKey nên bố cục mỗi đợt ổn định, không nhảy hình giữa chừng.
  */
-type Mode = "hearts" | "petals";
+type Mode = "hearts" | "petals" | "droplets";
 
 interface Spec {
   dx: number; // lệch ngang xuất phát so với tâm (px)
@@ -25,7 +28,7 @@ interface Spec {
   delay: number;
   dur: number;
   rot: number; // độ xoay cuối (deg)
-  icon: "heart" | "flower" | "leaf";
+  icon: "heart" | "flower" | "leaf" | "water";
   color: string;
 }
 
@@ -41,11 +44,28 @@ function mulberry32(seed: number) {
 }
 
 const HEART_COLORS = [COLOR.primary, ROLE.self, ROLE.selfDark];
+const DROP_COLORS = [COLOR.water, "#7FC4E8", "#4AA3D8"];
 const COUNT = 12;
 
 function makeSpecs(burstKey: number, mode: Mode): Spec[] {
-  const rand = mulberry32(burstKey * 7919 + (mode === "petals" ? 131 : 17));
+  const rand = mulberry32(burstKey * 7919 + (mode === "petals" ? 131 : mode === "droplets" ? 271 : 17));
   return Array.from({ length: COUNT }, (_, i) => {
+    if (mode === "droplets") {
+      // Giọt nước: rải khắp bề ngang tán cây, rơi thẳng xuống nhanh (~700ms),
+      // ít lượn, không xoay — cảm giác "mưa tưới" thật.
+      return {
+        dx: (rand() - 0.5) * 300,
+        sway: (rand() - 0.5) * 10,
+        drift: (rand() - 0.5) * 16,
+        dist: 190 + rand() * 80,
+        size: 11 + rand() * 8,
+        delay: rand() * 120,
+        dur: 620 + rand() * 200,
+        rot: 0,
+        icon: "water" as const,
+        color: DROP_COLORS[i % DROP_COLORS.length],
+      };
+    }
     if (mode === "hearts") {
       return {
         dx: (rand() - 0.5) * 150,

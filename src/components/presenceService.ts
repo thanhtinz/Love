@@ -31,7 +31,7 @@ export async function foregroundPermissionGranted(): Promise<boolean> {
   }
 }
 
-/** Xin quyền vị trí foreground — CHỈ gọi khi người dùng chủ động bật công tắc chia sẻ vị trí. */
+/** Xin quyền vị trí foreground — CHỈ gọi từ nút "Cấp quyền vị trí" ở màn Bản đồ (cổng duy nhất của tính năng). */
 export async function requestForegroundPermission(): Promise<boolean> {
   try {
     const r = await Location.requestForegroundPermissionsAsync();

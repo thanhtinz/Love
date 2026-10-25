@@ -1,4 +1,4 @@
-import { TreePlant, finiteNum, isPlainObject } from "./types";
+import { TreePestEvent, TreePlant, finiteNum, isPlainObject } from "./types";
 
 /**
  * CÂY TÌNH YÊU — MỘT cây duy nhất của hai đứa (7 tranh vẽ thật love-tree-s1..s7).
@@ -107,17 +107,102 @@ export function stageIndexForGrowth(growthMs: number): number {
 
 const clampStat = (v: number) => Math.max(0, Math.min(100, Math.round(v * 10) / 10));
 
-/** Chỉ số sau hao theo thời gian (suy ra, không ghi sổ) */
-export function decayedStats(tree: TreePlant, nowMs: number = Date.now()): { water: number; sun: number; love: number } {
+/* ================= SÂU TRÊN CÂY (sự kiện dùng chung — types.ts) =================
+ * Sâu làm cây hao sức NHANH HƠN một chút trong lúc chúng còn ở trên cây
+ * (hệ số x1.6 lên phần hao theo giờ, tính trên đoạn thời gian giao nhau giữa
+ * [statsAt -> now] và cửa sổ sống của đợt sâu). Chỉ sức sống — không bao giờ
+ * chạm vào giai đoạn (giai đoạn chỉ theo ngày yêu). */
+/** Đợt sâu tự hết hạn sau ~12 giờ nếu không ai bắt */
+export const PEST_EXPIRE_MS = 12 * HOUR;
+/** Hệ số hao thêm khi có sâu (1.6 = hao nhanh hơn 60% trong lúc có sâu) */
+export const PEST_DECAY_MULTIPLIER = 1.6;
+
+/** Đợt sâu có đang SỐNG tại now không (chưa bắt + chưa quá hạn 12h) */
+export function isPestActive(pest: TreePestEvent | null | undefined, nowMs: number = Date.now()): boolean {
+  if (!pest || pest.status !== "active") return false;
+  const appeared = new Date(pest.appearedAt).getTime();
+  if (!isFinite(appeared)) return false;
+  return nowMs < appeared + PEST_EXPIRE_MS;
+}
+
+/** Cửa sổ sống [start, end] của một đợt sâu (ms) */
+export function pestWindowMs(pest: TreePestEvent): { start: number; end: number } {
+  const start = new Date(pest.appearedAt).getTime();
+  const expiry = (isFinite(start) ? start : 0) + PEST_EXPIRE_MS;
+  if (pest.status === "caught") {
+    const c = new Date(pest.caughtAt).getTime();
+    return { start, end: isFinite(c) ? Math.min(c, expiry) : expiry };
+  }
+  if (pest.status === "expired") {
+    const e = new Date(pest.expiredAt).getTime();
+    return { start, end: isFinite(e) ? Math.min(e, expiry) : expiry };
+  }
+  return { start, end: expiry };
+}
+
+/**
+ * Điểm hao THÊM vì sâu, tính trên cây GỐC (chưa materialize): phần thời gian
+ * giao nhau giữa [tree.statsAt -> nowMs] và cửa sổ sống của đợt sâu, nhân
+ * (hệ số − 1) × tốc độ hao từng chỉ số. Trả về null khi không có giao nhau.
+ */
+export function pestExtraDecay(
+  tree: TreePlant,
+  pest: TreePestEvent | null | undefined,
+  nowMs: number = Date.now(),
+): { water: number; sun: number; love: number } | null {
+  if (!pest || !tree.statsAt) return null;
+  const statsMs = new Date(tree.statsAt).getTime();
+  if (!isFinite(statsMs)) return null;
+  const w = pestWindowMs(pest);
+  const overlapMs = Math.min(nowMs, w.end) - Math.max(statsMs, w.start);
+  if (!(overlapMs > 0)) return null;
+  const hrs = overlapMs / HOUR;
+  const k = PEST_DECAY_MULTIPLIER - 1;
+  return {
+    water: DECAY_PER_HOUR.water * hrs * k,
+    sun: DECAY_PER_HOUR.sun * hrs * k,
+    love: DECAY_PER_HOUR.love * hrs * k,
+  };
+}
+
+/**
+ * Cây đã materialize TẠI now, có trừ hao thêm vì sâu (tính từ cây gốc để
+ * không trừ trùng khi gọi nhiều lần). Đây là bản "sự thật tại now" dùng cho
+ * reducer khi chăm cây trong lúc có sâu.
+ */
+export function pestAdjustedTree(tree: TreePlant, pest: TreePestEvent | null | undefined, nowMs: number = Date.now()): TreePlant {
+  const m = materializeTree(tree, nowMs);
+  const extra = pestExtraDecay(tree, pest, nowMs);
+  if (!extra) return m;
+  return {
+    ...m,
+    water: clampStat(m.water - extra.water),
+    sun: clampStat(m.sun - extra.sun),
+    love: clampStat(m.love - extra.love),
+  };
+}
+
+/** Chỉ số sau hao theo thời gian (suy ra, không ghi sổ).
+ *  Truyền thêm `pest` để trừ hao nhanh hơn trong lúc sâu còn sống trên cây. */
+export function decayedStats(tree: TreePlant, nowMs: number = Date.now(), pest?: TreePestEvent | null): { water: number; sun: number; love: number } {
   const base = { water: clampStat(tree.water || 0), sun: clampStat(tree.sun || 0), love: clampStat(tree.love || 0) };
   if (!tree.statsAt) return base;
   const hours = (nowMs - new Date(tree.statsAt).getTime()) / HOUR;
   if (!isFinite(hours) || hours <= 0) return base;
-  return {
+  let out = {
     water: clampStat(base.water - DECAY_PER_HOUR.water * hours),
     sun: clampStat(base.sun - DECAY_PER_HOUR.sun * hours),
     love: clampStat(base.love - DECAY_PER_HOUR.love * hours),
   };
+  const extra = pestExtraDecay(tree, pest ?? null, nowMs);
+  if (extra) {
+    out = {
+      water: clampStat(out.water - extra.water),
+      sun: clampStat(out.sun - extra.sun),
+      love: clampStat(out.love - extra.love),
+    };
+  }
+  return out;
 }
 
 /** Hệ số tốc độ lớn theo sức khỏe: khỏe x1 · yếu x0.5 · héo (thấp nhất < 20) x0 */
@@ -235,23 +320,45 @@ export interface CareStatus { ok: boolean; reason: string; cooldownLeftMs: numbe
  * Một lần chăm có HỢP LỆ + CÓ TÁC DỤNG không (dùng chung UI và reducer — khóa cứng ở reducer):
  * - Chưa hết cooldown của chính người đó -> không ok (kèm lý do để UI nói rõ).
  * - Chỉ số liên quan đã >= 95% -> không ok: không boost, không thư.
+ * - RIÊNG "Bắt sâu" (kind "bug"): chỉ có tác dụng khi sâu ĐANG SỐNG trên cây
+ *   (truyền `pest` vào); không có sâu -> bị chặn với lý do "cây đang sạch".
+ *   Có sâu thì bắt được kể cả khi cây đang khỏe (bỏ qua ngưỡng 95%).
  */
-export function careStatus(tree: TreePlant, kind: CareKind, slot: "A" | "B", nowMs: number = Date.now()): CareStatus {
+export function careStatus(tree: TreePlant, kind: CareKind, slot: "A" | "B", nowMs: number = Date.now(), pest?: TreePestEvent | null): CareStatus {
   const last = tree.lastCareAtBy ? tree.lastCareAtBy[slot] : "";
   if (last) {
     const left = CARE_COOLDOWN_MS - (nowMs - new Date(last).getTime());
     if (left > 0) return { ok: false, reason: `Bạn vừa chăm cây rồi — chờ ${Math.ceil(left / 1000)} giây nữa nhé`, cooldownLeftMs: left };
   }
-  const p = materializeTree(tree, nowMs);
-  const stat = kind === "water" ? p.water : kind === "sun" ? p.sun : kind === "love" ? p.love : Math.min(p.water, p.sun, p.love);
+  if (kind === "bug") {
+    if (!isPestActive(pest ?? null, nowMs)) {
+      return { ok: false, reason: "Hiện không có sâu trên cây — cây đang sạch nè", cooldownLeftMs: 0 };
+    }
+    return { ok: true, reason: "", cooldownLeftMs: 0 };
+  }
+  const p = pest ? pestAdjustedTree(tree, pest, nowMs) : materializeTree(tree, nowMs);
+  const stat = kind === "water" ? p.water : kind === "sun" ? p.sun : p.love;
   if (stat >= CARE_FULL_THRESHOLD) {
     const reason = kind === "water" ? "Cây đã đủ nước rồi, tưới thêm không có tác dụng"
       : kind === "sun" ? "Cây đã đủ nắng rồi, tắm nắng thêm không có tác dụng"
-      : kind === "love" ? "Cây đã tràn đầy yêu thương rồi"
-      : "Cây đang rất khỏe, chưa cần bắt sâu";
+      : "Cây đã tràn đầy yêu thương rồi";
     return { ok: false, reason, cooldownLeftMs: 0 };
   }
   return { ok: true, reason: "", cooldownLeftMs: 0 };
+}
+
+/** Thưởng hoàn thành đủ nhiệm vụ ngày: +8 sức sống cả 3 chỉ số (chỉ sức sống). */
+export const QUEST_REWARD_VITALITY = 8;
+
+/** Cộng sức sống trực tiếp vào các chỉ số ĐÃ LƯU của cây (không materialize —
+ *  dùng cho phần thưởng nhiệm vụ ngày, kể cả khi hành động chốt là nhịp/note). */
+export function applyVitalityBonus(tree: TreePlant, amount: number = QUEST_REWARD_VITALITY): TreePlant {
+  return {
+    ...tree,
+    water: clampStat(tree.water + amount),
+    sun: clampStat(tree.sun + amount),
+    love: clampStat(tree.love + amount),
+  };
 }
 
 /** Áp một lần chăm HỢP LỆ lên cây đã materialize: cộng chỉ số + tăng tốc tăng trưởng + dấu vết. */

@@ -6,21 +6,21 @@ import { myName, useLove } from "../lib/store";
 import { notifyPartnerOfHeartbeat } from "../lib/push";
 import { heartbeatPulse } from "../lib/feedback";
 import { today } from "../lib/types";
-import { shareStatus } from "../lib/features";
+import { statusMoodById } from "../lib/content";
 import { COLOR, FONT, RADIUS, ROLE, SPACE, TILE } from "./theme";
 import { HeartBurst } from "./HeartBurst";
 import { Medallion } from "./ui";
 
 /**
- * Sheet hành động nhanh mở từ nút "+" giữa tab bar — ĐÚNG 4 hành động của 5 lõi:
- * Viết note · Gửi nhịp nhớ · Chăm cây · Bản đồ hai đứa (vị trí tạm thời).
+ * Sheet hành động nhanh mở từ nút "+" giữa tab bar — các hành động của 5 lõi
+ * + Đặt trạng thái của mình (đợt "hiện diện sống"):
+ * Viết note · Gửi nhịp nhớ · Chăm cây · Bản đồ hai đứa · Đặt trạng thái.
  * Mọi hàng dùng MỘT họ tile trung tính (TILE) — không nhuộm màu riêng từng hàng.
  */
-export function QuickActions({ visible, onClose }: { visible: boolean; onClose: () => void }) {
+export function QuickActions({ visible, onClose, onSetStatus }: { visible: boolean; onClose: () => void; onSetStatus?: () => void }) {
   const { state, dispatch } = useLove();
   const me = state.currentUser;
   const myPingsToday = state.pings.day.date === today() ? state.pings.day[me] : 0;
-  const myShare = shareStatus(state.presence[me]);
   const [pingBurst, setPingBurst] = useState(0);
   const [pingSent, setPingSent] = useState(false);
 
@@ -61,9 +61,18 @@ export function QuickActions({ visible, onClose }: { visible: boolean; onClose: 
     { icon: "leaf-outline", title: "Chăm cây tình yêu", desc: "Tưới nước, phơi nắng, gửi lời yêu cho cây", onPress: () => go("/(tabs)/tree") },
     {
       icon: "location-outline", title: "Bản đồ hai đứa",
-      desc: myShare.active ? "Đang chia sẻ vị trí — chạm để xem bản đồ" : "Xem vị trí của nhau trên bản đồ, chỉ khi đang chia sẻ",
+      desc: "Vị trí trực tiếp của hai đứa trên bản đồ",
       onPress: () => go("/location"),
     },
+    ...(onSetStatus ? [{
+      icon: "happy-outline", title: "Đặt trạng thái",
+      desc: (() => {
+        const cur = state.status[me];
+        const mood = cur ? statusMoodById(cur.mood) : undefined;
+        return mood ? `Đang là: ${mood.label}${cur!.text ? ` — “${cur!.text}”` : ""}` : "Chia sẻ cảm xúc hiện tại của bạn cho người ấy";
+      })(),
+      onPress: () => { onClose(); onSetStatus(); },
+    }] : []),
   ];
 
   return (

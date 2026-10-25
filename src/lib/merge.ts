@@ -1,8 +1,9 @@
 import {
-  AppState, CouplePhoto, LoveNote, PersonId, PresenceSlot, SecStamp, TreePlant, WidgetPrefs, defaultWidgetPrefs,
+  AppState, CouplePhoto, LoveNote, PersonId, PresenceSlot, SecStamp, TreePestEvent, TreePlant, WidgetPrefs, defaultWidgetPrefs,
 } from "./types";
 import { totalGrowthMs } from "./tree";
 import { unionKeptLetters, unionMilestoneHistory } from "./features";
+import { mergeDailyQuests, unionQuestHistory } from "./quests";
 
 /**
  * MERGE STATE GIỮA 2 MÁY — chống mất thao tác khi đồng bộ full-state qua
@@ -96,6 +97,27 @@ export function mergeCouplePhoto(l: CouplePhoto | null, r: CouplePhoto | null): 
   return (r.updatedAt || "") > (l.updatedAt || "") ? r : l;
 }
 
+/* ---------- Sự kiện sâu: một sự kiện dùng chung, hội tụ xác định ---------- */
+/**
+ * Merge đợt sâu giữa 2 máy:
+ * - Khác id (mỗi máy ghi một đợt khác nhau): đợt xuất hiện MUỘN hơn thắng
+ *   (đợt cũ hơn coi như đã qua — không bao giờ có 2 đợt chồng nhau).
+ * - Cùng id: trạng thái "đã kết thúc" thắng "đang sống" — đã bắt (bản caughtAt
+ *   sớm nhất) thắng đã hết hạn, hết hạn thắng đang sống. Nhờ vậy máy chưa kịp
+ *   biết sâu đã bị bắt không bao giờ "hồi sinh" đợt sâu đó.
+ */
+export function mergeTreePest(l: TreePestEvent | null, r: TreePestEvent | null): TreePestEvent | null {
+  if (!l) return r;
+  if (!r) return l;
+  if (l.id !== r.id) return (r.appearedAt || "") > (l.appearedAt || "") ? r : l;
+  const rank = (p: TreePestEvent): number => (p.status === "caught" ? 2 : p.status === "expired" ? 1 : 0);
+  if (rank(l) !== rank(r)) return rank(l) > rank(r) ? l : r;
+  if (l.status === "caught" && r.status === "caught") {
+    return (r.caughtAt || "") < (l.caughtAt || "") ? r : l;
+  }
+  return l;
+}
+
 /* ---------- Merge chính ---------- */
 export function mergeStates(local: AppState, remote: AppState, mySlot: PersonId): AppState {
   const lt = local.updatedAt || "";
@@ -177,6 +199,13 @@ export function mergeStates(local: AppState, remote: AppState, mySlot: PersonId)
     B: pickSlot("widgetPrefs", "B", local.widgetPrefs?.B ?? defaultWidgetPrefs(), remote.widgetPrefs?.B ?? defaultWidgetPrefs()),
   };
 
+  /* --- Trạng thái của nhau: RIÊNG theo slot như presence/widgetPrefs — chủ
+   *  slot thắng tuyệt đối (mỗi người chỉ ghi trạng thái của chính mình). --- */
+  const status = {
+    A: pickSlot("status", "A", local.status?.A ?? null, remote.status?.A ?? null),
+    B: pickSlot("status", "B", local.status?.B ?? null, remote.status?.B ?? null),
+  };
+
   /* --- Thư rơi gần nhất: mốc `at` mới hơn thắng --- */
   const lastLetter = !local.lastLetter ? remote.lastLetter
     : !remote.lastLetter ? local.lastLetter
@@ -189,13 +218,21 @@ export function mergeStates(local: AppState, remote: AppState, mySlot: PersonId)
   const couplePhoto = mergeCouplePhoto(local.couplePhoto ?? null, remote.couplePhoto ?? null);
   if (couplePhoto === remote.couplePhoto) stampFrom("couplePhoto", remote); else stampFrom("couplePhoto", local);
 
+  /* --- Sự kiện sâu trên cây: hội tụ xác định (xem mergeTreePest) --- */
+  const treePest = mergeTreePest(local.treePest ?? null, remote.treePest ?? null);
+
+  /* --- Nhiệm vụ ngày: tiến độ đơn điệu trong ngày -> hợp nhất hội tụ;
+   *     lịch sử ngày hoàn thành: union (xem lib/quests.ts) --- */
+  const dailyQuests = mergeDailyQuests(local.dailyQuests, remote.dailyQuests);
+  const questHistory = unionQuestHistory(local.questHistory || [], remote.questHistory || []);
+
   return {
     ...newer,
     currentUser: local.currentUser,
     roomCode: newer.roomCode,
     personA: newer.personA, personB: newer.personB,
     avatarA: newer.avatarA, avatarB: newer.avatarB,
-    couple, tree, notes, noteLog, pings, activities, presence, widgetPrefs, lastLetter, keptLetters, couplePhoto,
+    couple, tree, treePest, dailyQuests, questHistory, notes, noteLog, pings, activities, presence, widgetPrefs, status, lastLetter, keptLetters, couplePhoto,
     updatedAt: lt >= rt ? lt : rt,
     secTs,
   };
@@ -208,10 +245,14 @@ const SLOT_SPECS: SlotSpec[] = [
   { key: "presence", get: (s, slot) => s.presence[slot] },
   { key: "noteLog", get: (s, slot) => s.noteLog[slot] },
   { key: "widgetPrefs", get: (s, slot) => s.widgetPrefs[slot] },
+  { key: "status", get: (s, slot) => s.status[slot] },
 ];
 const SHARED_SPECS: { key: string; get: (s: AppState) => unknown }[] = [
   { key: "couple", get: (s) => s.couple },
   { key: "tree", get: (s) => s.tree },
+  { key: "treePest", get: (s) => s.treePest },
+  { key: "dailyQuests", get: (s) => s.dailyQuests },
+  { key: "questHistory", get: (s) => s.questHistory },
   { key: "notes", get: (s) => s.notes },
   { key: "activities", get: (s) => s.activities },
   { key: "lastLetter", get: (s) => s.lastLetter },

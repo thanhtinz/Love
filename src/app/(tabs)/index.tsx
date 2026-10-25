@@ -6,15 +6,16 @@ import { myName, useLove } from "../../lib/store";
 import { useCouplePhotoUrl } from "../../lib/photo";
 import { notifyPartnerOfHeartbeat } from "../../lib/push";
 import { heartbeatPulse } from "../../lib/feedback";
-import { dailyQuote, greetingLine } from "../../lib/content";
+import { dailyQuote, greetingLine, statusMoodById } from "../../lib/content";
 import { dayKeyLocal, today } from "../../lib/types";
-import { MILESTONES, dayCount, milestoneReached, nextMilestone, timeAgoText } from "../../lib/features";
+import { MILESTONES, dayCount, milestoneReached, nextMilestone, statusFreshnessLabel, statusStale, timeAgoText } from "../../lib/features";
+import { currentDailyQuests } from "../../lib/quests";
 import { HomeGardenScene } from "../../components/Art";
 import { CouplePolaroid } from "../../components/CouplePhoto";
 import Avatar from "../../components/Avatar";
 import { HeartBurst } from "../../components/HeartBurst";
 import { PersonChip, partnerOf, personOf, selfOf } from "../../components/PersonChip";
-import { LetterAndPingPops, MilestonePop, useStageUp } from "../../components/Popups";
+import { usePestWatch, useStageUp } from "../../components/Popups";
 import { COLOR, FONT, RADIUS, ROLE, SPACE, TYPE } from "../../components/theme";
 import { ProgressBar, SkeletonCard, StatusChip, s, tabBarPad, useNow } from "../../components/ui";
 
@@ -51,6 +52,7 @@ export default function HomeScreen() {
   const [burst, setBurst] = useState(0);
   const photoUrl = useCouplePhotoUrl(state.couplePhoto);
   useStageUp(state, dispatch);
+  usePestWatch(state, dispatch);
 
   const me = state.currentUser;
   const self = selfOf(state);
@@ -86,7 +88,20 @@ export default function HomeScreen() {
 
   const latestNote = state.notes[0];
   const latestNoteIsNew = Boolean(latestNote && latestNote.authorSlot !== me && !latestNote.readAt);
-  const pingsToday = state.pings.day.date === today() ? state.pings.day.A + state.pings.day.B : 0;
+  // Nhịp nhớ là MỘT CHIỀU: người bấm là người đang nhớ. Đếm TÁCH theo hướng
+  // gửi (người gửi = chủ slot của bộ đếm ngày), không cộng gộp hai chiều.
+  const partnerSlot = me === "A" ? "B" : "A";
+  const dayIsToday = state.pings.day.date === today();
+  const myPingsToday = dayIsToday ? state.pings.day[me] : 0;
+  const partnerPingsToday = dayIsToday ? state.pings.day[partnerSlot] : 0;
+  const pingLine =
+    myPingsToday > 0 && partnerPingsToday > 0
+      ? `Hôm nay bạn đã gửi cho ${partner.name} ${myPingsToday} nhịp · ${partner.name} đã gửi bạn ${partnerPingsToday} nhịp.`
+      : myPingsToday > 0
+        ? `Hôm nay bạn đã gửi cho ${partner.name} ${myPingsToday} nhịp.`
+        : partnerPingsToday > 0
+          ? `Hôm nay ${partner.name} đã gửi bạn ${partnerPingsToday} nhịp — gửi lại một nhịp cho ${partner.name} nhé.`
+          : `Hôm nay chưa có nhịp nhớ nào — gửi nhịp đầu tiên cho ${partner.name} nhé.`;
 
   /* Tóm tắt chăm cây hôm nay — chữ TĨNH (không phải lối tắt sang tab Cây) */
   const lastCareAt = state.tree.lastCareAt;
@@ -97,6 +112,19 @@ export default function HomeScreen() {
     : state.tree.careCount > 0
       ? `Hôm nay chưa ai chăm cây · tổng ${state.tree.careCount} lần chăm từ trước tới nay.`
       : "Chưa ai chăm cây lần nào — cây đang chờ hai đứa ghé thăm.";
+
+  /* Gợi ý nhiệm vụ ngày — chữ TĨNH như careSummary (Home không chứa lối tắt) */
+  const dqHome = currentDailyQuests(state.dailyQuests);
+  const questsDoneHome = dqHome.quests.filter((q) => q.count >= q.target).length;
+  const questHint = `Nhiệm vụ hôm nay: ${questsDoneHome}/3${dqHome.allCompletedAt ? " — đã hoàn thành, cây đang tỏa hào quang vàng" : ""}`;
+
+  /* Trạng thái của NGƯỜI ẤY (hiện diện sống): hiện ngay dưới hàng tên trong
+   * hero — trạng thái là CỦA HỌ, nhãn luôn gắn tên họ để không mơ hồ là của
+   * ai. Quá 24h thì mờ đi + kèm nhãn "từ hôm qua". Chưa đặt -> không hiện gì
+   * (không ép dòng trống lên phía người ấy). */
+  const partnerStatus = state.status[partner.slot];
+  const partnerMood = partnerStatus ? statusMoodById(partnerStatus.mood) : undefined;
+  const partnerStatusStale = partnerStatus ? statusStale(partnerStatus, nowTick) : false;
 
   return (
     <View style={s.screen}>
@@ -122,6 +150,14 @@ export default function HomeScreen() {
                 </View>
                 <Text style={{ fontFamily: FONT.bold, fontSize: 14.5, color: COLOR.text, marginLeft: 10 }}>{self.name} & {partner.name}</Text>
               </View>
+              {partnerStatus && partnerMood ? (
+                <View style={{ flexDirection: "row", alignItems: "center", gap: 5, marginBottom: 7, maxWidth: "94%", opacity: partnerStatusStale ? 0.55 : 1 }}>
+                  <Ionicons name={partnerMood.icon as never} size={13} color={ROLE.partnerDark} />
+                  <Text numberOfLines={1} style={{ fontFamily: FONT.medium, fontSize: 12.5, color: COLOR.textSoft }}>
+                    {partner.name} · {partnerMood.label}{partnerStatus.text ? ` — “${partnerStatus.text}”` : ""}{partnerStatusStale ? ` · ${statusFreshnessLabel(partnerStatus, nowTick)}` : ""}
+                  </Text>
+                </View>
+              ) : null}
               <Text style={{ ...TYPE.display, color: COLOR.text }}>Ngày {count}</Text>
               <Text style={{ fontFamily: FONT.regular, fontSize: 13.5, color: COLOR.textSoft, marginTop: 3, textAlign: "center" }}>
                 {next ? `Còn ${next.remaining} ngày nữa tới mốc ${next.days} ngày` : "Hai đứa đã đi qua mọi cột mốc trong danh sách — cứ yêu tiếp thôi"}
@@ -152,9 +188,10 @@ export default function HomeScreen() {
             {greetingLine(hour, self.name, partner.name)}
           </Text>
           <Text style={{ ...TYPE.body, color: COLOR.textSoft, marginTop: 4 }}>
-            Hôm nay hai đứa đã nhớ nhau {pingsToday} nhịp.
+            {pingLine}
           </Text>
           <Text style={{ ...TYPE.body, color: COLOR.textSoft, marginTop: 4 }}>{careSummary}</Text>
+          <Text style={{ ...TYPE.body, color: COLOR.textSoft, marginTop: 4 }}>{questHint}</Text>
           <TouchableOpacity
             onPress={() => {
               dispatch({ type: "PING_SEND", user: me, actor: myName(state) });
@@ -209,8 +246,6 @@ export default function HomeScreen() {
           </View>
         ) : null}
       </ScrollView>
-      <LetterAndPingPops />
-      <MilestonePop />
     </View>
   );
 }

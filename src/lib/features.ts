@@ -1,9 +1,9 @@
 import {
   AppState, KEPT_LETTERS_CAP, KeptLetter, KeptLetterKind, LetterMoment, MilestoneRecord,
-  PersonId, dayKeyLocal, localDayNumber, parseDateKey,
+  PersonId, TreePestEvent, dayKeyLocal, localDayNumber, parseDateKey,
 } from "./types";
-import { treeStageForDay } from "./tree";
-import { makeLetterMoment, messageById } from "./content";
+import { PEST_EXPIRE_MS, decayedStats, isPestActive, treeStageForDay } from "./tree";
+import { makeLetterMoment, messageById, seeded01 } from "./content";
 
 /**
  * Logic tính năng THUẦN của các lõi (không React):
@@ -80,6 +80,68 @@ export function decideCareLetter(state: AppState, kind: "water" | "sun" | "love"
   return { drop: null, combo };
 }
 
+/* ================= SÂU TRÊN CÂY — ĐIỀU KIỆN XUẤT HIỆN (thuần, theo seed) ================= */
+/** Cây bị bỏ bê: lâu không được chăm HOẶC chỉ số thấp nhất đã hao xuống thấp */
+export const PEST_NEGLECT_HOURS = 24;
+export const PEST_LOW_STAT = 30;
+/** Xác suất xuất hiện trong ngày khi cây bị bỏ bê / khi cây được chăm đều */
+export const PEST_CHANCE_NEGLECTED = 0.5;
+export const PEST_CHANCE_BASE = 0.12;
+
+/**
+ * Đợt sâu của "hôm nay" (nếu có) — THUẦN và XÁC ĐỊNH theo seed nên 2 máy tính
+ * ra GIỐNG HỆT nhau từ cùng state: máy nào mở app trước thì dispatch
+ * PEST_SPAWN ghi sự kiện vào state, máy kia hội tụ qua sync (và tự nó cũng
+ * tính ra cùng một sự kiện nếu chưa kịp nhận).
+ *
+ * Điều kiện:
+ * - Chưa có đợt sâu đang sống; ngày của mốc xuất hiện chưa từng có đợt sâu
+ *   (tối đa 1 đợt/ngày — kể cả đợt đã bắt/hết hạn rồi).
+ * - Rút thăm theo seed hash("pest:{startDate}:{dateKey}"): cây bị bỏ bê
+ *   (>= 24h không ai chăm HOẶC chỉ số thấp nhất < 30) -> 50%; còn lại 12%.
+ * - Mốc xuất hiện: bỏ bê vì lâu không chăm -> đúng lúc đủ 24h kể từ lần chăm
+ *   cuối; các trường hợp còn lại -> một giờ cố định trong buổi sáng/chiều
+ *   (7h–15h, cũng theo seed). Mốc xuất hiện phải <= now và cửa sổ sống 12h
+ *   chưa trôi qua (sâu xuất hiện mà không ai kịp thấy thì coi như chưa từng có).
+ */
+export function pestSpawnFor(state: AppState, nowMs: number = Date.now()): TreePestEvent | null {
+  const pest = state.treePest;
+  if (isPestActive(pest, nowMs)) return null;
+  const { tree } = state;
+  const lastCareMs = tree.lastCareAt
+    ? new Date(tree.lastCareAt).getTime()
+    : new Date(tree.plantedAt).getTime();
+  const hoursSinceCare = isFinite(lastCareMs) ? (nowMs - lastCareMs) / 3600000 : 0;
+  const stats = decayedStats(tree, nowMs);
+  const minStat = Math.min(stats.water, stats.sun, stats.love);
+  const staleCare = hoursSinceCare >= PEST_NEGLECT_HOURS;
+  const neglected = staleCare || minStat < PEST_LOW_STAT;
+
+  const todayKey = dayKeyLocal(new Date(nowMs));
+  const roll = seeded01(`pest:${state.couple.startDate}:${todayKey}`);
+  if (roll >= (neglected ? PEST_CHANCE_NEGLECTED : PEST_CHANCE_BASE)) return null;
+
+  const dayStart = parseDateKey(todayKey);
+  if (!dayStart) return null;
+  const seededHourMs = dayStart.getTime()
+    + (7 + Math.floor(seeded01(`pest-hour:${state.couple.startDate}:${todayKey}`) * 9)) * 3600000;
+  let appearedMs = seededHourMs;
+  if (staleCare) appearedMs = Math.max(lastCareMs + PEST_NEGLECT_HOURS * 3600000, seededHourMs);
+  if (appearedMs > nowMs) return null; // chưa tới giờ xuất hiện — lần mở sau sẽ tính lại
+  if (nowMs - appearedMs >= PEST_EXPIRE_MS) return null; // cửa sổ sống đã qua mà chưa ai ghi sổ
+  const dateKey = dayKeyLocal(new Date(appearedMs));
+  if (pest && pest.dateKey === dateKey) return null; // ngày đó đã có đợt sâu rồi
+  return {
+    id: `pest-${dateKey}`,
+    dateKey,
+    appearedAt: new Date(appearedMs).toISOString(),
+    status: "active",
+    caughtBy: "",
+    caughtAt: "",
+    expiredAt: "",
+  };
+}
+
 /* ================= KỶ VẬT (đợt "chất app" 2) — HỘP THƯ ĐÃ GIỮ + LỊCH SỬ MỐC ================= */
 /** Chụp một khoảnh khắc thư rơi thành kỷ vật (nội dung chụp tại thời điểm giữ). */
 export function keptLetterFromMoment(moment: LetterMoment, kind: KeptLetterKind): KeptLetter {
@@ -145,26 +207,25 @@ export function unionMilestoneHistory(a: MilestoneRecord[], b: MilestoneRecord[]
   return [...byDays.values()].sort((x, y) => x.days - y.days);
 }
 
-/* ================= CORE 5 — ĐỊNH VỊ TẠM THỜI ================= */
-export interface ShareDuration { label: string; ms: number | null }
-export const SHARE_DURATIONS: ShareDuration[] = [
-  { label: "15 phút", ms: 15 * 60 * 1000 },
-  { label: "1 giờ", ms: 60 * 60 * 1000 },
-  { label: "4 giờ", ms: 4 * 60 * 60 * 1000 },
-  { label: "Đến khi tự tắt", ms: null },
-];
+/* ================= CORE 5 — VỊ TRÍ TRỰC TIẾP ================= */
+/** Cổng tiết lưu publish vị trí trực tiếp: tối đa 1 lần / 10 giây VÀ chỉ khi
+ *  đã di chuyển >= 20m từ điểm publish gần nhất. */
+export const LIVE_MIN_INTERVAL_MS = 10000;
+export const LIVE_MIN_DISTANCE_M = 20;
 
-export interface ShareStatus { active: boolean; expired: boolean; remainingMs: number | null }
 /**
- * Trạng thái phiên chia sẻ SUY RA từ expiresAt tại thời điểm now — phiên hết hạn
- * là "đã kết thúc" ở MỌI nơi hiển thị, kể cả khi state chưa kịp ghi cờ dừng.
+ * Có nên publish điểm mới này không — THUẦN để kiểm chứng: chưa từng publish
+ * -> publish ngay; chưa đủ 10 giây từ lần publish trước -> không; đủ giờ
+ * nhưng di chuyển chưa tới 20m -> không; đủ cả hai -> publish.
  */
-export function shareStatus(slot: { sharing: boolean; expiresAt: string }, nowMs: number = Date.now()): ShareStatus {
-  if (!slot.sharing) return { active: false, expired: false, remainingMs: null };
-  if (!slot.expiresAt) return { active: true, expired: false, remainingMs: null };
-  const left = new Date(slot.expiresAt).getTime() - nowMs;
-  if (!isFinite(left) || left <= 0) return { active: false, expired: true, remainingMs: 0 };
-  return { active: true, expired: false, remainingMs: left };
+export function shouldPublishLive(
+  last: { lat: number; lng: number; atMs: number } | null,
+  next: { lat: number; lng: number },
+  nowMs: number,
+): boolean {
+  if (!last) return true;
+  if (nowMs - last.atMs < LIVE_MIN_INTERVAL_MS) return false;
+  return haversineKm(last, next) * 1000 >= LIVE_MIN_DISTANCE_M;
 }
 
 /** Khoảng cách đường chim bay (km) giữa 2 điểm lat/lng */
@@ -202,13 +263,44 @@ export function timeAgoText(iso: string, nowMs: number = Date.now()): string {
   if (days < 30) return `${days} ngày trước`;
   return dayKeyLocal(new Date(t)).split("-").reverse().join("/");
 }
-/** Đếm ngược phiên chia sẻ: "còn 12 phút 30 giây" / "còn 2 giờ 5 phút" */
-export function remainingText(ms: number): string {
-  const totalSec = Math.max(0, Math.round(ms / 1000));
-  const hrs = Math.floor(totalSec / 3600);
-  const min = Math.floor((totalSec % 3600) / 60);
-  const sec = totalSec % 60;
-  if (hrs > 0) return `còn ${hrs} giờ ${min} phút`;
-  if (min > 0) return `còn ${min} phút ${sec} giây`;
-  return `còn ${sec} giây`;
+
+/**
+ * Nhãn "độ tươi" của vị trí trực tiếp — nói THẬT trạng thái mà không hù:
+ * điểm mới (< 90 giây) là "Vừa cập nhật"; trong giờ là "Cập nhật N phút
+ * trước"; cũ hơn nữa (thường là vì app của người ấy đang đóng — vị trí chỉ
+ * publish khi app mở) thì ghi "Vị trí gần nhất · ..." để hiểu đó là điểm
+ * cuối cùng được thấy, không phải vị trí hiện tại.
+ */
+export function freshnessText(locAt: string, nowMs: number = Date.now()): string {
+  if (!locAt) return "";
+  const t = new Date(locAt).getTime();
+  if (!isFinite(t)) return "";
+  const age = nowMs - t;
+  if (age < 90 * 1000) return "Vừa cập nhật";
+  if (age < 3600000) return `Cập nhật ${Math.max(1, Math.floor(age / 60000))} phút trước`;
+  return `Vị trí gần nhất · ${timeAgoText(locAt, nowMs)}`;
+}
+
+/* ================= TRẠNG THÁI CỦA NHAU — ĐỘ TƯƠI ================= */
+/** Trạng thái tự đặt được coi là CŨ sau ~24 giờ */
+export const STATUS_STALE_MS = 24 * 3600000;
+
+/**
+ * Trạng thái có CŨ không (> 24h từ lúc đặt). Lựa chọn hiển thị: trạng thái cũ
+ * VẪN HIỆN nhưng mờ đi kèm nhãn độ tươi — KHÔNG tự xoá (tự xoá sẽ âm thầm
+ * làm mất điều người ta đã đặt; mờ + nhãn là trung thực mà vẫn dịu dàng).
+ */
+export function statusStale(status: { updatedAt: string } | null | undefined, nowMs: number = Date.now()): boolean {
+  if (!status || !status.updatedAt) return false;
+  const t = new Date(status.updatedAt).getTime();
+  if (!isFinite(t)) return false;
+  return nowMs - t > STATUS_STALE_MS;
+}
+
+/** Nhãn độ tươi cho trạng thái CŨ: "từ hôm qua" (24–48h) / "từ N ngày trước". */
+export function statusFreshnessLabel(status: { updatedAt: string } | null | undefined, nowMs: number = Date.now()): string {
+  if (!statusStale(status, nowMs)) return "";
+  const age = nowMs - new Date(status!.updatedAt).getTime();
+  if (age < 48 * 3600000) return "từ hôm qua";
+  return `từ ${timeAgoText(status!.updatedAt, nowMs)}`;
 }

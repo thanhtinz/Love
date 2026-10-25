@@ -1,79 +1,101 @@
 import { useEffect, useRef } from "react";
 import { AppState as RNAppState } from "react-native";
-import { myName, useLove } from "../lib/store";
-import { shareStatus } from "../lib/features";
-import { captureLocationFix, foregroundPermissionGranted, getBatteryPct } from "./presenceService";
+import * as Location from "expo-location";
+import { useLove } from "../lib/store";
+import { shouldPublishLive } from "../lib/features";
+import { foregroundPermissionGranted, getBatteryPct } from "./presenceService";
 
 /**
- * Đồng bộ ĐỊNH VỊ TẠM THỜI (core 5) — thay PresenceSync của bản cũ.
- * Chỉ chạy khi CHÍNH NGƯỜI DÙNG này đang bật chia sẻ:
- * - Chụp snapshot khi: phiên bắt đầu / app quay lại foreground / mỗi ~5 phút
- *   trong lúc app đang mở. Mỗi snapshot = vị trí mới nhất + % pin + mốc giờ.
- * - KHÔNG theo dõi nền, KHÔNG lưu lịch sử đường đi — snapshot mới ghi đè cũ.
- * - Chỉ chụp vị trí khi quyền foreground ĐÃ được cấp sẵn (màn /location là nơi
- *   xin quyền); quyền bị thu hồi giữa chừng -> snapshot chỉ còn pin + giờ, và
- *   phía người ấy thấy "chưa có vị trí" một cách trung thực.
- * - Phiên hết hạn trong lúc app mở: dispatch PRESENCE_STOP (expired) đúng 1 lần.
+ * Publish VỊ TRÍ TRỰC TIẾP (core 5 — bản làm lại: KHÔNG phiên, KHÔNG công tắc).
+ * Gắn ở layout gốc nên chạy TOÀN APP:
+ * - App đang foreground + quyền vị trí foreground ĐÃ cấp -> watchPositionAsync
+ *   (độ chính xác Balanced) và publish điểm mới nhất của CHÍNH NGƯỜI NÀY vào
+ *   state dùng chung, qua cổng tiết lưu shouldPublishLive (>= 10 giây VÀ
+ *   >= 20m từ điểm publish gần nhất). Ghim của người ấy trên bản đồ vì thế
+ *   chạy theo thời gian thực qua kênh đồng bộ sẵn có.
+ * - Chưa có quyền: KHÔNG tự xin (màn Bản đồ là nơi xin quyền, có nút "Cấp
+ *   quyền vị trí") — chỉ kiểm tra lại mỗi ~15 giây khi app đang mở, để người
+ *   dùng vừa cấp quyền xong là publish bắt đầu ngay, không cần mở lại app.
+ * - App vào background -> huỷ watch ngay: KHÔNG theo dõi nền, KHÔNG lịch sử —
+ *   state chỉ giữ điểm mới nhất của mỗi người.
+ * - Web: watchPositionAsync chạy qua Geolocation của trình duyệt khi tab đang
+ *   mở; AppState "change" trên web đi theo visibility của tab.
  */
-const SNAPSHOT_INTERVAL_MS = 5 * 60 * 1000;
-
 export function LocationSync() {
   const { state, dispatch, hydrated } = useLove();
-  const me = state.currentUser;
-  const mySlot = state.presence[me];
-  const sharing = mySlot.sharing;
   const stateRef = useRef(state);
   useEffect(() => { stateRef.current = state; }, [state]);
-  const busyRef = useRef(false);
 
   useEffect(() => {
-    if (!hydrated || !sharing) return;
+    if (!hydrated) return;
     let cancelled = false;
+    let sub: Location.LocationSubscription | null = null;
+    let permTimer: ReturnType<typeof setInterval> | null = null;
+    // Điểm publish gần nhất của chính máy này — hạt giống từ state đã tải để
+    // cổng tiết lưu vẫn đúng sau khi component gắn lại.
+    const s0 = stateRef.current;
+    const slot0 = s0.presence[s0.currentUser];
+    const lastRef: { current: { lat: number; lng: number; atMs: number } | null } = {
+      current: slot0.lat != null && slot0.lng != null && slot0.locAt
+        ? { lat: slot0.lat, lng: slot0.lng, atMs: new Date(slot0.locAt).getTime() }
+        : null,
+    };
 
-    async function capture() {
-      if (busyRef.current) return;
+    async function onFix(pos: Location.LocationObject) {
+      const lat = pos.coords.latitude;
+      const lng = pos.coords.longitude;
+      if (!Number.isFinite(lat) || !Number.isFinite(lng)) return;
+      const nowMs = Date.now();
+      if (!shouldPublishLive(lastRef.current, { lat, lng }, nowMs)) return;
+      lastRef.current = { lat, lng, atMs: nowMs };
+      const battery = await getBatteryPct();
+      if (cancelled) return;
       const s = stateRef.current;
-      const slot = s.presence[s.currentUser];
-      if (!slot.sharing) return;
-      // Hết hạn ngay tại máy này: kết thúc phiên thay vì chụp thêm.
-      if (shareStatus(slot).expired) {
-        dispatch({ type: "PRESENCE_STOP", user: s.currentUser, actor: myName(s), reason: "expired" });
-        return;
-      }
-      busyRef.current = true;
-      try {
-        const battery = await getBatteryPct();
-        const granted = await foregroundPermissionGranted();
-        const fix = granted ? await captureLocationFix() : null;
-        if (cancelled) return;
-        dispatch({
-          type: "PRESENCE_SNAPSHOT",
-          user: s.currentUser,
-          lat: fix ? fix.lat : null,
-          lng: fix ? fix.lng : null,
-          acc: fix ? fix.acc : null,
-          battery,
-          at: new Date().toISOString(),
-        });
-      } finally {
-        busyRef.current = false;
-      }
+      dispatch({
+        type: "PRESENCE_SNAPSHOT",
+        user: s.currentUser,
+        lat,
+        lng,
+        acc: pos.coords.accuracy ?? null,
+        battery,
+        at: new Date(nowMs).toISOString(),
+      });
     }
 
-    capture();
-    const iv = setInterval(() => { if (RNAppState.currentState === "active") capture(); }, SNAPSHOT_INTERVAL_MS);
-    const sub = RNAppState.addEventListener("change", (st) => { if (st === "active") capture(); });
-    // Kiểm tra hết hạn mỗi 30 giây ngay cả khi không chụp snapshot mới.
-    const expIv = setInterval(() => {
-      const s = stateRef.current;
-      const slot = s.presence[s.currentUser];
-      if (slot.sharing && shareStatus(slot).expired) {
-        dispatch({ type: "PRESENCE_STOP", user: s.currentUser, actor: myName(s), reason: "expired" });
+    async function ensureWatching() {
+      if (sub || cancelled) return;
+      const granted = await foregroundPermissionGranted();
+      if (!granted || cancelled || sub) return;
+      try {
+        sub = await Location.watchPositionAsync(
+          { accuracy: Location.Accuracy.Balanced, distanceInterval: 20, timeInterval: 10000 },
+          (pos) => { void onFix(pos); },
+        );
+      } catch {
+        sub = null; // nền tảng không hỗ trợ watch (hiếm) — lần kiểm tra sau thử lại
       }
-    }, 30000);
-    return () => { cancelled = true; clearInterval(iv); clearInterval(expIv); sub.remove(); };
+      if (sub && permTimer) { clearInterval(permTimer); permTimer = null; }
+    }
+
+    void ensureWatching();
+    permTimer = setInterval(() => { void ensureWatching(); }, 15000);
+    const appSub = RNAppState.addEventListener("change", (st) => {
+      if (st === "active") {
+        void ensureWatching();
+      } else {
+        // Rời foreground: dừng watch ngay — vị trí chỉ publish khi app đang mở.
+        sub?.remove();
+        sub = null;
+      }
+    });
+    return () => {
+      cancelled = true;
+      if (permTimer) clearInterval(permTimer);
+      appSub.remove();
+      sub?.remove();
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [hydrated, sharing, me]);
+  }, [hydrated]);
 
   return null;
 }
