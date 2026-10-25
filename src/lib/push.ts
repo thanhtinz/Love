@@ -21,6 +21,12 @@ import type { WidgetNoteInput } from "./widget";
  * Token Expo Push lưu ở bảng push_tokens (migration 20261024_push_tokens.sql,
  * RLS: mỗi người chỉ quản token của chính mình). Edge function notify-note tra
  * token của NGƯỜI ẤY bằng service role và gửi qua Expo Push API.
+ *
+ * BẢN WEB đi đường riêng song song: chuẩn Web Push của trình duyệt
+ * (lib/webpush.ts đăng ký + bảng web_push_subscriptions; service worker
+ * /sw.js). Cùng hai edge function đó, sau đường Expo, gửi tiếp qua Web Push
+ * cho các trình duyệt người ấy đã đăng ký — nên các hàm notify* dưới đây
+ * KHÔNG còn bỏ qua nền tảng web khi gọi function.
  */
 
 export const NOTE_BACKGROUND_TASK = "love-note-background-task";
@@ -53,7 +59,7 @@ export async function pushPermissionGranted(): Promise<boolean> {
  * Mọi lỗi đều trả về dạng kết quả để UI nói thật với người dùng, không nuốt.
  */
 export async function registerNotePushToken(userId: string): Promise<PushRegisterResult> {
-  if (Platform.OS === "web") return { ok: false, reason: "web", message: "Thông báo đẩy chỉ có trên app điện thoại." };
+  if (Platform.OS === "web") return { ok: false, reason: "web", message: "Đường Expo Push chỉ dành cho app điện thoại — bản web bật thông báo ở mục Thông báo trình duyệt trong Tài khoản nhé." };
   if (isExpoGo()) return { ok: false, reason: "expo-go", message: "Cần bản app cài thật (không phải Expo Go) để nhận thông báo note." };
   try {
     let perm = await Notifications.getPermissionsAsync();
@@ -103,9 +109,11 @@ function invokeEdgeFunction(name: string): void {
  * Sau khi GỬI note: gọi edge function notify-note (fire-and-forget). Hàm tự
  * suy ra người gửi từ JWT của phiên hiện tại và tra token của người ấy.
  * Function chưa được deploy -> lỗi bị nuốt êm, note vẫn đã gửi qua realtime.
+ * Gọi trên MỌI nền tảng: phía server gửi cả Expo Push (app điện thoại) lẫn
+ * Web Push (trình duyệt người ấy đã đăng ký) — người gửi ở web vẫn phải kích
+ * hoạt được thông báo cho người ấy.
  */
 export function notifyPartnerOfNote(): void {
-  if (Platform.OS === "web") return;
   invokeEdgeFunction("notify-note");
 }
 
@@ -114,9 +122,9 @@ export function notifyPartnerOfNote(): void {
  * Nhịp nhớ KHÔNG giới hạn và không có thời gian chờ — MỖI lần gửi gọi hàm này
  * đúng một lần, để người ấy nhận đúng một push riêng cho nhịp đó. Nhịp không
  * mang nội dung riêng tư nên không có cổng công tắc nào ở phía server.
+ * Gọi trên MỌI nền tảng như notifyPartnerOfNote (server lo cả hai đường).
  */
 export function notifyPartnerOfHeartbeat(): void {
-  if (Platform.OS === "web") return;
   invokeEdgeFunction("notify-heartbeat");
 }
 

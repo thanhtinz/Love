@@ -11,6 +11,9 @@
 //   3. Gửi tới mọi token trong push_tokens của người ấy qua Expo Push API:
 //      thông báo NHÌN THẤY ĐƯỢC — tiêu đề "Nhịp nhớ", nội dung gọi tên người
 //      gửi — kèm payload data tối thiểu cho app phía người nhận.
+//   4. Gửi tiếp qua WEB PUSH (chuẩn trình duyệt, _shared/webpush.ts) tới các
+//      đăng ký trong web_push_subscriptions của người ấy, cùng tiêu đề/nội
+//      dung như đường Expo.
 //
 // Khác notify-note: nhịp nhớ KHÔNG mang nội dung riêng tư (chỉ là một nhịp
 // "đang nhớ bạn") nên KHÔNG có cổng công tắc/widgetPrefs nào — tên người gửi
@@ -21,6 +24,7 @@
 // tự bơm vào môi trường function — không cần khai báo secret thủ công.
 // ============================================================================
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { sendWebPushToUser } from "../_shared/webpush.ts";
 
 const EXPO_PUSH_URL = "https://exp.host/--/api/v2/push/send";
 
@@ -80,32 +84,49 @@ Deno.serve(async (req) => {
     .select("token")
     .eq("user_id", partner.user_id);
   const tokens = (tokenRows ?? []).map((r) => r.token).filter((t) => typeof t === "string" && t.startsWith("ExponentPushToken"));
-  if (tokens.length === 0) return json({ sent: 0, reason: "partner has no tokens" });
 
   const createdAt = new Date().toISOString();
-  const messages = tokens.map((to) => ({
-    to,
-    sound: "default",
-    title: "Nhịp nhớ",
-    body: `${authorName} vừa gửi bạn một nhịp nhớ`,
-    data: {
-      type: "heartbeat",
-      authorName,
-      createdAt,
-    },
-    // iOS: cho phép hệ điều hành đánh thức app nền (best effort, như notify-note).
-    contentAvailable: true,
-    priority: "high",
-    channelId: "default",
-  }));
+  const title = "Nhịp nhớ";
+  const body = `${authorName} vừa gửi bạn một nhịp nhớ`;
 
-  const res = await fetch(EXPO_PUSH_URL, {
-    method: "POST",
-    headers: { "Content-Type": "application/json", Accept: "application/json" },
-    body: JSON.stringify(messages),
+  let sent = 0;
+  if (tokens.length > 0) {
+    const messages = tokens.map((to) => ({
+      to,
+      sound: "default",
+      title,
+      body,
+      data: {
+        type: "heartbeat",
+        authorName,
+        createdAt,
+      },
+      // iOS: cho phép hệ điều hành đánh thức app nền (best effort, như notify-note).
+      contentAvailable: true,
+      priority: "high",
+      channelId: "default",
+    }));
+
+    const res = await fetch(EXPO_PUSH_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Accept: "application/json" },
+      body: JSON.stringify(messages),
+    });
+    if (res.ok) sent = tokens.length;
+    else console.error(`notify-heartbeat: expo push http ${res.status} — vẫn thử tiếp đường web`);
+  }
+
+  // 5) Web Push (bản web): cùng tiêu đề/nội dung như đường Expo cho nhịp này.
+  // Chưa cấu hình VAPID -> trả 0 êm, không ảnh hưởng nhịp/realtime.
+  const webSent = await sendWebPushToUser(admin, partner.user_id, {
+    title,
+    body,
+    type: "heartbeat",
+    url: "/",
   });
-  if (!res.ok) return json({ sent: 0, error: `expo push http ${res.status}` }, 502);
-  return json({ sent: tokens.length });
+
+  if (sent === 0 && webSent === 0) return json({ sent: 0, webSent: 0, reason: "partner has no devices" });
+  return json({ sent, webSent });
 });
 
 // ============================================================================
@@ -118,4 +139,7 @@ Deno.serve(async (req) => {
 // 3. Thông tin xác thực gửi push (FCM cho Android, APNs cho iOS) và liên kết
 //    EAS projectId: cùng các bước đã ghi ở cuối notify-note — làm một lần là
 //    cả hai function đều dùng được.
+// 4. Đường WEB PUSH: cùng cấu hình như notify-note (migration
+//    20261025_web_push_subscriptions.sql + 3 Secrets VAPID_* — Secrets dùng
+//    chung cho mọi function của dự án nên chỉ đặt một lần).
 // ============================================================================

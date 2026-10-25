@@ -8,6 +8,7 @@ import { useLove } from "../lib/store";
 import { AVATARS } from "../lib/types";
 import Avatar from "../components/Avatar";
 import { WidgetSettingsCard } from "../components/WidgetSettings";
+import { WebPushCard } from "../components/WebPushCard";
 import { COLOR, FONT, RADIUS, ROLE, SPACE, TYPE } from "../components/theme";
 import { ScreenHeader, StatusChip, s } from "../components/ui";
 
@@ -123,6 +124,9 @@ export default function AccountScreen() {
 
         {/* Widget màn hình chính — công tắc riêng của chính người dùng + xem trước */}
         <WidgetSettingsCard />
+
+        {/* Web Push — chỉ hiện trên bản web (component tự trả null ở native) */}
+        <WebPushCard />
 
         {/* Rời vườn + đăng xuất */}
         <View style={s.card}>

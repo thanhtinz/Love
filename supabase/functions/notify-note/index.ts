@@ -11,12 +11,16 @@
 //   4. Gửi tới mọi token trong push_tokens của người ấy qua Expo Push API:
 //      một thông báo NHÌN THẤY ĐƯỢC ("Note mới từ {tên}" + xem trước ngắn)
 //      kèm payload data để app nền làm mới widget khi hệ điều hành cho chạy.
+//   5. Gửi tiếp qua WEB PUSH (chuẩn trình duyệt, _shared/webpush.ts) tới các
+//      đăng ký trong web_push_subscriptions của người ấy — cùng cổng riêng
+//      tư: nội dung note chỉ rời máy chủ khi công tắc Note của người ấy bật.
 //
 // Deploy (chủ dự án — xem cuối file): `supabase functions deploy notify-note`.
 // SUPABASE_URL / SUPABASE_ANON_KEY / SUPABASE_SERVICE_ROLE_KEY được Supabase
 // tự bơm vào môi trường function — không cần khai báo secret thủ công.
 // ============================================================================
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { sendWebPushToUser } from "../_shared/webpush.ts";
 
 const EXPO_PUSH_URL = "https://exp.host/--/api/v2/push/send";
 const PREVIEW_MAX = 80;
@@ -110,35 +114,52 @@ Deno.serve(async (req) => {
     .select("token")
     .eq("user_id", partner.user_id);
   const tokens = (tokenRows ?? []).map((r) => r.token).filter((t) => typeof t === "string" && t.startsWith("ExponentPushToken"));
-  if (tokens.length === 0) return json({ sent: 0, reason: "partner has no tokens" });
 
   const flat = noteText.replace(/\s+/g, " ").trim();
   const preview = flat.length > PREVIEW_MAX ? flat.slice(0, PREVIEW_MAX - 1).trimEnd() + "…" : flat;
-  const messages = tokens.map((to) => ({
-    to,
-    sound: "default",
-    title: `Note mới từ ${authorName}`,
-    body: partnerAllowsNotePreview ? (preview || "Mở app để đọc note nhé") : "Mở app để đọc note nhé",
-    data: {
-      type: "note",
-      noteId,
-      text: partnerAllowsNotePreview ? noteText : "",
-      authorName,
-      createdAt: noteCreatedAt,
-    },
-    // iOS: cho phép hệ điều hành đánh thức app nền để làm mới widget (best effort).
-    contentAvailable: true,
-    priority: "high",
-    channelId: "default",
-  }));
+  const visibleBody = partnerAllowsNotePreview ? (preview || "Mở app để đọc note nhé") : "Mở app để đọc note nhé";
 
-  const res = await fetch(EXPO_PUSH_URL, {
-    method: "POST",
-    headers: { "Content-Type": "application/json", Accept: "application/json" },
-    body: JSON.stringify(messages),
+  let sent = 0;
+  if (tokens.length > 0) {
+    const messages = tokens.map((to) => ({
+      to,
+      sound: "default",
+      title: `Note mới từ ${authorName}`,
+      body: visibleBody,
+      data: {
+        type: "note",
+        noteId,
+        text: partnerAllowsNotePreview ? noteText : "",
+        authorName,
+        createdAt: noteCreatedAt,
+      },
+      // iOS: cho phép hệ điều hành đánh thức app nền để làm mới widget (best effort).
+      contentAvailable: true,
+      priority: "high",
+      channelId: "default",
+    }));
+
+    const res = await fetch(EXPO_PUSH_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Accept: "application/json" },
+      body: JSON.stringify(messages),
+    });
+    if (res.ok) sent = tokens.length;
+    else console.error(`notify-note: expo push http ${res.status} — vẫn thử tiếp đường web`);
+  }
+
+  // 5) Web Push (bản web): cùng tiêu đề/nội dung hiện hữu như đường Expo —
+  // cổng riêng tư giữ nguyên: nội dung note chỉ xuất hiện khi công tắc Note
+  // trong widgetPrefs của NGƯỜI ẤY đang bật. Chưa cấu hình VAPID -> 0 êm.
+  const webSent = await sendWebPushToUser(admin, partner.user_id, {
+    title: `Note mới từ ${authorName}`,
+    body: visibleBody,
+    type: "note",
+    url: "/notes",
   });
-  if (!res.ok) return json({ sent: 0, error: `expo push http ${res.status}` }, 502);
-  return json({ sent: tokens.length });
+
+  if (sent === 0 && webSent === 0) return json({ sent: 0, webSent: 0, reason: "partner has no devices" });
+  return json({ sent, webSent });
 });
 
 // ============================================================================
@@ -156,4 +177,11 @@ Deno.serve(async (req) => {
 // 4. Liên kết EAS project để app lấy được Expo Push Token: chạy `eas init`
 //    (ghi projectId vào app.json extra.eas.projectId) rồi build lại app.
 //    Thiếu bước này lib/push.ts báo "no-project" trong mục Widget.
+// 5. Đường WEB PUSH (tùy chọn, chỉ cho bản web): chạy thêm migration
+//    supabase/migrations/20261025_web_push_subscriptions.sql trong SQL
+//    Editor, rồi đặt 3 Secrets cho function (Dashboard -> Edge Functions ->
+//    Secrets): VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY, VAPID_SUBJECT
+//    ("mailto:..."). Cặp khóa sinh bằng `npx web-push generate-vapid-keys`;
+//    khóa CÔNG khai còn phải gắn vào app.json extra.webPushVapidPublicKey.
+//    Chưa làm bước này -> thông báo web chỉ im lặng bỏ qua, app vẫn chạy.
 // ============================================================================

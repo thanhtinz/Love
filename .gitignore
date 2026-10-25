@@ -42,4 +42,6 @@ yarn-error.*
 
 # Script giả lập (đầu ra biên dịch tạm)
 scripts/.build/
+# Icon thông báo Web Push — sinh bởi `npm run icons` trước khi export web
+public/push-icon.png
 assets/art/**/*.webp

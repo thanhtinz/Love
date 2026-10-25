@@ -222,7 +222,7 @@ export function WidgetSettingsCard() {
         </View>
       ) : (
         <Text style={{ fontFamily: FONT.regular, fontSize: 12.5, color: COLOR.textFaint, marginTop: 10 }}>
-          Bạn đang xem bản web — widget và thông báo note nằm trong app trên điện thoại.
+          Bạn đang xem bản web — widget màn hình chính nằm trong app trên điện thoại; thông báo trên trình duyệt này xem ở mục ngay bên dưới.
         </Text>
       )}
     </View>

@@ -687,5 +687,64 @@ console.log("\n--- M) Ảnh của hai đứa: state + merge LWW theo updatedAt -
     stP.couplePhoto?.path === "couple-1/photo.jpg");
 }
 
+/* ================= N) WEB PUSH (bản web): HELPER THUẦN CỦA lib/webpush ================= */
+console.log("\n--- N) Web Push: base64url + chuẩn hoá đăng ký + nhận diện iOS ---");
+{
+  // Dùng lại các module giả đã chèn ở mục J (react-native Platform "ios",
+  // expo-constants extra {}) — webpush.js chỉ chạm vào chúng khi được gọi.
+  const WP = require("./.build/webpush.js");
+  const bytesOf = (u8) => Array.from(u8);
+
+  // N1: giải mã base64url — vector cố định + vòng tròn với oracle Buffer của Node
+  check("N1 urlBase64ToUint8Array: 'SGVsbG8' -> byte của 'Hello'; rỗng -> rỗng",
+    bytesOf(WP.urlBase64ToUint8Array("SGVsbG8")).join(",") === "72,101,108,108,111"
+    && WP.urlBase64ToUint8Array("").length === 0);
+  const raw65 = Uint8Array.from({ length: 65 }, (_, i) => (i * 37 + 4) % 256);
+  raw65[0] = 4; // giống khóa VAPID công khai: điểm EC chưa nén bắt đầu bằng 0x04
+  const raw65B64Url = Buffer.from(raw65).toString("base64url");
+  check("N2 urlBase64ToUint8Array khớp oracle Buffer với khóa 65 byte chứa ký tự - và _",
+    bytesOf(WP.urlBase64ToUint8Array(raw65B64Url)).join(",") === bytesOf(raw65).join(","),
+    raw65B64Url.slice(0, 16) + "...");
+  check("N3 bytesToUrlBase64: mã hoá 'Hello' -> 'SGVsbG8' và vòng tròn decode(encode(x)) = x",
+    WP.bytesToUrlBase64(Uint8Array.from([72, 101, 108, 108, 111])) === "SGVsbG8"
+    && bytesOf(WP.urlBase64ToUint8Array(WP.bytesToUrlBase64(raw65))).join(",") === bytesOf(raw65).join(","));
+
+  // N4: chuẩn hoá đăng ký trình duyệt thành dòng DB
+  const row = WP.subscriptionToRow(
+    { endpoint: "https://push.example/abc", expirationTime: null, keys: { p256dh: "P256DH", auth: "AUTH" } },
+    "user-1", "Mozilla/5.0 Test",
+  );
+  check("N4 subscriptionToRow: JSON hợp lệ -> dòng đủ endpoint/p256dh/auth/user_id/user_agent",
+    row?.endpoint === "https://push.example/abc" && row?.p256dh === "P256DH" && row?.auth === "AUTH"
+    && row?.user_id === "user-1" && row?.user_agent === "Mozilla/5.0 Test");
+  check("N5 subscriptionToRow: thiếu keys / endpoint rỗng / null -> null (không lưu rác)",
+    WP.subscriptionToRow({ endpoint: "https://push.example/abc", keys: {} }, "u", "") === null
+    && WP.subscriptionToRow({ endpoint: "", keys: { p256dh: "x", auth: "y" } }, "u", "") === null
+    && WP.subscriptionToRow(null, "u", "") === null);
+
+  // N6: nhận diện iOS cần thêm vào màn hình chính
+  const uaIphone = "Mozilla/5.0 (iPhone; CPU iPhone OS 17_4 like Mac OS X) AppleWebKit/605.1.15";
+  const uaIpad = "Mozilla/5.0 (iPad; CPU OS 17_4 like Mac OS X) AppleWebKit/605.1.15";
+  const uaAndroid = "Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 Chrome/126.0";
+  check("N6 isIosNeedingHomeScreen: iPhone/iPad chưa standalone -> true; đã standalone hoặc Android -> false",
+    WP.isIosNeedingHomeScreen(uaIphone, false) === true
+    && WP.isIosNeedingHomeScreen(uaIpad, false) === true
+    && WP.isIosNeedingHomeScreen(uaIphone, true) === false
+    && WP.isIosNeedingHomeScreen(uaAndroid, false) === false);
+
+  // N7: so khớp khóa ứng dụng của đăng ký sẵn có với khóa VAPID hiện tại
+  const keyBuf = WP.urlBase64ToUint8Array(raw65B64Url).buffer;
+  check("N7 applicationServerKeyMatches: cùng byte -> true; khác byte/rỗng/null -> false",
+    WP.applicationServerKeyMatches(keyBuf, raw65B64Url) === true
+    && WP.applicationServerKeyMatches(new Uint8Array(65).buffer, raw65B64Url) === false
+    && WP.applicationServerKeyMatches(null, raw65B64Url) === false
+    && WP.applicationServerKeyMatches(keyBuf, "") === false);
+
+  // N8: ngoài web (stub Platform "ios") -> trạng thái unsupported + chưa có khóa VAPID
+  const statusNative = await WP.getWebPushStatus();
+  check("N8 ngoài nền tảng web: getWebPushStatus = 'unsupported' và vapidPublicKey = '' khi extra trống",
+    statusNative === "unsupported" && WP.vapidPublicKey() === "");
+}
+
 console.log(`\n===== TỔNG: ${count - failures}/${count} PASS =====`);
 if (failures > 0) { console.log(`CÓ ${failures} TEST FAIL`); process.exit(1); }

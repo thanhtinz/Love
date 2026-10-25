@@ -2,6 +2,7 @@
 // nên PNG được tạo lại bằng lệnh này — sharp đã có trong devDependencies).
 // Chạy: npm run icons
 import sharp from "sharp";
+import { mkdirSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
 
@@ -19,3 +20,15 @@ for (const out of ["icon.png", "android-icon-foreground.png"]) {
     .toFile(path.join(root, "assets", out));
   console.log("generated assets/" + out);
 }
+
+// Icon cho thông báo Web Push (service worker public/sw.js tham chiếu tới
+// /push-icon.png). Thư mục public/ được expo export sao chép ra gốc bản web,
+// và lệnh icons chạy TRƯỚC export trong Vercel build command, nên file sinh
+// ra ở đây kịp có mặt trong dist. File PNG là artifact — đã có trong .gitignore.
+mkdirSync(path.join(root, "public"), { recursive: true });
+await sharp(src, { density: 384 })
+  .resize(192, 192, { fit: "contain", background: { r: 255, g: 241, b: 242, alpha: 1 } })
+  .flatten({ background: { r: 255, g: 241, b: 242 } })
+  .png()
+  .toFile(path.join(root, "public", "push-icon.png"));
+console.log("generated public/push-icon.png");
