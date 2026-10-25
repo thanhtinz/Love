@@ -3,6 +3,7 @@ import {
 } from "./types";
 import { totalGrowthMs } from "./tree";
 import { unionKeptLetters, unionMilestoneHistory } from "./features";
+import { mergeMemories } from "./memories";
 import { mergeDailyQuests, unionQuestHistory } from "./quests";
 
 /**
@@ -25,6 +26,9 @@ import { mergeDailyQuests, unionQuestHistory } from "./quests";
  * 7) Ảnh của hai đứa (đợt 3): last-writer-wins theo couplePhoto.updatedAt —
  *    ảnh là MỘT vật duy nhất ghi đè tại chỗ trên Storage, nên mốc mới hơn là
  *    chân lý; phía chưa có ảnh luôn thua phía đã có.
+ * 8) Dây kỷ niệm: bộ sưu tập union theo id + LWW từng ảnh theo updatedAt;
+ *    danh sách MỘ xoá hợp nhất union và áp khi hiện thực hoá — một lần xoá ở
+ *    máy nào cũng thắng mọi bản sao cũ ở máy kia (lib/memories.ts).
  */
 
 const SLOTS: PersonId[] = ["A", "B"];
@@ -218,6 +222,13 @@ export function mergeStates(local: AppState, remote: AppState, mySlot: PersonId)
   const couplePhoto = mergeCouplePhoto(local.couplePhoto ?? null, remote.couplePhoto ?? null);
   if (couplePhoto === remote.couplePhoto) stampFrom("couplePhoto", remote); else stampFrom("couplePhoto", local);
 
+  /* --- Dây kỷ niệm: union theo id + LWW từng ảnh; mộ xoá union rồi áp khi
+   *     hiện thực hoá (bản cũ thiếu trường -> rỗng). --- */
+  const { memories, removedMemoryIds } = mergeMemories(
+    local.memories ?? [], remote.memories ?? [],
+    local.removedMemoryIds ?? [], remote.removedMemoryIds ?? [],
+  );
+
   /* --- Sự kiện sâu trên cây: hội tụ xác định (xem mergeTreePest) --- */
   const treePest = mergeTreePest(local.treePest ?? null, remote.treePest ?? null);
 
@@ -232,7 +243,7 @@ export function mergeStates(local: AppState, remote: AppState, mySlot: PersonId)
     roomCode: newer.roomCode,
     personA: newer.personA, personB: newer.personB,
     avatarA: newer.avatarA, avatarB: newer.avatarB,
-    couple, tree, treePest, dailyQuests, questHistory, notes, noteLog, pings, activities, presence, widgetPrefs, status, lastLetter, keptLetters, couplePhoto,
+    couple, tree, treePest, dailyQuests, questHistory, notes, noteLog, pings, activities, presence, widgetPrefs, status, lastLetter, keptLetters, couplePhoto, memories, removedMemoryIds,
     updatedAt: lt >= rt ? lt : rt,
     secTs,
   };
@@ -258,6 +269,8 @@ const SHARED_SPECS: { key: string; get: (s: AppState) => unknown }[] = [
   { key: "lastLetter", get: (s) => s.lastLetter },
   { key: "keptLetters", get: (s) => s.keptLetters },
   { key: "couplePhoto", get: (s) => s.couplePhoto },
+  { key: "memories", get: (s) => s.memories },
+  { key: "removedMemoryIds", get: (s) => s.removedMemoryIds },
 ];
 
 function sameValue(a: unknown, b: unknown): boolean {

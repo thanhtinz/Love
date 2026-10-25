@@ -312,6 +312,16 @@ export default function CoupleScreen() {
             badge={state.keptLetters.length > 0 ? `${state.keptLetters.length} lá` : undefined}
             badgeVariant="accent"
           />
+          <FeatureCard
+            icon="images"
+            title="Dây kỷ niệm"
+            desc={state.memories.length > 0
+              ? "Những khoảnh khắc của hai đứa đang treo trên dây — chạm để xem lại và treo thêm."
+              : "Treo ảnh của hai đứa lên sợi dây kỷ niệm — mỗi tấm một khung, một ngày, một câu chuyện."}
+            route="/memories"
+            badge={state.memories.length > 0 ? `${state.memories.length} kỷ niệm đã treo` : undefined}
+            badgeVariant="accent"
+          />
         </View>
 
         {/* Nhật ký hoạt động */}

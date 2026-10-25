@@ -18,6 +18,7 @@ const M = require("./.build/merge.js");
 const MT = require("./.build/maptiles.js");
 const WG = require("./.build/widget.js");
 const Q = require("./.build/quests.js");
+const MEM = require("./.build/memories.js");
 
 const H = 3600000;
 const MIN = 60000;
@@ -966,6 +967,132 @@ console.log("\n--- R) Trạng thái của nhau: ghi theo slot + merge chủ slot
   check("R8 bộ preset trạng thái: đúng 8 mood, nhãn tiếng Việt ấm, mọi mood có icon",
     CT.STATUS_MOODS.length === 8 && CT.STATUS_MOODS.every((m) => m.label && m.icon)
     && CT.STATUS_MOODS.map((m) => m.label).join("|") === "Vui vẻ|Bình yên|Đang nhớ người ấy|Hơi mệt|Bận một chút|Đói bụng|Buồn ngủ|Đang yêu đời");
+}
+
+/* ================= S) DÂY KỶ NIỆM (kho ảnh treo trên dây) ================= */
+console.log("\n--- S) Dây kỷ niệm: thêm/sửa/xoá + mộ xoá + merge union/LWW + nghiêng xác định ---");
+{
+  const mkMem = (id, over = {}) => ({
+    id, path: `couple-1/memories/${id}.jpg`, caption: "", dateKey: "2026-02-14",
+    bySlot: "A", addedAt: iso(NOW - 24 * H), updatedAt: iso(NOW - 24 * H), ...over,
+  });
+
+  // S1: thêm hợp lệ -> vào state đúng nguyên vẹn + 1 dòng dấu vết icon "images"
+  const m1 = mkMem("mem-1", { caption: "Biển Vũng Tàu" });
+  const stAdd = R.gardenReducer(fresh(), { type: "MEMORY_ADD", memory: m1, user: "A", actor: "An" });
+  check("S1 MEMORY_ADD hợp lệ -> có ảnh + giữ nguyên metadata + 1 dấu vết",
+    stAdd.memories.length === 1 && stAdd.memories[0].caption === "Biển Vũng Tàu"
+    && stAdd.memories[0].path === "couple-1/memories/mem-1.jpg"
+    && stAdd.activities.length === 1 && stAdd.activities[0].icon === "images");
+
+  // S2: các đường thêm bị chặn — bySlot lệch người thao tác, ngày không tồn tại,
+  //     trùng id (no-op), và id đã nằm trong MỘ thì không hồi sinh được
+  const badSlot = R.gardenReducer(fresh(), { type: "MEMORY_ADD", memory: m1, user: "B", actor: "Bình" });
+  const badDate = R.gardenReducer(fresh(), { type: "MEMORY_ADD", memory: mkMem("mem-x", { dateKey: "2026-02-31" }), user: "A", actor: "An" });
+  const dup = R.gardenReducer(stAdd, { type: "MEMORY_ADD", memory: m1, user: "A", actor: "An" });
+  const stRm = R.gardenReducer(stAdd, { type: "MEMORY_REMOVE", id: "mem-1", user: "A", actor: "An" });
+  const resurrect = R.gardenReducer(stRm, { type: "MEMORY_ADD", memory: m1, user: "A", actor: "An" });
+  check("S2 MEMORY_ADD bị chặn: bySlot != user / ngày 31-02 / trùng id no-op / id trong mộ không hồi sinh",
+    badSlot.memories.length === 0 && badDate.memories.length === 0 && dup === stAdd && resurrect === stRm);
+
+  // S3: ghi chú qua sanitize ở reducer — trim hai đầu + cắt đúng trần 60 ký tự
+  const stCap = R.gardenReducer(fresh(), { type: "MEMORY_ADD", memory: mkMem("mem-cap", { caption: `  ${"y".repeat(70)}  ` }), user: "A", actor: "An" });
+  check("S3 ghi chú được trim + cắt đúng 60 ký tự tại tầng reducer",
+    stCap.memories[0].caption.length === 60 && stCap.memories[0].caption === "y".repeat(60));
+
+  // S4: sửa ghi chú/ngày — áp dụng + updatedAt tiến lên; ngày sai -> chặn cả
+  //     hành động; id lạ -> no-op; sửa y hệt -> no-op (không phát đồng bộ thừa)
+  const stUpd = R.gardenReducer(stAdd, { type: "MEMORY_UPDATE", id: "mem-1", caption: " Cà phê sáng ", dateKey: "2026-03-01", user: "B" });
+  const updBadDate = R.gardenReducer(stAdd, { type: "MEMORY_UPDATE", id: "mem-1", caption: "x", dateKey: "2026-02-31", user: "A" });
+  const updGhost = R.gardenReducer(stAdd, { type: "MEMORY_UPDATE", id: "khong-co", caption: "x", dateKey: "2026-03-01", user: "A" });
+  const updSame = R.gardenReducer(stAdd, { type: "MEMORY_UPDATE", id: "mem-1", caption: "Biển Vũng Tàu", dateKey: "2026-02-14", user: "A" });
+  check("S4 MEMORY_UPDATE: người ấy cũng sửa được + trim + đổi ngày + updatedAt mới hơn; ngày sai/id lạ/y hệt -> giữ nguyên",
+    stUpd.memories[0].caption === "Cà phê sáng" && stUpd.memories[0].dateKey === "2026-03-01"
+    && stUpd.memories[0].updatedAt > m1.updatedAt
+    && updBadDate === stAdd && updGhost === stAdd && updSame === stAdd);
+
+  // S5: gỡ ảnh — biến khỏi danh sách + id vào mộ + dấu vết; gỡ lại -> no-op
+  check("S5 MEMORY_REMOVE: ảnh biến mất + id vào danh sách mộ + thêm 1 dấu vết; gỡ lại là no-op",
+    stRm.memories.length === 0 && stRm.removedMemoryIds.includes("mem-1") && stRm.activities.length === 2
+    && R.gardenReducer(stRm, { type: "MEMORY_REMOVE", id: "mem-1", user: "A", actor: "An" }) === stRm);
+
+  // S6: trần 30 — dây đã đủ 30 thì ảnh thứ 31 bị từ chối ở reducer
+  const full30 = Array.from({ length: 30 }, (_, i) => mkMem(`mem-full-${i}`, { dateKey: `2026-01-${String((i % 28) + 1).padStart(2, "0")}` }));
+  const stFull = { ...fresh(), memories: MEM.materializeMemories(full30, []) };
+  const add31 = R.gardenReducer(stFull, { type: "MEMORY_ADD", memory: mkMem("mem-31"), user: "A", actor: "An" });
+  check("S6 trần MEMORIES_CAP: đủ 30 ảnh thì MEMORY_ADD thứ 31 bị từ chối",
+    stFull.memories.length === 30 && add31 === stFull);
+
+  // S7: merge union — ảnh của A ở máy A + ảnh của B ở máy B -> merged có cả hai
+  const mB = mkMem("mem-2", { bySlot: "B", dateKey: "2026-04-05" });
+  const mergedUnion = M.mergeStates({ ...fresh(), memories: [m1] }, { ...fresh(), memories: [mB] }, "A");
+  check("S7 merge union: hai máy mỗi nơi một ảnh -> hợp nhất đủ cả hai",
+    mergedUnion.memories.length === 2
+    && mergedUnion.memories.some((m) => m.id === "mem-1") && mergedUnion.memories.some((m) => m.id === "mem-2"));
+
+  // S8: MỘ THẮNG bản sao cũ ở cả hai chiều merge (xoá ở máy nào cũng thắng)
+  const tombSide = { ...fresh(), memories: [], removedMemoryIds: ["mem-1"] };
+  const staleSide = { ...fresh(), memories: [m1], removedMemoryIds: [] };
+  const mgT1 = M.mergeStates(staleSide, tombSide, "A");
+  const mgT2 = M.mergeStates(tombSide, staleSide, "A");
+  check("S8 merge: id trong mộ bị lọc ở CẢ hai chiều local/remote + mộ được giữ lại",
+    mgT1.memories.length === 0 && mgT2.memories.length === 0
+    && mgT1.removedMemoryIds.includes("mem-1") && mgT2.removedMemoryIds.includes("mem-1"));
+
+  // S9: LWW từng ảnh theo updatedAt (cả hai chiều); hoà mốc -> hội tụ xác định
+  const mOld = mkMem("mem-lww", { caption: "ghi chú cũ", updatedAt: iso(NOW - 2 * H) });
+  const mNew = mkMem("mem-lww", { caption: "ghi chú mới", updatedAt: iso(NOW) });
+  const lww1 = M.mergeStates({ ...fresh(), memories: [mOld] }, { ...fresh(), memories: [mNew] }, "A");
+  const lww2 = M.mergeStates({ ...fresh(), memories: [mNew] }, { ...fresh(), memories: [mOld] }, "A");
+  const tieA = mkMem("mem-tie", { caption: "aaa", updatedAt: iso(NOW) });
+  const tieB = mkMem("mem-tie", { caption: "bbb", updatedAt: iso(NOW) });
+  const tie1 = M.mergeStates({ ...fresh(), memories: [tieA] }, { ...fresh(), memories: [tieB] }, "A");
+  const tie2 = M.mergeStates({ ...fresh(), memories: [tieB] }, { ...fresh(), memories: [tieA] }, "A");
+  check("S9 merge LWW theo updatedAt ở cả hai chiều; hoà mốc -> hai chiều cho cùng một bản thắng",
+    lww1.memories[0].caption === "ghi chú mới" && lww2.memories[0].caption === "ghi chú mới"
+    && tie1.memories[0].caption === tie2.memories[0].caption);
+
+  // S10: thứ tự hiện thực hoá — theo ngày KỶ NIỆM tăng dần, hoà ngày theo addedAt
+  const shuffled = [
+    mkMem("s-mid", { dateKey: "2026-05-01", addedAt: iso(NOW - 2 * H) }),
+    mkMem("s-first", { dateKey: "2025-12-24" }),
+    mkMem("s-mid-early", { dateKey: "2026-05-01", addedAt: iso(NOW - 5 * H) }),
+  ];
+  const ordered = MEM.materializeMemories(shuffled, []);
+  check("S10 hiện thực hoá: sắp theo dateKey tăng dần, cùng ngày thì addedAt sớm hơn đứng trước",
+    ordered.map((m) => m.id).join(",") === "s-first,s-mid-early,s-mid");
+
+  // S11: góc nghiêng xác định theo id — cùng id cùng góc, luôn trong ±2.5°, các id khác nhau có khác nhau
+  const tilts = ["mem-1", "mem-2", "mem-3", "mem-4", "mem-5"].map((id) => MEM.memoryTiltDeg(id));
+  check("S11 góc nghiêng: cùng id -> cùng góc ở mọi lần tính; |góc| <= 2.5; không phải mọi khung đều thẳng",
+    MEM.memoryTiltDeg("mem-1") === MEM.memoryTiltDeg("mem-1")
+    && tilts.every((t) => Math.abs(t) <= 2.5) && new Set(tilts).size > 1);
+
+  // S12: normalize — bản cũ không có trường -> dây trống; mục hỏng bị rơi; mục
+  //      trong mộ bị lọc ngay khi nạp; ghi chú dài bị cắt; thứ tự được sắp lại
+  const normOld = MO.normalizeState(null);
+  const normMixed = MO.normalizeState({
+    memories: [
+      mkMem("n-ok-late", { dateKey: "2026-06-01", caption: "z".repeat(80) }),
+      mkMem("n-ok-early", { dateKey: "2026-01-01" }),
+      { id: "n-bad-path", path: "", caption: "", dateKey: "2026-01-01", bySlot: "A", addedAt: iso(NOW), updatedAt: iso(NOW) },
+      mkMem("n-bad-date", { dateKey: "2026-02-31" }),
+      mkMem("n-tombed", { dateKey: "2026-02-02" }),
+    ],
+    removedMemoryIds: ["n-tombed", "n-tombed"],
+  });
+  check("S12 normalize: bản cũ -> []; mục hỏng/path rỗng/ngày sai bị rơi; mộ lọc ngay + khử trùng mộ; caption cắt 60; đã sắp theo ngày",
+    normOld.memories.length === 0 && normOld.removedMemoryIds.length === 0
+    && normMixed.memories.map((m) => m.id).join(",") === "n-ok-early,n-ok-late"
+    && normMixed.memories[1].caption.length === 60
+    && normMixed.removedMemoryIds.length === 1);
+
+  // S13: trần khi hợp nhất — 20 + 20 ảnh rời nhau -> hiện thực hoá giữ đúng 30
+  const half1 = Array.from({ length: 20 }, (_, i) => mkMem(`cap-a-${i}`, { dateKey: `2025-0${(i % 9) + 1}-15` }));
+  const half2 = Array.from({ length: 20 }, (_, i) => mkMem(`cap-b-${i}`, { dateKey: `2026-0${(i % 9) + 1}-15` }));
+  const mergedCap = M.mergeStates({ ...fresh(), memories: half1 }, { ...fresh(), memories: half2 }, "A");
+  check("S13 merge tràn trần: union 40 ảnh -> giữ đúng 30 (phần đầu câu chuyện theo ngày)",
+    mergedCap.memories.length === 30 && mergedCap.memories.every((m) => m.id.startsWith("cap-a-") || m.dateKey <= "2026-04-15"));
 }
 
 console.log(`\n===== TỔNG: ${count - failures}/${count} PASS =====`);

@@ -1,11 +1,12 @@
 import {
-  AppState, Activity, CouplePhoto, DailyQuestsState, KeptLetter, LoveNote, PersonId, PersonStatus, PingsState, PresenceSlot, QuestProgress, TreePestEvent, WidgetPrefs, QUEST_HISTORY_CAP,
+  AppState, Activity, CouplePhoto, DailyQuestsState, KeptLetter, LoveNote, MemoryPhoto, PersonId, PersonStatus, PingsState, PresenceSlot, QuestProgress, TreePestEvent, WidgetPrefs, QUEST_HISTORY_CAP,
   AVATARS, boolOr, defaultPresenceSlot, defaultWidgetPrefs, finiteNum, isPlainObject, isValidDateKey,
-  objArray, strOr, today,
+  objArray, strArray, strOr, today,
 } from "./types";
 import { createTree, normalizeTree } from "./tree";
 import { STATUS_TEXT_MAX, isMoodId, messageById, statusMoodById } from "./content";
 import { MILESTONES, unionKeptLetters, unionMilestoneHistory } from "./features";
+import { materializeMemories, sanitizeMemory, unionRemovedMemoryIds } from "./memories";
 import { emptyDailyQuests } from "./quests";
 
 /**
@@ -50,6 +51,8 @@ export const defaultState: AppState = {
   lastLetter: null,
   keptLetters: [],
   couplePhoto: null,
+  memories: [],
+  removedMemoryIds: [],
 };
 
 const avatarOr = (v: unknown, fallback: string): string =>
@@ -165,7 +168,7 @@ function normalizeNote(raw: unknown): LoveNote | null {
   };
 }
 
-const ACTIVITY_ICONS = new Set(["water", "sunny", "heart", "bug", "sparkles", "mail", "location", "document-text", "people", "leaf"]);
+const ACTIVITY_ICONS = new Set(["water", "sunny", "heart", "bug", "sparkles", "mail", "location", "document-text", "people", "leaf", "images"]);
 function normalizeActivity(raw: unknown): Activity | null {
   if (!isPlainObject(raw) || typeof raw.text !== "string" || typeof raw.time !== "string") return null;
   return {
@@ -308,6 +311,16 @@ export function normalizeState(rawInput: unknown): AppState {
 
   /* --- Ảnh của hai đứa (đợt 3): bản cũ chưa có trường -> null (chưa đặt ảnh) --- */
   base.couplePhoto = normalizeCouplePhoto(raw.couplePhoto);
+
+  /* --- Dây kỷ niệm: bản cũ chưa có trường -> dây trống. Từng ảnh qua
+   *  sanitize (shape hỏng bị đánh rơi), mộ được union/khử trùng, rồi HIỆN
+   *  THỰC HOÁ ngay tại đây (áp mộ + sắp theo ngày kỷ niệm + trần 30) để state
+   *  trong bộ nhớ luôn là danh sách hiển thị được luôn. --- */
+  base.removedMemoryIds = unionRemovedMemoryIds([], strArray(raw.removedMemoryIds));
+  base.memories = materializeMemories(
+    objArray<unknown>(raw.memories).map(sanitizeMemory).filter((m): m is MemoryPhoto => Boolean(m)),
+    base.removedMemoryIds,
+  );
 
   /* --- Thư rơi gần nhất: messageId phải thuộc kho 36 thư --- */
   const rawLetter = isPlainObject(raw.lastLetter) ? raw.lastLetter : null;

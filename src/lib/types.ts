@@ -264,6 +264,42 @@ export interface CouplePhoto {
   bySlot: PersonId;
 }
 
+/* ================= DÂY KỶ NIỆM (kho ảnh treo trên dây) ================= */
+/**
+ * MỘT ảnh kỷ niệm treo trên "Dây kỷ niệm" (màn /memories): ảnh thật của hai
+ * đứa lưu ở Supabase Storage — TÁI DÙNG bucket riêng tư "couple-photos" với
+ * đường dẫn "{coupleId}/memories/{id}.jpg" (RLS của bucket khóa theo ĐOẠN ĐẦU
+ * đường dẫn = id cặp đôi nên thư mục con memories/ được bao phủ sẵn — không
+ * cần migration mới). State chỉ giữ ĐƯỜNG DẪN + metadata; hiển thị qua signed
+ * URL xin theo lô (lib/photo.ts).
+ * - `dateKey` là ngày MÀ KỶ NIỆM NÓI VỀ (người dùng tự đặt, mặc định hôm nay)
+ *   — dây kể câu chuyện theo thứ tự thời gian của kỷ niệm, không theo ngày tải
+ *   lên: sắp xếp theo dateKey tăng dần, hoà thì theo addedAt.
+ * - `updatedAt` là khóa last-writer-wins khi 2 máy cùng sửa một ảnh.
+ * - Quyền: CẢ HAI người đều thêm/sửa/xoá được mọi ảnh trên dây (tiền lệ ảnh
+ *   của hai đứa — đây là kho chung của "chúng mình", không phải đồ riêng).
+ * Xoá đi qua DANH SÁCH MỘ (removedMemoryIds trong AppState): id đã vào mộ thì
+ * không bản sao cũ nào hồi sinh được ảnh — xem lib/memories.ts.
+ */
+export interface MemoryPhoto {
+  id: string;
+  /** Đường dẫn object trong bucket couple-photos: "{coupleId}/memories/{id}.jpg" */
+  path: string;
+  /** Ghi chú viết tay dưới khung ảnh (đã trim, tối đa MEMORY_CAPTION_MAX ký tự; "" = chỉ hiện ngày) */
+  caption: string;
+  /** Ngày của kỷ niệm (yyyy-mm-dd, giờ địa phương) */
+  dateKey: string;
+  /** Người đã treo ảnh này lên dây */
+  bySlot: PersonId;
+  /** ISO thời điểm treo lên */
+  addedAt: string;
+  /** ISO lần sửa gần nhất — khóa LWW khi merge */
+  updatedAt: string;
+}
+/** Trần số ảnh trên dây — dây đầy thì báo thân thiện, không treo thêm được. */
+export const MEMORIES_CAP = 30;
+export const MEMORY_CAPTION_MAX = 60;
+
 /* ================= NHIỆM VỤ MỖI NGÀY (đợt "nhiệm vụ chăm cây") ================= */
 export type QuestKind = "water" | "sun" | "love" | "ping" | "note" | "care3" | "bothcare";
 
@@ -362,6 +398,16 @@ export interface AppState {
   /** ẢNH CỦA HAI ĐỨA (đợt 3): một ảnh thật duy nhất ở Storage; merge theo
    *  updatedAt (mới hơn thắng); bản lưu cũ chưa có trường -> null. */
   couplePhoto: CouplePhoto | null;
+  /** DÂY KỶ NIỆM: ảnh đã HIỆN THỰC HOÁ (đã áp mộ + sắp theo ngày kỷ niệm +
+   *  chặn MEMORIES_CAP — xem materializeMemories ở lib/memories.ts). Merge
+   *  union theo id + LWW từng ảnh; bản lưu cũ chưa có trường -> []. */
+  memories: MemoryPhoto[];
+  /** MỘ XOÁ của dây kỷ niệm: id các ảnh đã bị gỡ — hợp nhất union giữa 2 máy
+   *  và áp lên danh sách khi hiện thực hoá, nên một lần xoá thắng mọi bản sao
+   *  cũ chưa kịp biết tin. Object trong Storage KHÔNG bị xoá theo (giữ tiền lệ
+   *  ảnh hai đứa: state là nơi quyết định hiển thị; mộ làm ảnh vô hình vĩnh
+   *  viễn trên cả 2 máy). */
+  removedMemoryIds: string[];
   updatedAt?: string;
   secTs?: Record<string, SecStamp>;
 }

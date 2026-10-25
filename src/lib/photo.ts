@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { Platform } from "react-native";
 import { File } from "expo-file-system";
-import type { CouplePhoto } from "./types";
+import type { CouplePhoto, MemoryPhoto } from "./types";
 import { getSupabase } from "./supabase";
 
 /**
@@ -38,15 +38,10 @@ async function readPickedBytes(uri: string): Promise<ArrayBuffer> {
   return await new File(uri).arrayBuffer();
 }
 
-/**
- * Tải ảnh vừa chọn lên Storage tại đường dẫn cố định của cặp đôi.
- * Thành công -> trả về CouplePhoto để nơi gọi dispatch vào state (reducer chỉ
- * là bước ghi sổ SAU khi file đã thật sự lên bucket). Mọi lỗi đều THROW với
- * thông điệp tiếng Việt ấm áp — nơi gọi hiển thị inline, không crash.
- */
-export async function uploadCouplePhoto(coupleId: string, pickedUri: string, bySlot: "A" | "B"): Promise<CouplePhoto> {
-  if (!coupleId) throw new Error("Chưa có vườn chung để lưu ảnh — hãy ghép cặp trước nhé.");
-  const path = couplePhotoPath(coupleId);
+/** Đọc bytes của ảnh vừa chọn rồi tải lên một đường dẫn trong bucket —
+ *  dùng chung cho ảnh của hai đứa và từng ảnh kỷ niệm. Lỗi đều THROW với
+ *  thông điệp tiếng Việt ấm áp để nơi gọi hiển thị inline. */
+async function uploadJpegTo(path: string, pickedUri: string): Promise<void> {
   let bytes: ArrayBuffer;
   try {
     bytes = await readPickedBytes(pickedUri);
@@ -60,6 +55,18 @@ export async function uploadCouplePhoto(coupleId: string, pickedUri: string, byS
     cacheControl: "3600",
   });
   if (error) throw new Error("Tải ảnh lên chưa thành công — kiểm tra mạng rồi thử lại giúp mình nhé.");
+}
+
+/**
+ * Tải ảnh vừa chọn lên Storage tại đường dẫn cố định của cặp đôi.
+ * Thành công -> trả về CouplePhoto để nơi gọi dispatch vào state (reducer chỉ
+ * là bước ghi sổ SAU khi file đã thật sự lên bucket). Mọi lỗi đều THROW với
+ * thông điệp tiếng Việt ấm áp — nơi gọi hiển thị inline, không crash.
+ */
+export async function uploadCouplePhoto(coupleId: string, pickedUri: string, bySlot: "A" | "B"): Promise<CouplePhoto> {
+  if (!coupleId) throw new Error("Chưa có vườn chung để lưu ảnh — hãy ghép cặp trước nhé.");
+  const path = couplePhotoPath(coupleId);
+  await uploadJpegTo(path, pickedUri);
   return { path, updatedAt: new Date().toISOString(), bySlot };
 }
 
@@ -76,6 +83,97 @@ export async function fetchCouplePhotoUrl(photo: CouplePhoto | null): Promise<st
   } catch {
     return null;
   }
+}
+
+/* ================= DÂY KỶ NIỆM — ẢNH TRONG STORAGE =================
+ * TÁI DÙNG bucket "couple-photos": RLS khóa theo ĐOẠN ĐẦU đường dẫn =
+ * couple_id (storage.foldername(name))[1], nên đường dẫn con
+ * "{coupleId}/memories/{id}.jpg" được cả 4 policy (select/insert/update/
+ * delete) bao phủ sẵn — KHÔNG cần migration mới. Mỗi kỷ niệm là MỘT object
+ * riêng theo id (khác ảnh hai đứa: một đường dẫn cố định ghi đè). */
+
+/** Đường dẫn object của một ảnh kỷ niệm trong bucket. */
+export function memoryPhotoPath(coupleId: string, memoryId: string): string {
+  return `${coupleId}/memories/${memoryId}.jpg`;
+}
+
+/**
+ * Tải một ảnh kỷ niệm lên Storage. Thành công -> trả về ĐƯỜNG DẪN để nơi gọi
+ * dựng MemoryPhoto và dispatch MEMORY_ADD (reducer chỉ ghi sổ sau khi file đã
+ * thật sự lên bucket). Lỗi THROW thông điệp ấm áp như uploadCouplePhoto.
+ */
+export async function uploadMemoryPhoto(coupleId: string, memoryId: string, pickedUri: string): Promise<string> {
+  if (!coupleId) throw new Error("Chưa có vườn chung để lưu ảnh — hãy ghép cặp trước nhé.");
+  const path = memoryPhotoPath(coupleId, memoryId);
+  await uploadJpegTo(path, pickedUri);
+  return path;
+}
+
+/** Cache signed URL theo "{id}@{updatedAt}" ở tầng module: nhiều màn/nhiều lần
+ *  render dùng chung, chỉ xin lại khi ảnh đó thật sự đổi. null = đã xin mà lỗi
+ *  (UI hiện khung chờ lặng, không xin lại liên tục trong cùng phiên). */
+const memoryUrlCache = new Map<string, string | null>();
+
+/**
+ * Xin signed URL cho CẢ DÂY trong MỘT lượt gọi (createSignedUrls theo lô —
+ * 30 ảnh cũng chỉ 1 request). Trả map id -> url (đã gắn khóa phá cache
+ * v=updatedAt); ảnh nào xin lỗi -> null để UI hiện khung lặng, không crash.
+ */
+export async function fetchMemoryPhotoUrls(memories: MemoryPhoto[]): Promise<Record<string, string | null>> {
+  const out: Record<string, string | null> = {};
+  const missing = memories.filter((m) => !memoryUrlCache.has(`${m.id}@${m.updatedAt}`));
+  for (const m of memories) {
+    const hit = memoryUrlCache.get(`${m.id}@${m.updatedAt}`);
+    if (hit !== undefined) out[m.id] = hit;
+  }
+  if (missing.length === 0) return out;
+  try {
+    const sb = getSupabase();
+    const { data, error } = await sb.storage
+      .from(COUPLE_PHOTO_BUCKET)
+      .createSignedUrls(missing.map((m) => m.path), COUPLE_PHOTO_URL_TTL_SEC);
+    if (error || !data) throw new Error("signed urls failed");
+    const byPath = new Map(data.map((d) => [d.path, d.error ? null : d.signedUrl]));
+    for (const m of missing) {
+      const raw = byPath.get(m.path) ?? null;
+      const url = raw ? `${raw}${raw.includes("?") ? "&" : "?"}v=${encodeURIComponent(m.updatedAt)}` : null;
+      memoryUrlCache.set(`${m.id}@${m.updatedAt}`, url);
+      out[m.id] = url;
+    }
+  } catch {
+    for (const m of missing) {
+      memoryUrlCache.set(`${m.id}@${m.updatedAt}`, null);
+      out[m.id] = null;
+    }
+  }
+  return out;
+}
+
+/**
+ * Hook cho màn Dây kỷ niệm: theo dõi danh sách ảnh (id + mốc sửa), xin URL cho
+ * những ảnh chưa có trong cache. Trả map id -> url | null; ảnh chưa xin xong
+ * thì CHƯA CÓ khóa trong map (UI phân biệt "đang tải" với "xin lỗi" bằng
+ * undefined vs null).
+ */
+export function useMemoryPhotoUrls(memories: MemoryPhoto[]): Record<string, string | null> {
+  const [fetched, setFetched] = useState<Record<string, string | null>>({});
+  // Chữ ký của dây: chỉ id + mốc sửa mới ảnh hưởng URL — caption/ngày đổi thì
+  // không cần xin lại, nên effect chỉ chạy lại khi chữ ký này đổi.
+  const sig = memories.map((m) => `${m.id}@${m.updatedAt}`).join("|");
+  useEffect(() => {
+    if (memories.length === 0) return;
+    let alive = true;
+    fetchMemoryPhotoUrls(memories).then((map) => {
+      if (alive) setFetched((prev) => ({ ...prev, ...map }));
+    });
+    return () => { alive = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- memories được đại diện bằng chữ ký sig ở trên
+  }, [sig]);
+  // Chỉ trả URL của những ảnh ĐANG trên dây (ảnh bị gỡ thì URL của nó rơi ra
+  // khỏi map dù cache phiên vẫn còn) — lọc ở tầng render, không setState vòng.
+  const urls: Record<string, string | null> = {};
+  for (const m of memories) if (fetched[m.id] !== undefined) urls[m.id] = fetched[m.id];
+  return urls;
 }
 
 /**

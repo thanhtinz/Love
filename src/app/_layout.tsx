@@ -25,7 +25,8 @@ SplashScreen.preventAutoHideAsync().catch(() => {});
  * Bản rebuild 5 lõi — bản đồ route TOÀN APP:
  * index (cổng) · auth · pair · (tabs)[Nhà index / Cây tree / (+) quick / Note notes /
  * Hai đứa couple] · location (định vị tạm thời) · account (tài khoản) ·
- * letters (Hộp thư đã giữ — kỷ vật thư tình, đợt "chất app" 2).
+ * letters (Hộp thư đã giữ — kỷ vật thư tình, đợt "chất app" 2) ·
+ * memories (Dây kỷ niệm — kho ảnh treo trên dây thừng).
  */
 function Navigator() {
   return (
@@ -37,6 +38,7 @@ function Navigator() {
       <Stack.Screen name="location" />
       <Stack.Screen name="account" />
       <Stack.Screen name="letters" />
+      <Stack.Screen name="memories" />
     </Stack>
   );
 }

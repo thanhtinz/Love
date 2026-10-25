@@ -1,11 +1,12 @@
 import {
-  AppState, CouplePhoto, LetterMoment, LoveNote, NOTE_MIN_INTERVAL_MS, NOTE_TEXT_MAX, NOTES_CAP,
+  AppState, CouplePhoto, LetterMoment, LoveNote, MEMORIES_CAP, MemoryPhoto, NOTE_MIN_INTERVAL_MS, NOTE_TEXT_MAX, NOTES_CAP,
   PersonId, PersonStatus, PresenceSlot, TreePestEvent, WidgetPrefs, formatDateVN, isValidDateKey,
   parseDateKey, today, uid,
 } from "./types";
 import { defaultState, normalizeState } from "./model";
 import { applyCare, applyVitalityBonus, careStatus, isPestActive, pestAdjustedTree } from "./tree";
 import { addKeptLetter, keptLetterFromMoment, recordMilestone } from "./features";
+import { materializeMemories, sanitizeMemory, sanitizeMemoryCaption } from "./memories";
 import { advanceDailyQuests, emptyDailyQuests, unionQuestHistory, type QuestEvent } from "./quests";
 import { STATUS_TEXT_MAX, statusMoodById } from "./content";
 import { mergeStates, stampSections } from "./merge";
@@ -38,7 +39,10 @@ export type Action =
   | { type: "PRESENCE_SNAPSHOT"; user: PersonId; lat: number | null; lng: number | null; acc: number | null; battery: number | null; at: string }
   | { type: "STATUS_SET"; user: PersonId; status: PersonStatus | null }
   | { type: "WIDGET_PREFS_SET"; user: PersonId; prefs: Partial<WidgetPrefs> }
-  | { type: "COUPLE_PHOTO_SET"; photo: CouplePhoto; user: PersonId; actor: string };
+  | { type: "COUPLE_PHOTO_SET"; photo: CouplePhoto; user: PersonId; actor: string }
+  | { type: "MEMORY_ADD"; memory: MemoryPhoto; user: PersonId; actor: string }
+  | { type: "MEMORY_UPDATE"; id: string; caption: string; dateKey: string; user: PersonId }
+  | { type: "MEMORY_REMOVE"; id: string; user: PersonId; actor: string };
 
 function pushAct(s: AppState, actor: string, text: string, icon: string, slot?: PersonId): AppState["activities"] {
   return [{ id: uid(), actor, text, icon, time: nowIso(), slot }, ...s.activities].slice(0, 40);
@@ -326,6 +330,59 @@ export function gardenReducer(state: AppState, action: Action): AppState {
         ...state,
         couplePhoto: { path: p.path, updatedAt: p.updatedAt, bySlot: p.bySlot },
         activities: pushAct(state, action.actor, "vừa đặt ảnh của hai đứa", "heart", action.user),
+      };
+    }
+
+    /* ---------- DÂY KỶ NIỆM (kho ảnh treo trên dây) ---------- */
+    case "MEMORY_ADD": {
+      // Treo ảnh lên dây — UI chỉ dispatch SAU khi file đã lên Storage xong
+      // (như COUPLE_PHOTO_SET). Quyền: CẢ HAI người đều treo được (kho chung
+      // của "chúng mình", theo tiền lệ ảnh hai đứa) — nhưng bySlot phải đúng
+      // người đang thao tác. Khóa cứng tại reducer: shape qua sanitize, id đã
+      // có hoặc đã nằm trong MỘ thì không treo lại được, dây đủ MEMORIES_CAP
+      // thì từ chối (UI báo thân thiện từ trước khi chọn ảnh).
+      const clean = sanitizeMemory(action.memory);
+      if (!clean || clean.bySlot !== action.user) return state;
+      if (state.removedMemoryIds.includes(clean.id)) return state;
+      if (state.memories.some((m) => m.id === clean.id)) return state;
+      if (state.memories.length >= MEMORIES_CAP) return state;
+      return {
+        ...state,
+        memories: materializeMemories([...state.memories, clean], state.removedMemoryIds),
+        activities: pushAct(state, action.actor, "vừa treo một ảnh kỷ niệm lên dây", "images", action.user),
+      };
+    }
+    case "MEMORY_UPDATE": {
+      // Sửa ghi chú / ngày của kỷ niệm — CẢ HAI người đều sửa được (kho
+      // chung). Ngày không tồn tại -> từ chối cả hành động; ghi chú qua
+      // sanitize (trim + trần 60). Không đổi gì -> no-op (khỏi phát đồng bộ
+      // thừa). updatedAt = mốc sửa này là khóa LWW khi merge 2 máy.
+      if (!isValidDateKey(action.dateKey)) return state;
+      const prev = state.memories.find((m) => m.id === action.id);
+      if (!prev) return state;
+      const caption = sanitizeMemoryCaption(action.caption);
+      if (prev.caption === caption && prev.dateKey === action.dateKey) return state;
+      const next: MemoryPhoto = { ...prev, caption, dateKey: action.dateKey, updatedAt: nowIso() };
+      return {
+        ...state,
+        memories: materializeMemories(state.memories.map((m) => (m.id === action.id ? next : m)), state.removedMemoryIds),
+      };
+    }
+    case "MEMORY_REMOVE": {
+      // Gỡ ảnh khỏi dây — CẢ HAI người đều gỡ được. Xoá = ghi id vào MỘ rồi
+      // hiện thực hoá lại danh sách: mộ đi cùng state qua mọi lần merge nên
+      // bản sao cũ ở máy kia không hồi sinh được ảnh. Object trong Storage
+      // không bị xoá (vô hình vĩnh viễn nhờ mộ là đủ — xem types.ts).
+      const prev = state.memories.find((m) => m.id === action.id);
+      if (!prev) return state;
+      const removedMemoryIds = state.removedMemoryIds.includes(action.id)
+        ? state.removedMemoryIds
+        : [...state.removedMemoryIds, action.id];
+      return {
+        ...state,
+        removedMemoryIds,
+        memories: materializeMemories(state.memories, removedMemoryIds),
+        activities: pushAct(state, action.actor, "vừa gỡ một ảnh kỷ niệm khỏi dây", "images", action.user),
       };
     }
 
