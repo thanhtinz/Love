@@ -1,6 +1,5 @@
 import { Image } from "expo-image";
 import { View } from "react-native";
-import { COLOR } from "./theme";
 import heroSrc from "../../assets/art/couple-hero.webp";
 import letterSrc from "../../assets/art/couple-letter.webp";
 import mascotSrc from "../../assets/art/mascot-mam.webp";
@@ -92,34 +91,53 @@ const LOVE_TREE_ART: number[] = [
 ];
 
 /**
- * Khoảng trong suốt dưới ĐÁY VẼ THẬT của từng giai đoạn (đo từ hộp alpha của
- * file 512×512, đơn vị px nguồn): tranh là ảnh vuông nhưng phần vẽ không chạm
- * đáy ảnh — giai đoạn 2 chừa tới 80px. Nếu cứ neo theo hộp ảnh, đáy chậu dừng
- * lưng chừng trên mặt đất và cây trông LƠ LỬNG. Mọi khung vẽ cây bên dưới đều
- * dịch tranh xuống theo đúng khoảng chừa này để đáy chậu chạm một đường đất
- * chung (groundLift px trên đáy khung).
+ * NỀN CẢNH cây — gradient dọc ấm 12 dải màu liên tiếp (kem ấm ở trên, qua
+ * vàng nắng, tới xô thơm ở đáy): các dải kề nhau chênh màu rất nhẹ nên mắt
+ * đọc thành một chuyển sắc mềm, KHÔNG hình khối, KHÔNG ellipse, KHÔNG cạnh
+ * cứng. Tranh cây đời mới đã có bóng tiếp xúc vẽ sẵn trong tranh (xem
+ * PlantScene) nên nền chỉ cần ấm và lặng để tranh nổi lên.
  */
-const LOVE_TREE_BOTTOM_MARGIN = [56, 80, 24, 8, 21, 21, 12];
-const ART_SOURCE_SIZE = 512;
+const SCENE_GRADIENT = [
+  "#FFF6E8", "#FEF2DB", "#FCECCC", "#FAE7C0", "#F6E2BA", "#F0E0B4",
+  "#E8E0B0", "#DEE0AC", "#D2DEA8", "#C6DAA2", "#BCD49C", "#B4CE96",
+] as const;
 
-/** Độ dịch dọc (px) để đáy vẽ thật của giai đoạn nằm đúng đường đất. */
-function treeBaseShiftY(stageIndex: number, renderedSize: number, groundLift: number): number {
-  const margin = LOVE_TREE_BOTTOM_MARGIN[stageIndex] ?? 0;
-  return Math.round((margin / ART_SOURCE_SIZE) * renderedSize) - groundLift;
+function hexLerp(a: string, b: string, t: number): string {
+  const pa = [1, 3, 5].map((i) => parseInt(a.slice(i, i + 2), 16));
+  const pb = [1, 3, 5].map((i) => parseInt(b.slice(i, i + 2), 16));
+  const pc = pa.map((v, i) => Math.round(v + (pb[i] - v) * t));
+  return `rgb(${pc[0]},${pc[1]},${pc[2]})`;
+}
+
+const SCENE_BANDS = 64;
+
+function SceneBackdrop({ height }: { height: number }) {
+  const band = height / SCENE_BANDS;
+  const stops = SCENE_GRADIENT.length - 1;
+  return (
+    <>
+      {Array.from({ length: SCENE_BANDS }, (_, i) => {
+        const pos = (i / (SCENE_BANDS - 1)) * stops;
+        const lo = Math.min(Math.floor(pos), stops - 1);
+        const color = hexLerp(SCENE_GRADIENT[lo], SCENE_GRADIENT[lo + 1], pos - lo);
+        return (
+          <View
+            key={i}
+            style={{ position: "absolute", left: 0, right: 0, top: Math.floor(i * band), height: Math.ceil(band) + 1, backgroundColor: color }}
+          />
+        );
+      })}
+    </>
+  );
 }
 
 /**
- * BỆ CẢNH cây — "tranh là cảnh" của hệ Vườn giấy ấm. Neo đất gồm 4 lớp vẽ SAU
- * lưng tranh (tranh luôn ở trên cùng):
- * 1) Bệ cỏ: ellipse successSoft rộng 88%, cao ~13% cảnh, chìm 12px dưới đáy
- *    khung (khung cảnh cắt phần thừa) — mặt đất chung của cả cảnh.
- * 2) Bệ đất: ellipse COLOR.soil rộng 74%, cao ~9.5% cảnh, chìm 8px — lớp đất
- *    ấm ngay dưới chậu.
- * 3+4) Bóng tiếp xúc hai lớp mực ấm rgba(51,39,46): lớp ngoài rộng 72% bề
- *    ngang tranh, cao 18px, opacity qua màu 0.10; lớp trong 58% × 12px,
- *    0.16 — chồng nhau giả lập bóng mềm, ôm đúng đường đất nơi đáy chậu chạm.
- * Tranh được dịch xuống bằng treeBaseShiftY để ĐÁY CHẬU chạm đường đất (cao
- * hơn đáy khung 10px) và chìm nhẹ vào bệ đất thay vì lơ lửng phía trên.
+ * BỆ CẢNH cây — "tranh là cảnh" của hệ Vườn giấy ấm. Từ vòng vẽ lại tranh
+ * 2026-10-24, mỗi giai đoạn đã mang SẴN trong tranh: chậu chạm đáy khung
+ * (khoảng trong suốt dưới chậu ≤4px trên canvas 512) và một bóng tiếp xúc vẽ
+ * tay mềm ôm chân chậu. Vì vậy PlantScene KHÔNG còn vẽ bệ/bóng bằng CSS
+ * (bản ellipse cũ trông như ván kệ và bị user bác) — chỉ neo tranh xuống đáy
+ * khung trên nền gradient ấm, bóng trong tranh tự làm phần neo đất.
  * Trạng thái yếu/héo thể hiện bằng opacity + lớp phủ xám (héo: 0.55 + phủ
  * xám; yếu: 0.8) — không vẽ đè lên tranh.
  */
@@ -133,16 +151,12 @@ export function PlantScene({ stageIndex, status, height, imgHeight }: {
   const src = LOVE_TREE_ART[idx];
   const wilted = status === "wilted";
   const weak = status === "need";
-  const groundLift = 10;
   return (
-    <View style={{ height, alignItems: "center", justifyContent: "flex-end", position: "relative" }}>
-      <View style={{ position: "absolute", bottom: -12, alignSelf: "center", width: "88%", height: Math.round(height * 0.13), backgroundColor: COLOR.successSoft, borderRadius: 999 }} />
-      <View style={{ position: "absolute", bottom: -8, alignSelf: "center", width: "74%", height: Math.round(height * 0.095), backgroundColor: COLOR.soil, borderRadius: 999 }} />
-      <View style={{ position: "absolute", bottom: groundLift - 7, alignSelf: "center", width: Math.round(imgHeight * 0.72), height: 18, backgroundColor: "rgba(51,39,46,0.10)", borderRadius: 999 }} />
-      <View style={{ position: "absolute", bottom: groundLift - 5, alignSelf: "center", width: Math.round(imgHeight * 0.58), height: 12, backgroundColor: "rgba(51,39,46,0.16)", borderRadius: 999 }} />
+    <View style={{ height, width: "100%", alignItems: "center", justifyContent: "flex-end", position: "relative", overflow: "hidden" }}>
+      <SceneBackdrop height={height} />
       <Image
         source={src}
-        style={{ height: imgHeight, width: imgHeight, opacity: wilted ? 0.55 : weak ? 0.8 : 1, transform: [{ translateY: treeBaseShiftY(idx, imgHeight, groundLift) }] }}
+        style={{ height: imgHeight, width: imgHeight, opacity: wilted ? 0.55 : weak ? 0.8 : 1 }}
         contentFit="contain"
         accessibilityLabel="Cây tình yêu"
       />
@@ -152,21 +166,19 @@ export function PlantScene({ stageIndex, status, height, imgHeight }: {
 }
 
 /**
- * Cây vẽ thật dạng ô vuông (xem trước widget trong Tài khoản) — neo đất thu
- * nhỏ cùng luật với PlantScene: bệ đất + bóng tiếp xúc ở đáy ô, tranh dịch
- * xuống theo khoảng chừa đáy của giai đoạn để đáy chậu chạm bệ.
+ * Cây vẽ thật dạng ô vuông (xem trước widget trong Tài khoản) — cùng luật với
+ * PlantScene thu nhỏ: nền gradient ấm, tranh neo đáy, bóng tiếp xúc nằm ngay
+ * trong tranh (không bệ/bóng CSS).
  */
 export function PlantImage({ stageIndex, size, status }: { stageIndex: number; size: number; status?: string }) {
   const idx = Math.max(0, Math.min(stageIndex, LOVE_TREE_ART.length - 1));
   const src = LOVE_TREE_ART[idx];
   const wilted = status === "wilted";
   const weak = status === "need";
-  const groundLift = Math.max(3, Math.round(size * 0.05));
   return (
     <View style={{ width: size, height: size, overflow: "hidden", borderRadius: 12, position: "relative" }}>
-      <View style={{ position: "absolute", bottom: -3, alignSelf: "center", width: "82%", height: Math.round(size * 0.2), backgroundColor: COLOR.soil, borderRadius: 999 }} />
-      <View style={{ position: "absolute", bottom: groundLift - 2, alignSelf: "center", width: Math.round(size * 0.6), height: Math.max(4, Math.round(size * 0.09)), backgroundColor: "rgba(51,39,46,0.18)", borderRadius: 999 }} />
-      <Image source={src} style={{ width: "100%", height: "100%", opacity: wilted ? 0.55 : weak ? 0.8 : 1, transform: [{ translateY: treeBaseShiftY(idx, size, groundLift) }] }} contentFit="contain" accessibilityLabel="Cây tình yêu" />
+      <SceneBackdrop height={size} />
+      <Image source={src} style={{ width: "100%", height: "100%", opacity: wilted ? 0.55 : weak ? 0.8 : 1 }} contentFit="contain" accessibilityLabel="Cây tình yêu" />
       {wilted && <View style={{ position: "absolute", top: 0, left: 0, right: 0, bottom: 0, backgroundColor: "rgba(105,105,105,0.20)" }} />}
     </View>
   );
