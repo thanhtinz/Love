@@ -7,6 +7,7 @@ import { notifyPartnerOfHeartbeat } from "../lib/push";
 import { heartbeatPulse } from "../lib/feedback";
 import { today } from "../lib/types";
 import { statusMoodById } from "../lib/content";
+import { visibleStatus } from "../lib/features";
 import { COLOR, FONT, RADIUS, ROLE, SPACE, TILE } from "./theme";
 import { HeartBurst } from "./HeartBurst";
 import { Medallion } from "./ui";
@@ -67,7 +68,8 @@ export function QuickActions({ visible, onClose, onSetStatus }: { visible: boole
     ...(onSetStatus ? [{
       icon: "happy-outline", title: "Đặt trạng thái",
       desc: (() => {
-        const cur = state.status[me];
+        // Chỉ khoe trạng thái CÒN HẠN (<= 24h); hết hạn = như chưa đặt.
+        const cur = visibleStatus(state.status[me]);
         const mood = cur ? statusMoodById(cur.mood) : undefined;
         return mood ? `Đang là: ${mood.label}${cur!.text ? ` — “${cur!.text}”` : ""}` : "Chia sẻ cảm xúc hiện tại của bạn cho người ấy";
       })(),

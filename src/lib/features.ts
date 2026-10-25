@@ -281,26 +281,32 @@ export function freshnessText(locAt: string, nowMs: number = Date.now()): string
   return `Vị trí gần nhất · ${timeAgoText(locAt, nowMs)}`;
 }
 
-/* ================= TRẠNG THÁI CỦA NHAU — ĐỘ TƯƠI ================= */
-/** Trạng thái tự đặt được coi là CŨ sau ~24 giờ */
-export const STATUS_STALE_MS = 24 * 3600000;
+/* ================= TRẠNG THÁI CỦA NHAU — HẠN HIỆN 24 GIỜ ================= */
+/** Trạng thái chỉ HIỆN tối đa 24 giờ kể từ lúc đặt; hết 24 giờ là HẾT HẠN
+ *  và phải đặt lại cái mới (luật chủ app chốt 2026-10-25). */
+export const STATUS_TTL_MS = 24 * 3600000;
 
 /**
- * Trạng thái có CŨ không (> 24h từ lúc đặt). Lựa chọn hiển thị: trạng thái cũ
- * VẪN HIỆN nhưng mờ đi kèm nhãn độ tươi — KHÔNG tự xoá (tự xoá sẽ âm thầm
- * làm mất điều người ta đã đặt; mờ + nhãn là trung thực mà vẫn dịu dàng).
+ * Trạng thái đã HẾT HẠN chưa (> 24h từ lúc đặt). Chưa đặt (null) thì không
+ * có gì để hết hạn -> false. Mốc updatedAt hỏng/không đọc được -> coi như
+ * hết hạn (thà ẩn còn hơn hiện một trạng thái không rõ tuổi).
  */
-export function statusStale(status: { updatedAt: string } | null | undefined, nowMs: number = Date.now()): boolean {
-  if (!status || !status.updatedAt) return false;
+export function statusExpired(status: { updatedAt: string } | null | undefined, nowMs: number = Date.now()): boolean {
+  if (!status) return false;
   const t = new Date(status.updatedAt).getTime();
-  if (!isFinite(t)) return false;
-  return nowMs - t > STATUS_STALE_MS;
+  if (!isFinite(t)) return true;
+  return nowMs - t > STATUS_TTL_MS;
 }
 
-/** Nhãn độ tươi cho trạng thái CŨ: "từ hôm qua" (24–48h) / "từ N ngày trước". */
-export function statusFreshnessLabel(status: { updatedAt: string } | null | undefined, nowMs: number = Date.now()): string {
-  if (!statusStale(status, nowMs)) return "";
-  const age = nowMs - new Date(status!.updatedAt).getTime();
-  if (age < 48 * 3600000) return "từ hôm qua";
-  return `từ ${timeAgoText(status!.updatedAt, nowMs)}`;
+/**
+ * Trạng thái ĐƯỢC PHÉP HIỆN tại thời điểm nowMs: có đặt VÀ chưa hết hạn thì
+ * trả nguyên trạng thái; còn lại trả null — hết hạn = hiện ĐÚNG NHƯ CHƯA ĐẶT
+ * (không mờ, không nhãn "từ hôm qua"). Hạn được tính thuần từ updatedAt ngay
+ * lúc hiển thị, KHÔNG xoá/sửa state đã lưu, nên 2 máy luôn nhất trí mà không
+ * tốn thêm lượt đồng bộ nào; đặt trạng thái mới (updatedAt mới) là đồng hồ
+ * 24 giờ chạy lại từ đầu.
+ */
+export function visibleStatus<T extends { updatedAt: string }>(status: T | null | undefined, nowMs: number = Date.now()): T | null {
+  if (!status) return null;
+  return statusExpired(status, nowMs) ? null : status;
 }

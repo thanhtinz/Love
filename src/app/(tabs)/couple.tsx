@@ -8,7 +8,7 @@ import { useAuth } from "../../lib/auth";
 import { uploadCouplePhoto, useCouplePhotoUrl } from "../../lib/photo";
 import { success } from "../../lib/feedback";
 import { formatDateVN, isValidDateKey } from "../../lib/types";
-import { dayCount, freshnessText, milestoneDateKey, nextMilestone, statusFreshnessLabel, statusStale, timeAgoText } from "../../lib/features";
+import { dayCount, freshnessText, milestoneDateKey, nextMilestone, timeAgoText, visibleStatus } from "../../lib/features";
 import { statusMoodById } from "../../lib/content";
 import { StatusEditor } from "../../components/StatusEditor";
 import Avatar from "../../components/Avatar";
@@ -135,22 +135,23 @@ export default function CoupleScreen() {
             </View>
           </View>
           {/* Trạng thái của nhau (hiện diện sống): dưới tên mỗi người là trạng
-              thái CỦA CHÍNH người đó — của mình thì có nút đặt/sửa ngay tại đây. */}
+              thái CỦA CHÍNH người đó — của mình thì có nút đặt/sửa ngay tại
+              đây. Trạng thái chỉ hiện 24 giờ; hết hạn hiện đúng như chưa đặt
+              (kèm nút "Đặt trạng thái" để đặt lại cái mới). */}
           <View style={{ marginTop: 14, gap: 8 }}>
             {[self, partner].map((person) => {
-              const st = state.status[person.slot];
+              const st = visibleStatus(state.status[person.slot]);
               const mood = st ? statusMoodById(st.mood) : undefined;
-              const stale = st ? statusStale(st) : false;
               const mine = person.slot === me;
               return (
                 <View key={person.slot} style={{ flexDirection: "row", alignItems: "center", gap: 9 }}>
                   <Avatar id={person.avatar} size={24} ring="#fff" />
                   <Text style={{ fontFamily: FONT.bold, fontSize: 13, color: "#fff" }}>{person.name}</Text>
                   {st && mood ? (
-                    <View style={{ flex: 1, flexDirection: "row", alignItems: "center", gap: 5, opacity: stale ? 0.6 : 1 }}>
+                    <View style={{ flex: 1, flexDirection: "row", alignItems: "center", gap: 5 }}>
                       <Ionicons name={mood.icon as never} size={13} color="#FFE3EC" />
                       <Text numberOfLines={1} style={{ flex: 1, fontFamily: FONT.medium, fontSize: 12.5, color: COLOR.onNavySoft }}>
-                        {mood.label}{st.text ? ` — “${st.text}”` : ""}{stale ? ` · ${statusFreshnessLabel(st)}` : ""}
+                        {mood.label}{st.text ? ` — “${st.text}”` : ""}
                       </Text>
                     </View>
                   ) : (

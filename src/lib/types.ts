@@ -332,8 +332,10 @@ export const QUEST_HISTORY_CAP = 120;
  * Trạng thái tự đặt của MỘT người (per-slot, CHỈ chính chủ ghi — reducer khóa):
  * một mood trong bộ preset (lib/content STATUS_MOODS) + một dòng tự viết ngắn
  * tùy chọn (<= STATUS_TEXT_MAX ký tự). Đồng bộ trực tiếp qua kênh sẵn có nên
- * người ấy thấy gần như ngay. Trạng thái quá ~24 giờ vẫn hiện nhưng MỜ đi kèm
- * nhãn độ tươi ("từ hôm qua") — không tự xoá (xem statusStale ở features.ts).
+ * người ấy thấy gần như ngay. Trạng thái chỉ HIỆN tối đa 24 giờ kể từ lúc
+ * đặt; quá hạn là hết hạn và không hiện ở đâu nữa — phải đặt lại cái mới
+ * (xem statusExpired/visibleStatus ở features.ts; state đã lưu không bị xoá,
+ * hạn chỉ tính lúc hiển thị).
  */
 export interface PersonStatus {
   /** id mood trong STATUS_MOODS */

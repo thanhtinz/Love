@@ -3,6 +3,7 @@ import { Modal, Pressable, Text, TextInput, TouchableOpacity, View } from "react
 import { Ionicons } from "@expo/vector-icons";
 import { useLove } from "../lib/store";
 import { STATUS_MOODS, STATUS_TEXT_MAX } from "../lib/content";
+import { statusExpired, visibleStatus } from "../lib/features";
 import { success } from "../lib/feedback";
 import { COLOR, FONT, RADIUS, SHADOW_FLOAT } from "./theme";
 
@@ -11,21 +12,26 @@ import { COLOR, FONT, RADIUS, SHADOW_FLOAT } from "./theme";
  * chung ngôn ngữ với QuickActions: chọn 1 mood trong bộ preset + một dòng
  * ngắn tùy chọn (<= 40 ký tự) + Lưu / Xoá. Chỉ ghi vào ĐÚNG slot của người
  * đang đặt (reducer STATUS_SET khóa cứng) — người ấy sẽ thấy trạng thái này
- * ở hero Trang Nhà và thẻ Hai đứa gần như ngay khi đồng bộ tới.
+ * ở hero Trang Nhà và thẻ Hai đứa gần như ngay khi đồng bộ tới. Trạng thái
+ * chỉ hiện 24 giờ: bản cũ đã hết hạn thì form mở trống như chưa đặt.
  */
 export function StatusEditor({ visible, onClose }: { visible: boolean; onClose: () => void }) {
   const { state, dispatch } = useLove();
   const me = state.currentUser;
   const current = state.status[me];
+  // Trạng thái chỉ hiện 24 giờ: bản đã hết hạn được coi như CHƯA ĐẶT — form
+  // mở trống để đặt cái mới (lưu mới = updatedAt mới = đồng hồ 24h chạy lại).
+  const expiredCurrent = current ? statusExpired(current) : false;
+  const shownCurrent = visibleStatus(current);
   const [mood, setMood] = useState("");
   const [text, setText] = useState("");
 
-  // Mở sheet là nạp lại bản trạng thái hiện tại của mình vào form.
+  // Mở sheet là nạp lại bản trạng thái CÒN HẠN của mình vào form.
   useEffect(() => {
     if (!visible) return;
     // eslint-disable-next-line react-hooks/set-state-in-effect -- nạp form từ state khi sheet mở, không phải vòng lặp render
-    setMood(current?.mood ?? "");
-    setText(current?.text ?? "");
+    setMood(shownCurrent?.mood ?? "");
+    setText(shownCurrent?.text ?? "");
     // eslint-disable-next-line react-hooks/exhaustive-deps -- chỉ nạp khi mở sheet
   }, [visible]);
 
@@ -56,8 +62,13 @@ export function StatusEditor({ visible, onClose }: { visible: boolean; onClose: 
           <View style={{ alignSelf: "center", width: 40, height: 4, borderRadius: 2, backgroundColor: COLOR.border, marginBottom: 14 }} />
           <Text style={{ fontFamily: FONT.extrabold, fontSize: 17, color: COLOR.text }}>Trạng thái của bạn</Text>
           <Text style={{ fontFamily: FONT.regular, fontSize: 13, color: COLOR.textSoft, marginTop: 3 }}>
-            Người ấy sẽ thấy trạng thái này ngay trên Trang Nhà.
+            Người ấy sẽ thấy trạng thái này ngay trên Trang Nhà — và nó chỉ hiện trong 24 giờ thôi nhé.
           </Text>
+          {expiredCurrent ? (
+            <Text style={{ fontFamily: FONT.regular, fontSize: 12.5, color: COLOR.textFaint, marginTop: 5 }}>
+              Trạng thái cũ đã hết hạn (chỉ hiện 24 giờ) — đặt một cái mới nhé.
+            </Text>
+          ) : null}
 
           <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8, marginTop: 16 }}>
             {STATUS_MOODS.map((m) => {
@@ -101,7 +112,7 @@ export function StatusEditor({ visible, onClose }: { visible: boolean; onClose: 
           </View>
 
           <View style={{ flexDirection: "row", gap: 10, marginTop: 6 }}>
-            {current ? (
+            {shownCurrent ? (
               <TouchableOpacity
                 onPress={clear}
                 accessibilityRole="button"

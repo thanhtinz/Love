@@ -934,7 +934,7 @@ console.log("\n--- P) Nhiệm vụ mỗi ngày: bộ xác định + tiến độ
 }
 
 /* ================= R) TRẠNG THÁI CỦA NHAU (hiện diện sống) ================= */
-console.log("\n--- R) Trạng thái của nhau: ghi theo slot + merge chủ slot + độ tươi ---");
+console.log("\n--- R) Trạng thái của nhau: ghi theo slot + merge chủ slot + hạn hiện 24h ---");
 {
   let st = fresh();
   st = R.gardenReducer(st, { type: "STATUS_SET", user: "A", status: { mood: "nho", text: "  chờ em về ăn cơm  ", updatedAt: iso(NOW) } });
@@ -958,13 +958,23 @@ console.log("\n--- R) Trạng thái của nhau: ghi theo slot + merge chủ slot
     && MO.normalizeState({ status: { A: { mood: "rác", text: "", updatedAt: iso(NOW) } } }).status.A === null
     && MO.normalizeState({ status: { B: { mood: "doi", text: "ăn cơm chưa", updatedAt: iso(NOW) } } }).status.B?.mood === "doi");
 
-  check("R7 độ tươi: <24h chưa cũ; 25h là cũ + nhãn 'từ hôm qua'; 3 ngày -> 'từ 3 ngày trước'; null -> không cũ, không nhãn",
-    F.statusStale({ updatedAt: iso(NOW - 2 * H) }, NOW) === false
-    && F.statusStale({ updatedAt: iso(NOW - 25 * H) }, NOW) === true
-    && F.statusFreshnessLabel({ updatedAt: iso(NOW - 30 * H) }, NOW) === "từ hôm qua"
-    && F.statusFreshnessLabel({ updatedAt: iso(NOW - 3 * 24 * H) }, NOW) === "từ 3 ngày trước"
-    && F.statusStale(null, NOW) === false && F.statusFreshnessLabel(null, NOW) === "");
-  check("R8 bộ preset trạng thái: đúng 8 mood, nhãn tiếng Việt ấm, mọi mood có icon",
+  const stFresh = { mood: "vui", text: "ăn cơm chưa", updatedAt: iso(NOW - (24 * H - MIN)) };
+  check("R7 hạn hiện 24h: đặt cách đây 23h59m -> CHƯA hết hạn, visibleStatus trả nguyên trạng thái (mọi chỗ hiện dùng đúng helper này, editor cũng nạp từ nó)",
+    F.statusExpired(stFresh, NOW) === false && F.visibleStatus(stFresh, NOW) === stFresh);
+  const stJustExpired = { ...stFresh, updatedAt: iso(NOW - 24 * H - 1000) };
+  check("R8 hết hạn: 24h + 1 giây -> statusExpired = true và visibleStatus = null (hiện đúng như chưa đặt: không mờ, không nhãn); chưa đặt -> không hết hạn + null; mốc updatedAt hỏng -> coi như hết hạn",
+    F.statusExpired(stJustExpired, NOW) === true && F.visibleStatus(stJustExpired, NOW) === null
+    && F.statusExpired(null, NOW) === false && F.visibleStatus(null, NOW) === null
+    && F.statusExpired({ mood: "vui", text: "", updatedAt: "không-phải-ngày" }, NOW) === true);
+
+  const oldLocal = { ...fresh(), currentUser: "A", status: { A: null, B: null } };
+  const oldRemote = { ...fresh(), currentUser: "B", status: { A: null, B: { mood: "nho", text: "nhớ anh", updatedAt: iso(NOW - 30 * H) } } };
+  const mergedOld = M.mergeStates(oldLocal, oldRemote, "A");
+  check("R9 phía merge: trạng thái thắng của slot B đã 30h tuổi vẫn được GIỮ NGUYÊN trong state (đọc không xoá/sửa gì) nhưng visibleStatus = null ở hiện tại — và 7 giờ trước (khi nó mới 23h tuổi) thì vẫn hiện: 2 máy nhất trí thuần theo updatedAt",
+    mergedOld.status.B?.mood === "nho" && mergedOld.status.B?.updatedAt === iso(NOW - 30 * H)
+    && F.visibleStatus(mergedOld.status.B, NOW) === null
+    && F.visibleStatus(mergedOld.status.B, NOW - 7 * H) === mergedOld.status.B);
+  check("R10 bộ preset trạng thái: đúng 8 mood, nhãn tiếng Việt ấm, mọi mood có icon",
     CT.STATUS_MOODS.length === 8 && CT.STATUS_MOODS.every((m) => m.label && m.icon)
     && CT.STATUS_MOODS.map((m) => m.label).join("|") === "Vui vẻ|Bình yên|Đang nhớ người ấy|Hơi mệt|Bận một chút|Đói bụng|Buồn ngủ|Đang yêu đời");
 }

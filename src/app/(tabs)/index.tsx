@@ -8,7 +8,7 @@ import { notifyPartnerOfHeartbeat } from "../../lib/push";
 import { heartbeatPulse } from "../../lib/feedback";
 import { dailyQuote, greetingLine, statusMoodById } from "../../lib/content";
 import { dayKeyLocal, today } from "../../lib/types";
-import { MILESTONES, dayCount, milestoneReached, nextMilestone, statusFreshnessLabel, statusStale, timeAgoText } from "../../lib/features";
+import { MILESTONES, dayCount, milestoneReached, nextMilestone, timeAgoText, visibleStatus } from "../../lib/features";
 import { currentDailyQuests } from "../../lib/quests";
 import { HomeGardenScene } from "../../components/Art";
 import { CouplePolaroid } from "../../components/CouplePhoto";
@@ -126,11 +126,10 @@ export default function HomeScreen() {
 
   /* Trạng thái của NGƯỜI ẤY (hiện diện sống): hiện ngay dưới hàng tên trong
    * hero — trạng thái là CỦA HỌ, nhãn luôn gắn tên họ để không mơ hồ là của
-   * ai. Quá 24h thì mờ đi + kèm nhãn "từ hôm qua". Chưa đặt -> không hiện gì
-   * (không ép dòng trống lên phía người ấy). */
-  const partnerStatus = state.status[partner.slot];
+   * ai. Trạng thái chỉ hiện trong 24 giờ kể từ lúc đặt; hết hạn (hoặc chưa
+   * đặt) -> không hiện gì, đúng như chưa từng đặt. */
+  const partnerStatus = visibleStatus(state.status[partner.slot], nowTick);
   const partnerMood = partnerStatus ? statusMoodById(partnerStatus.mood) : undefined;
-  const partnerStatusStale = partnerStatus ? statusStale(partnerStatus, nowTick) : false;
 
   return (
     <View style={s.screen}>
@@ -157,10 +156,10 @@ export default function HomeScreen() {
                 <Text style={{ fontFamily: FONT.bold, fontSize: 14.5, color: COLOR.text, marginLeft: 10 }}>{self.name} & {partner.name}</Text>
               </View>
               {partnerStatus && partnerMood ? (
-                <View style={{ flexDirection: "row", alignItems: "center", gap: 5, marginBottom: 7, maxWidth: "94%", opacity: partnerStatusStale ? 0.55 : 1 }}>
+                <View style={{ flexDirection: "row", alignItems: "center", gap: 5, marginBottom: 7, maxWidth: "94%" }}>
                   <Ionicons name={partnerMood.icon as never} size={13} color={ROLE.partnerDark} />
                   <Text numberOfLines={1} style={{ fontFamily: FONT.medium, fontSize: 12.5, color: COLOR.textSoft }}>
-                    {partner.name} · {partnerMood.label}{partnerStatus.text ? ` — “${partnerStatus.text}”` : ""}{partnerStatusStale ? ` · ${statusFreshnessLabel(partnerStatus, nowTick)}` : ""}
+                    {partner.name} · {partnerMood.label}{partnerStatus.text ? ` — “${partnerStatus.text}”` : ""}
                   </Text>
                 </View>
               ) : null}
