@@ -1,6 +1,6 @@
 import {
   AppState, LetterMoment, LoveNote, NOTE_MIN_INTERVAL_MS, NOTE_TEXT_MAX, NOTES_CAP,
-  PING_BURST_WINDOW_MS, PING_DAILY_MAX, PersonId, WidgetPrefs, formatDateVN, isValidDateKey,
+  PersonId, WidgetPrefs, formatDateVN, isValidDateKey,
   parseDateKey, today, uid,
 } from "./types";
 import { defaultState, normalizeState } from "./model";
@@ -12,7 +12,8 @@ import { nowIso } from "./time";
  * Reducer THUẦN của bản rebuild (không React/Supabase/AsyncStorage) — kiểm chứng
  * trực tiếp bằng Node (scripts/test-logic.mjs). Mọi "khóa cứng" chống spam/lỗi
  * logic nằm ở đây, không chỉ ở UI: cooldown chăm cây, trần note 300 ký tự +
- * giãn cách 5 giây, trần 50 nhịp/ngày, hết hạn phiên vị trí.
+ * giãn cách 5 giây, hết hạn phiên vị trí. Ngoại lệ có chủ đích: nhịp nhớ
+ * KHÔNG khóa gì cả — không trần, không chờ, mỗi nhịp là một sự kiện riêng.
  */
 
 export type CareKind = "water" | "sun" | "love" | "bug";
@@ -167,22 +168,19 @@ export function gardenReducer(state: AppState, action: Action): AppState {
 
     /* ---------- CORE 4: nhịp tim "Nhớ bạn" ---------- */
     case "PING_SEND": {
-      // Trần 50 nhịp/ngày/người gửi khóa cứng tại reducer; ping là cảm xúc thuần —
-      // app này KHÔNG có tiền tệ/XP nên không có gì để farm.
+      // Nhịp nhớ KHÔNG GIỚI HẠN (spec đổi 2026-10-25): không trần ngày, không
+      // gộp chuỗi — MỖI lần gửi là một nhịp riêng biệt: bộ đếm +1, slot mang
+      // mốc của chính nhịp này (burst luôn = 1, lastBurstAt = lastAt) để phía
+      // người nhận bật hiệu ứng theo từng nhịp, và mỗi nhịp ghi 1 dòng dấu vết
+      // (nhật ký tự chặn ở 40 dòng như mọi hoạt động khác). Phía UI gọi thêm
+      // notify-heartbeat để mỗi nhịp có một push riêng — xem lib/push.ts.
       const t = today();
       const day = state.pings.day.date === t ? state.pings.day : { date: t, A: 0, B: 0 };
-      if (day[action.user] >= PING_DAILY_MAX) return state;
-      const nowMs = Date.now();
-      const nowStr = new Date(nowMs).toISOString();
+      const nowStr = new Date().toISOString();
       const prev = state.pings[action.user];
-      // Chạm liên tục <= 5 giây = cùng một CHUỖI nhịp: chuỗi giữ nguyên lastBurstAt
-      // (mốc bắt đầu chuỗi) — phía người nhận chỉ bật hiệu ứng theo chuỗi + cooldown 30s.
-      const chained = Boolean(prev.lastAt) && nowMs - new Date(prev.lastAt).getTime() <= PING_BURST_WINDOW_MS;
-      const burst = chained ? prev.burst + 1 : 1;
-      const slot = { total: prev.total + 1, lastAt: nowStr, lastBurstAt: burst === 1 ? nowStr : prev.lastBurstAt, burst };
+      const slot = { total: prev.total + 1, lastAt: nowStr, lastBurstAt: nowStr, burst: 1 };
       const pings = { ...state.pings, day: { ...day, [action.user]: day[action.user] + 1 }, [action.user]: slot };
-      // Dấu vết chỉ ghi khi BẮT ĐẦU chuỗi (chạm dồn 20 lần không spam 20 dòng).
-      const activities = burst === 1 ? pushAct(state, action.actor, "vừa gửi một nhịp tim nhớ bạn", "heart", action.user) : state.activities;
+      const activities = pushAct(state, action.actor, "vừa gửi một nhịp tim nhớ bạn", "heart", action.user);
       return { ...state, pings, activities };
     }
 

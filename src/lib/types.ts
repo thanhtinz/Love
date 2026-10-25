@@ -136,11 +136,14 @@ export const NOTES_CAP = 200;
 /* ================= CORE 4 — NHỊP TIM "NHỚ BẠN" ================= */
 export interface PingSlotState { total: number; lastAt: string; lastBurstAt: string; burst: number }
 export interface PingsState { A: PingSlotState; B: PingSlotState; day: { date: string; A: number; B: number } }
-export const PING_DAILY_MAX = 50;
-/** Chạm cách nhau <= 5 giây = cùng một chuỗi nhịp (chỉ chuỗi mới ghi hoạt động + bật pop-up) */
-export const PING_BURST_WINDOW_MS = 5000;
-/** Phía người nhận: tối thiểu 30 giây giữa 2 lần bật hiệu ứng nhịp tim */
-export const PING_POP_COOLDOWN_MS = 30000;
+/**
+ * Nhịp nhớ KHÔNG CÓ GIỚI HẠN (spec đổi 2026-10-25 theo yêu cầu của chủ app):
+ * không trần ngày, không thời gian chờ, không gộp chuỗi — mỗi lần gửi là một
+ * nhịp RIÊNG (burst luôn = 1, lastBurstAt = mốc của chính nhịp đó) và mỗi nhịp
+ * tự gọi một push notification riêng cho người ấy (notify-heartbeat).
+ * Các hằng số PING_DAILY_MAX / PING_BURST_WINDOW_MS / PING_POP_COOLDOWN_MS đã
+ * bị gỡ hẳn — đừng thêm lại mà không có spec mới.
+ */
 
 /* ================= CORE 5 — ĐỊNH VỊ TẠM THỜI ================= */
 /**

@@ -5,6 +5,8 @@
  * nằm ở reducer/lib, test này FAIL nếu ai đó gỡ khóa ở tầng logic.
  */
 import { createRequire } from "node:module";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 const require = createRequire(import.meta.url);
 const T = require("./.build/types.js");
 const TR = require("./.build/tree.js");
@@ -213,22 +215,24 @@ console.log("\n--- E) Nhịp tim Nhớ bạn ---");
   let st = fresh();
   st = R.gardenReducer(st, { type: "PING_SEND", user: "A", actor: "An" });
   check("E1 gửi 1 nhịp: bộ đếm ngày=1, slot total=1, burst=1, có dấu vết", st.pings.day.A === 1 && st.pings.A.total === 1 && st.pings.A.burst === 1 && st.activities.length === 1);
-  const burstAt1 = st.pings.A.lastBurstAt;
   st = R.gardenReducer(st, { type: "PING_SEND", user: "A", actor: "An" });
   st = R.gardenReducer(st, { type: "PING_SEND", user: "A", actor: "An" });
-  check("E2 chạm dồn <=5s = 1 chuỗi: burst=3, lastBurstAt giữ mốc đầu chuỗi, dấu vết vẫn 1", st.pings.A.burst === 3 && st.pings.A.lastBurstAt === burstAt1 && st.activities.length === 1);
-  const capped = { ...fresh(), pings: { A: { total: 50, lastAt: "", lastBurstAt: "", burst: 0 }, B: { total: 0, lastAt: "", lastBurstAt: "", burst: 0 }, day: { date: todayStr, A: 50, B: 0 } } };
-  const capRes = R.gardenReducer(capped, { type: "PING_SEND", user: "A", actor: "An" });
-  check("E3 trần cứng 50 nhịp/ngày/người -> nhịp 51 bị chặn ở reducer", capRes === capped);
-  const capB = R.gardenReducer(capped, { type: "PING_SEND", user: "B", actor: "Bình" });
-  check("E4 trần là theo NGƯỜI GỬI: người ấy vẫn gửi được", capB !== capped && capB.pings.day.B === 1);
+  check("E2 gửi liền 3 nhịp KHÔNG gộp chuỗi: 3 sự kiện riêng — total=3, ngày=3, burst vẫn 1, 3 dòng dấu vết", st.pings.A.total === 3 && st.pings.day.A === 3 && st.pings.A.burst === 1 && st.activities.length === 3 && st.pings.A.lastBurstAt === st.pings.A.lastAt);
+  const atFifty = { ...fresh(), pings: { A: { total: 50, lastAt: "", lastBurstAt: "", burst: 0 }, B: { total: 0, lastAt: "", lastBurstAt: "", burst: 0 }, day: { date: todayStr, A: 50, B: 0 } } };
+  const beyond = R.gardenReducer(atFifty, { type: "PING_SEND", user: "A", actor: "An" });
+  check("E3 KHÔNG còn trần ngày: đã 50 nhịp vẫn gửi tiếp được nhịp 51", beyond !== atFifty && beyond.pings.day.A === 51 && beyond.pings.A.total === 51);
+  const capB = R.gardenReducer(atFifty, { type: "PING_SEND", user: "B", actor: "Bình" });
+  check("E4 bộ đếm vẫn theo NGƯỜI GỬI: người ấy gửi phần của mình bình thường", capB !== atFifty && capB.pings.day.B === 1);
   const yesterday = T.dayKeyLocal(new Date(NOW - 24 * H));
   const stale = { ...fresh(), pings: { A: { total: 9, lastAt: "", lastBurstAt: "", burst: 0 }, B: { total: 0, lastAt: "", lastBurstAt: "", burst: 0 }, day: { date: yesterday, A: 9, B: 0 } } };
   const rolled = R.gardenReducer(stale, { type: "PING_SEND", user: "A", actor: "An" });
   check("E5 sang ngày mới: bộ đếm ngày tự reset rồi mới cộng", rolled.pings.day.date === todayStr && rolled.pings.day.A === 1);
   const tickRolled = R.gardenReducer(stale, { type: "TICK" });
   check("E6 TICK cũng lăn ngày cho bộ đếm nhịp", tickRolled.pings.day.date === todayStr && tickRolled.pings.day.A === 0);
-  check("E7 hằng số trần/cooldown đúng spec: 50/ngày, burst 5s, pop cooldown 30s", T.PING_DAILY_MAX === 50 && T.PING_BURST_WINDOW_MS === 5000 && T.PING_POP_COOLDOWN_MS === 30000);
+  check("E7 các hằng số giới hạn nhịp ĐÃ GỠ hẳn khỏi types (không trần, không burst, không cooldown)", T.PING_DAILY_MAX === undefined && T.PING_BURST_WINDOW_MS === undefined && T.PING_POP_COOLDOWN_MS === undefined);
+  let spam = fresh();
+  for (let i = 0; i < 45; i++) spam = R.gardenReducer(spam, { type: "PING_SEND", user: "A", actor: "An" });
+  check("E8 gửi 45 nhịp liền: đếm đủ 45 nhưng nhật ký vẫn chặn ở 40 dòng như mọi hoạt động", spam.pings.day.A === 45 && spam.pings.A.total === 45 && spam.activities.length === 40);
 }
 
 /* ================= F) ĐỊNH VỊ TẠM THỜI ================= */
@@ -479,6 +483,52 @@ console.log("\n--- I) Widget: công tắc riêng + props + timeline ---");
   const st800 = MO.normalizeState({ couple: { startDate: dayKeyAgo(799) }, widgetPrefs: { A: { tree: true } } });
   const p800 = WG.buildWidgetProps(WG.widgetInputFromState(st800, "A", NOW));
   check("I20 giai đoạn cuối (ngày 800): stage 7, daysToNextStage = -1, treeProgress = 1", p800.dayCount === 800 && p800.treeStage === 7 && p800.daysToNextStage === -1 && p800.treeProgress === 1);
+}
+
+/* ================= J) ĐƯỜNG PUSH NHỊP NHỚ (notify-heartbeat) ================= */
+console.log("\n--- J) Push từng nhịp nhớ ---");
+{
+  // push.js kéo theo React Native/Expo — nạp nó trong Node bằng cách chèn sẵn
+  // các module giả vào require.cache (chỉ tầng invoke edge function là thật,
+  // và nó cũng được thay bằng mock ghi lại lời gọi qua mối nối test của push.ts).
+  const buildDir = path.join(path.dirname(fileURLToPath(import.meta.url)), ".build");
+  const stubModule = (spec, exportsObj) => {
+    const resolved = require.resolve(spec, { paths: [buildDir] });
+    require.cache[resolved] = { id: resolved, filename: resolved, loaded: true, exports: exportsObj, children: [], paths: [] };
+  };
+  stubModule("react-native", { Platform: { OS: "ios" } });
+  stubModule("expo-constants", { executionEnvironment: "standalone", expoConfig: { extra: {} } });
+  stubModule("expo-notifications", {
+    getPermissionsAsync: async () => ({ granted: true, canAskAgain: false }),
+    requestPermissionsAsync: async () => ({ granted: true, canAskAgain: false }),
+    getExpoPushTokenAsync: async () => ({ data: "ExponentPushToken[test]" }),
+    setNotificationHandler: () => {},
+    addNotificationReceivedListener: () => ({ remove: () => {} }),
+    addNotificationResponseReceivedListener: () => ({ remove: () => {} }),
+    registerTaskAsync: async () => {},
+    BackgroundNotificationTaskResult: { NewData: "newData", Failed: "failed" },
+  });
+  stubModule("expo-task-manager", { defineTask: () => {} });
+  stubModule("./supabase", { getSupabase: () => { throw new Error("không được chạm Supabase thật trong test"); } });
+  stubModule("./widgetSync", { refreshWidgetForIncomingNote: async () => {} });
+  const PUSH = require("./.build/push.js");
+
+  const calls = [];
+  PUSH.setFunctionsInvokerForTest(async (name) => { calls.push(name); });
+  // Mô phỏng ĐÚNG luồng UI (QuickActions + trang Nhà): dispatch xong là gọi notify.
+  let st = fresh();
+  for (let i = 0; i < 3; i++) {
+    st = R.gardenReducer(st, { type: "PING_SEND", user: "A", actor: "An" });
+    PUSH.notifyPartnerOfHeartbeat();
+  }
+  check("J1 3 lần gửi liên tiếp = 3 sự kiện riêng + ĐÚNG 3 lần thử gọi notify-heartbeat", st.pings.A.total === 3 && calls.length === 3 && calls.every((n) => n === "notify-heartbeat"), calls.join(","));
+  PUSH.notifyPartnerOfNote();
+  check("J2 đường note không đổi: notifyPartnerOfNote vẫn gọi notify-note", calls.length === 4 && calls[3] === "notify-note");
+  PUSH.setFunctionsInvokerForTest(async () => { throw new Error("function chưa deploy"); });
+  let threw = false;
+  try { PUSH.notifyPartnerOfHeartbeat(); } catch { threw = true; }
+  check("J3 invoke lỗi (chưa deploy/mất mạng) -> nuốt êm, không ném ra ngoài", threw === false);
+  PUSH.setFunctionsInvokerForTest(null);
 }
 
 console.log(`\n===== TỔNG: ${count - failures}/${count} PASS =====`);

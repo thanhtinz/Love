@@ -3,7 +3,8 @@ import { Modal, Pressable, Text, TouchableOpacity, View } from "react-native";
 import { router } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { myName, useLove } from "../lib/store";
-import { PING_DAILY_MAX, today } from "../lib/types";
+import { notifyPartnerOfHeartbeat } from "../lib/push";
+import { today } from "../lib/types";
 import { shareStatus } from "../lib/features";
 import { COLOR, FONT, RADIUS, ROLE, SPACE, TILE } from "./theme";
 import { Medallion } from "./ui";
@@ -17,7 +18,6 @@ export function QuickActions({ visible, onClose }: { visible: boolean; onClose: 
   const { state, dispatch } = useLove();
   const me = state.currentUser;
   const myPingsToday = state.pings.day.date === today() ? state.pings.day[me] : 0;
-  const pingFull = myPingsToday >= PING_DAILY_MAX;
   const myShare = shareStatus(state.presence[me]);
 
   function go(route: string) {
@@ -26,16 +26,18 @@ export function QuickActions({ visible, onClose }: { visible: boolean; onClose: 
   }
 
   function sendPing() {
-    if (pingFull) return;
+    // Nhịp nhớ không giới hạn, không chờ: gửi là đi ngay + 1 push riêng cho
+    // người ấy (fire-and-forget, lỗi nuốt êm bên trong lib/push).
     dispatch({ type: "PING_SEND", user: me, actor: myName(state) });
+    notifyPartnerOfHeartbeat();
     onClose();
   }
 
   const rows: { icon: string; title: string; desc: string; onPress: () => void; disabled?: boolean }[] = [
     { icon: "create-outline", title: "Viết note tình yêu", desc: "Gửi một note nhỏ cho người ấy", onPress: () => go("/(tabs)/notes") },
     {
-      icon: "heart", title: "Gửi nhịp nhớ", desc: pingFull ? `Hôm nay đã đủ ${PING_DAILY_MAX} nhịp rồi` : `Hôm nay đã nhớ nhau ${myPingsToday}/${PING_DAILY_MAX} nhịp`,
-      onPress: sendPing, disabled: pingFull,
+      icon: "heart", title: "Gửi nhịp nhớ", desc: myPingsToday > 0 ? `Hôm nay bạn đã gửi ${myPingsToday} nhịp — gửi thêm bất cứ lúc nào` : "Chạm là gửi ngay cho người ấy, không giới hạn",
+      onPress: sendPing,
     },
     { icon: "leaf-outline", title: "Chăm cây tình yêu", desc: "Tưới nước, phơi nắng, gửi lời yêu cho cây", onPress: () => go("/(tabs)/tree") },
     {

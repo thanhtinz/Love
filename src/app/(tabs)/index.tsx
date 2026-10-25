@@ -3,7 +3,8 @@ import { ScrollView, Text, TouchableOpacity, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { myName, useLove } from "../../lib/store";
-import { PING_DAILY_MAX, dayKeyLocal, today } from "../../lib/types";
+import { notifyPartnerOfHeartbeat } from "../../lib/push";
+import { dayKeyLocal, today } from "../../lib/types";
 import { MILESTONES, dayCount, milestoneReached, nextMilestone, timeAgoText } from "../../lib/features";
 import { HomeGardenScene } from "../../components/Art";
 import { PersonChip, personOf } from "../../components/PersonChip";
@@ -65,8 +66,6 @@ export default function HomeScreen() {
   const latestNote = state.notes[0];
   const latestNoteIsNew = Boolean(latestNote && latestNote.authorSlot !== me && !latestNote.readAt);
   const pingsToday = state.pings.day.date === today() ? state.pings.day.A + state.pings.day.B : 0;
-  const myPingsToday = state.pings.day.date === today() ? state.pings.day[me] : 0;
-  const pingFull = myPingsToday >= PING_DAILY_MAX;
 
   /* Tóm tắt chăm cây hôm nay — chữ TĨNH (không phải lối tắt sang tab Cây) */
   const lastCareAt = state.tree.lastCareAt;
@@ -111,18 +110,14 @@ export default function HomeScreen() {
             Hôm nay hai đứa đã nhớ nhau {pingsToday} nhịp.
           </Text>
           <Text style={{ ...TYPE.body, color: COLOR.textSoft, marginTop: 4 }}>{careSummary}</Text>
-          {pingFull ? (
-            <Text style={{ ...TYPE.body, color: COLOR.textSoft, marginTop: 4 }}>
-              Bạn đã gửi đủ {PING_DAILY_MAX} nhịp hôm nay rồi — để dành nhớ thương cho ngày mai nhé.
-            </Text>
-          ) : null}
           <TouchableOpacity
-            onPress={() => dispatch({ type: "PING_SEND", user: me, actor: myName(state) })}
-            disabled={pingFull}
-            style={[s.btn, { marginTop: 14, opacity: pingFull ? 0.55 : 1 }]}
+            onPress={() => {
+              dispatch({ type: "PING_SEND", user: me, actor: myName(state) });
+              notifyPartnerOfHeartbeat();
+            }}
+            style={[s.btn, { marginTop: 14 }]}
             accessibilityRole="button"
             accessibilityLabel="Gửi nhịp nhớ"
-            accessibilityState={{ disabled: pingFull }}
           >
             <Ionicons name="heart" size={19} color="#fff" />
             <Text style={s.btnText}>Gửi nhịp nhớ</Text>

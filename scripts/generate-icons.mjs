@@ -9,8 +9,12 @@ const root = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 const src = path.join(root, "assets", "icon.svg");
 
 for (const out of ["icon.png", "android-icon-foreground.png"]) {
-  await sharp(src, { density: 384 })
-    .resize(1024, 1024, { fit: "contain", background: { r: 255, g: 241, b: 242, alpha: 1 } })
+  const pipeline = sharp(src, { density: 384 })
+    .resize(1024, 1024, { fit: "contain", background: { r: 255, g: 241, b: 242, alpha: 1 } });
+  // icon.png là icon iOS: App Store cấm kênh alpha -> ép phẳng lên nền #fff1f2.
+  // android-icon-foreground.png thì PHẢI giữ trong suốt (nền adaptive icon riêng).
+  if (out === "icon.png") pipeline.flatten({ background: { r: 255, g: 241, b: 242 } });
+  await pipeline
     .png()
     .toFile(path.join(root, "assets", out));
   console.log("generated assets/" + out);

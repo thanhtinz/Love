@@ -1,9 +1,8 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useState } from "react";
 import { Modal, Text, TouchableOpacity, View } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Ionicons } from "@expo/vector-icons";
 import type { AppState } from "../lib/types";
-import { PING_POP_COOLDOWN_MS } from "../lib/types";
 import { makeStageUpLetter, messageById } from "../lib/content";
 import { dayCount } from "../lib/features";
 import { TREE_STAGE_COUNT, treeStageForDay } from "../lib/tree";
@@ -20,8 +19,10 @@ import { COLOR, FONT, RADIUS, SHADOW_FLOAT } from "./theme";
  * 1) LetterPop — lá thư rơi (chăm cây/song chăm/lên giai đoạn): hiện 1 lần cho
  *    mỗi lá (ghi nhớ đã xem theo roomCode trong AsyncStorage). Thư KHÔNG có hộp
  *    thư/bộ sưu tập — đóng là xong, chỉ còn dòng dấu vết trong nhật ký.
- * 2) PingPop — nhịp tim "Nhớ bạn" của người ấy: hiện khi chuỗi nhịp mới tới,
- *    tối đa 1 lần/30 giây phía người nhận, tự tắt sau 6 giây.
+ * 2) PingPop — nhịp tim "Nhớ bạn" của người ấy: MỖI nhịp là một sự kiện riêng
+ *    (không gộp chuỗi, không cooldown phía người nhận) nên pop hiện theo từng
+ *    nhịp mới, tự tắt sau 6 giây. Ngoài app, mỗi nhịp còn có push riêng qua
+ *    notify-heartbeat (xem lib/push.ts).
  * 3) useStageUp — giai đoạn cây đi theo NGÀY YÊU: khi giai đoạn suy ra từ ngày
  *    yêu vượt mọi giai đoạn đã ăn mừng (couple.celebratedStages), dispatch
  *    CELEBRATE_TREE_STAGE đúng 1 lần để rơi lá thư xác định của giai đoạn đó.
@@ -82,7 +83,6 @@ export function PingPop() {
   const burstAt = partnerPing.lastBurstAt;
   const [dismissedFor, setDismissedFor] = useState("");
   const [loaded, setLoaded] = useState(false);
-  const lastShownRef = useRef(0);
   const nowTick = useNow(5000);
 
   useEffect(() => {
@@ -96,13 +96,8 @@ export function PingPop() {
 
   useEffect(() => {
     if (!show) return;
-    // Cooldown 30 giây phía người nhận: chuỗi mới tới dồn dập cũng chỉ bật 1 lần.
-    if (Date.now() - lastShownRef.current < PING_POP_COOLDOWN_MS) {
-      setDismissedFor(burstAt);
-      AsyncStorage.setItem(pingSeenKey(state.roomCode), burstAt).catch(() => {});
-      return;
-    }
-    lastShownRef.current = Date.now();
+    // Không cooldown: nhịp mới tới là hiện ngay (nhịp đến trong lúc pop đang mở
+    // sẽ thay mốc burstAt -> effect chạy lại, đồng hồ tắt 6 giây tính từ nhịp mới).
     const t = setTimeout(() => {
       setDismissedFor(burstAt);
       AsyncStorage.setItem(pingSeenKey(state.roomCode), burstAt).catch(() => {});
@@ -118,7 +113,7 @@ export function PingPop() {
       <View style={{ flexDirection: "row", alignItems: "center", gap: 10, backgroundColor: "#fff", borderRadius: 999, paddingHorizontal: 16, paddingVertical: 10, borderWidth: 1, borderColor: COLOR.border, ...SHADOW_FLOAT }}>
         <Ionicons name="heart" size={20} color={COLOR.primary} />
         <Text style={{ fontFamily: FONT.bold, fontSize: 14, color: COLOR.text }}>
-          {partner.name} đang nhớ bạn{partnerPing.burst > 1 ? ` — ${partnerPing.burst} nhịp liên tiếp` : ""}
+          {partner.name} đang nhớ bạn
         </Text>
       </View>
     </View>

@@ -83,15 +83,41 @@ export async function registerNotePushToken(userId: string): Promise<PushRegiste
 }
 
 /**
+ * Gọi một edge function kiểu fire-and-forget: lỗi (chưa deploy, mất mạng, chưa
+ * đăng nhập) bị nuốt êm — đường realtime trong app vẫn chuyển dữ liệu như thường.
+ * `testInvoker` là mối nối CHỈ dành cho kiểm chứng (scripts/test-logic.mjs) để
+ * đếm số lần thử gọi; app thật không bao giờ đặt nó.
+ */
+type FunctionsInvoker = (name: string, body: Record<string, unknown>) => Promise<unknown>;
+let testInvoker: FunctionsInvoker | null = null;
+export function setFunctionsInvokerForTest(fn: FunctionsInvoker | null): void { testInvoker = fn; }
+
+function invokeEdgeFunction(name: string): void {
+  try {
+    if (testInvoker) { void testInvoker(name, {}).catch(() => {}); return; }
+    void getSupabase().functions.invoke(name, { body: {} }).catch(() => {});
+  } catch { /* chưa đăng nhập / chưa có mạng — nuốt êm */ }
+}
+
+/**
  * Sau khi GỬI note: gọi edge function notify-note (fire-and-forget). Hàm tự
  * suy ra người gửi từ JWT của phiên hiện tại và tra token của người ấy.
  * Function chưa được deploy -> lỗi bị nuốt êm, note vẫn đã gửi qua realtime.
  */
 export function notifyPartnerOfNote(): void {
   if (Platform.OS === "web") return;
-  try {
-    void getSupabase().functions.invoke("notify-note", { body: {} }).catch(() => {});
-  } catch { /* chưa đăng nhập / chưa có mạng — realtime vẫn chuyển note */ }
+  invokeEdgeFunction("notify-note");
+}
+
+/**
+ * Sau khi GỬI nhịp nhớ: gọi edge function notify-heartbeat (fire-and-forget).
+ * Nhịp nhớ KHÔNG giới hạn và không có thời gian chờ — MỖI lần gửi gọi hàm này
+ * đúng một lần, để người ấy nhận đúng một push riêng cho nhịp đó. Nhịp không
+ * mang nội dung riêng tư nên không có cổng công tắc nào ở phía server.
+ */
+export function notifyPartnerOfHeartbeat(): void {
+  if (Platform.OS === "web") return;
+  invokeEdgeFunction("notify-heartbeat");
 }
 
 /* ---------- Nhận push: foreground + chạm vào thông báo ---------- */

@@ -54,11 +54,17 @@
       ],
       "expo-image",
       "expo-asset",
-      "expo-notifications",
+      [
+        "expo-notifications",
+        {
+          "enableBackgroundRemoteNotifications": true
+        }
+      ],
       [
         "expo-widgets",
         {
           "enableAndroid": true,
+          "groupIdentifier": "group.com.thanhtinz.love",
           "widgets": [
             {
               "name": "LoveWidget",
