@@ -98,10 +98,10 @@ type FunctionsInvoker = (name: string, body: Record<string, unknown>) => Promise
 let testInvoker: FunctionsInvoker | null = null;
 export function setFunctionsInvokerForTest(fn: FunctionsInvoker | null): void { testInvoker = fn; }
 
-function invokeEdgeFunction(name: string): void {
+function invokeEdgeFunction(name: string, body: Record<string, unknown> = {}): void {
   try {
-    if (testInvoker) { void testInvoker(name, {}).catch(() => {}); return; }
-    void getSupabase().functions.invoke(name, { body: {} }).catch(() => {});
+    if (testInvoker) { void testInvoker(name, body).catch(() => {}); return; }
+    void getSupabase().functions.invoke(name, { body }).catch(() => {});
   } catch { /* chưa đăng nhập / chưa có mạng — nuốt êm */ }
 }
 
@@ -123,9 +123,16 @@ export function notifyPartnerOfNote(): void {
  * đúng một lần, để người ấy nhận đúng một push riêng cho nhịp đó. Nhịp không
  * mang nội dung riêng tư nên không có cổng công tắc nào ở phía server.
  * Gọi trên MỌI nền tảng như notifyPartnerOfNote (server lo cả hai đường).
+ *
+ * `countToday` = tổng số nhịp NGƯỜI GỬI đã gửi HÔM NAY gồm cả nhịp vừa gửi
+ * (nơi gọi tính từ state mình có — xem TabHeartButton trong components/TabBar)
+ * để function đính vào nội dung push: "{tên} đang nhớ bạn · Hôm nay đã nhớ
+ * bạn N lần". Function phía server tự kiểm tra lại số này (nguyên, trong
+ * khoảng hợp lệ) — số hỏng/không có thì nó quay về câu chữ cũ, nên app đời
+ * cũ (không gửi kèm số) vẫn nhận thông báo như trước.
  */
-export function notifyPartnerOfHeartbeat(): void {
-  invokeEdgeFunction("notify-heartbeat");
+export function notifyPartnerOfHeartbeat(countToday: number): void {
+  invokeEdgeFunction("notify-heartbeat", { countToday });
 }
 
 /* ---------- Nhận push: foreground + chạm vào thông báo ---------- */

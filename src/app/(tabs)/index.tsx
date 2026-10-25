@@ -1,11 +1,9 @@
-import React, { useEffect, useState } from "react";
-import { ScrollView, Text, TouchableOpacity, View } from "react-native";
+import React, { useEffect } from "react";
+import { ScrollView, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { myName, useLove } from "../../lib/store";
 import { useCouplePhotoUrl } from "../../lib/photo";
-import { notifyPartnerOfHeartbeat } from "../../lib/push";
-import { heartbeatPulse } from "../../lib/feedback";
 import { dailyQuote, greetingLine, statusMoodById } from "../../lib/content";
 import { dayKeyLocal, today } from "../../lib/types";
 import { MILESTONES, dayCount, milestoneReached, nextMilestone, timeAgoText, visibleStatus } from "../../lib/features";
@@ -13,7 +11,6 @@ import { currentDailyQuests } from "../../lib/quests";
 import { HomeGardenScene } from "../../components/Art";
 import { CouplePolaroid } from "../../components/CouplePhoto";
 import Avatar from "../../components/Avatar";
-import { HeartBurst } from "../../components/HeartBurst";
 import { PersonChip, partnerOf, personOf, selfOf } from "../../components/PersonChip";
 import { usePestWatch, useStageUp } from "../../components/Popups";
 import { COLOR, FONT, RADIUS, ROLE, SPACE, TYPE } from "../../components/theme";
@@ -27,10 +24,13 @@ import { Medallion, ProgressBar, SkeletonCard, StatusChip, s, tabBarPad, useNow 
  *     lớp scrim mềm ở đáy ôm "Ngày N" + dòng cột mốc + thanh tiến trình mốc.
  * (2) Lời chào theo buổi: dòng RIÊNG đứng ngay dưới hero (lời chào là cảm xúc,
  *     không phải dữ kiện — không nhốt trong card).
- * (3) Ba thẻ RIÊNG BIỆT, mỗi thẻ một dữ kiện + tile icon của nó: "Nhịp nhớ
- *     hôm nay" (ôm ĐÚNG 1 nút chính "Gửi nhịp nhớ"), "Chăm cây", "Nhiệm vụ
- *     hôm nay" — không còn nhồi tất cả vào một card "Hôm nay" (feedback chủ
- *     app 2026-10-25: "cái nào ra cái đó").
+ * (3) Hai thẻ RIÊNG BIỆT, mỗi thẻ một dữ kiện + tile icon của nó: "Chăm
+ *     cây" và "Nhiệm vụ hôm nay" — không nhồi tất cả vào một card "Hôm nay"
+ *     (feedback chủ app 2026-10-25: "cái nào ra cái đó"). Thẻ "Nhịp nhớ hôm
+ *     nay" đã bị GỠ (2026-10-25, chủ app: hiện card là DƯ): gửi nhịp nhớ
+ *     giờ là NÚT TIM ở giữa thanh tab (components/TabBar) — hành động chính
+ *     toàn app, bấm được từ mọi màn; Trang Nhà vì thế KHÔNG còn nút chính,
+ *     chỉ để ngắm và cảm như chủ trương ban đầu.
  * (4) Note mới nhất: xem trước TĨNH (không bấm sang tab Note).
  * (5) "Dấu vết gần nhất": tối đa 3 dòng hoạt động gần nhất, tĩnh.
  * Cả màn vừa khoảng một viewport + cuộn nhẹ là hết.
@@ -41,8 +41,6 @@ import { Medallion, ProgressBar, SkeletonCard, StatusChip, s, tabBarPad, useNow 
  * - "Câu tình hôm nay" dưới dòng cột mốc: 1 câu/ngày, xác định theo ngày nên
  *   2 máy thấy cùng một câu (lib/content.dailyQuote).
  * - Lời chào theo buổi đứng RIÊNG dưới hero, gọi tên cả hai người.
- * - Gửi nhịp nhớ có CẢM GIÁC: rung nhịp tim đôi + mưa tim bay lên từ card
- *   (lib/feedback + components/HeartBurst).
  */
 const ACT_ICON: Record<string, string> = {
   water: "water", sunny: "sunny", heart: "heart", bug: "bug", sparkles: "sparkles",
@@ -53,7 +51,6 @@ export default function HomeScreen() {
   const { state, dispatch, hydrated } = useLove();
   const insets = useSafeAreaInsets();
   const nowTick = useNow(60000);
-  const [burst, setBurst] = useState(0);
   const photoUrl = useCouplePhotoUrl(state.couplePhoto);
   useStageUp(state, dispatch);
   usePestWatch(state, dispatch);
@@ -93,20 +90,6 @@ export default function HomeScreen() {
 
   const latestNote = state.notes[0];
   const latestNoteIsNew = Boolean(latestNote && latestNote.authorSlot !== me && !latestNote.readAt);
-  // Nhịp nhớ là MỘT CHIỀU: người bấm là người đang nhớ. Đếm TÁCH theo hướng
-  // gửi (người gửi = chủ slot của bộ đếm ngày), không cộng gộp hai chiều.
-  const partnerSlot = me === "A" ? "B" : "A";
-  const dayIsToday = state.pings.day.date === today();
-  const myPingsToday = dayIsToday ? state.pings.day[me] : 0;
-  const partnerPingsToday = dayIsToday ? state.pings.day[partnerSlot] : 0;
-  const pingLine =
-    myPingsToday > 0 && partnerPingsToday > 0
-      ? `Hôm nay bạn đã gửi cho ${partner.name} ${myPingsToday} nhịp · ${partner.name} đã gửi bạn ${partnerPingsToday} nhịp.`
-      : myPingsToday > 0
-        ? `Hôm nay bạn đã gửi cho ${partner.name} ${myPingsToday} nhịp.`
-        : partnerPingsToday > 0
-          ? `Hôm nay ${partner.name} đã gửi bạn ${partnerPingsToday} nhịp — gửi lại một nhịp cho ${partner.name} nhé.`
-          : `Hôm nay chưa có nhịp nhớ nào — gửi nhịp đầu tiên cho ${partner.name} nhé.`;
 
   /* Tóm tắt chăm cây hôm nay — chữ TĨNH (không phải lối tắt sang tab Cây) */
   const lastCareAt = state.tree.lastCareAt;
@@ -195,44 +178,7 @@ export default function HomeScreen() {
           {greetingLine(hour, self.name, partner.name)}
         </Text>
 
-        {/* (3a) Nhịp nhớ hôm nay — thẻ riêng, ôm CTA chính DUY NHẤT của màn */}
-        <View style={[s.card, { position: "relative" }]}>
-          <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
-            <Medallion icon="heart" size={40} />
-            <Text style={{ fontFamily: FONT.bold, fontSize: 15.5, color: COLOR.text, flex: 1 }}>Nhịp nhớ hôm nay</Text>
-          </View>
-          {myPingsToday > 0 && partnerPingsToday > 0 ? (
-            <View style={{ marginTop: 12, gap: 8 }}>
-              <View style={{ flexDirection: "row", alignItems: "center" }}>
-                <Text style={{ ...TYPE.body, color: COLOR.textSoft, flex: 1 }}>Bạn → {partner.name}</Text>
-                <Text style={{ ...TYPE.bodyStrong, color: ROLE.selfDark }}>{myPingsToday} nhịp</Text>
-              </View>
-              <View style={{ flexDirection: "row", alignItems: "center" }}>
-                <Text style={{ ...TYPE.body, color: COLOR.textSoft, flex: 1 }}>{partner.name} → Bạn</Text>
-                <Text style={{ ...TYPE.bodyStrong, color: ROLE.partnerDark }}>{partnerPingsToday} nhịp</Text>
-              </View>
-            </View>
-          ) : (
-            <Text style={{ ...TYPE.body, color: COLOR.textSoft, marginTop: 10 }}>{pingLine}</Text>
-          )}
-          <TouchableOpacity
-            onPress={() => {
-              dispatch({ type: "PING_SEND", user: me, actor: myName(state) });
-              notifyPartnerOfHeartbeat();
-              heartbeatPulse();
-              setBurst((b) => b + 1);
-            }}
-            style={[s.btn, { marginTop: 14 }]}
-            accessibilityRole="button"
-            accessibilityLabel="Gửi nhịp nhớ"
-          >
-            <Ionicons name="heart" size={19} color="#fff" />
-            <Text style={s.btnText}>Gửi nhịp nhớ</Text>
-          </TouchableOpacity>
-          <HeartBurst burstKey={burst} />
-        </View>
-
-        {/* (3b) Chăm cây — thẻ riêng: lần chăm gần nhất + tổng số lần (tĩnh) */}
+        {/* (3a) Chăm cây — thẻ riêng: lần chăm gần nhất + tổng số lần (tĩnh) */}
         <View style={s.card}>
           <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
             <Medallion icon="leaf" color={ROLE.partnerDark} bg={ROLE.partnerSoft} size={40} />
@@ -241,7 +187,7 @@ export default function HomeScreen() {
           <Text style={{ ...TYPE.body, color: COLOR.textSoft, marginTop: 10 }}>{careSummary}</Text>
         </View>
 
-        {/* (3c) Nhiệm vụ hôm nay — thẻ riêng: thanh 3 đoạn theo số việc đã xong,
+        {/* (3b) Nhiệm vụ hôm nay — thẻ riêng: thanh 3 đoạn theo số việc đã xong,
             vẫn KHÔNG link (Home không điều hướng) */}
         <View style={s.card}>
           <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>

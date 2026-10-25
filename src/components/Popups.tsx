@@ -6,7 +6,7 @@ import type { AppState } from "../lib/types";
 import { formatDateVN, today } from "../lib/types";
 import { makeStageUpLetter, messageById, milestoneLine } from "../lib/content";
 import { heartbeatPulse, success } from "../lib/feedback";
-import { dayCount, milestoneDateKey, milestoneReached, pestSpawnFor } from "../lib/features";
+import { dayCount, milestoneDateKey, milestoneReached, pestSpawnFor, pingsToday } from "../lib/features";
 import { currentDailyQuests, questStreak } from "../lib/quests";
 import { PEST_EXPIRE_MS, TREE_STAGE_COUNT, treeStageForDay } from "../lib/tree";
 import { useLove } from "../lib/store";
@@ -29,6 +29,10 @@ import { COLOR, FONT, RADIUS, SHADOW_FLOAT } from "./theme";
  *    nhịp mới, tự tắt sau 6 giây. Đợt "chất app" 1: pop NẢY VÀO bằng spring và
  *    rung nhịp tim đôi (lib/feedback.heartbeatPulse) đúng 1 lần mỗi nhịp mới.
  *    Ngoài app, mỗi nhịp còn có push riêng qua notify-heartbeat (lib/push.ts).
+ *    Đợt "nút tim giữa thanh tab" (2026-10-25): dưới dòng "{người ấy} đang
+ *    nhớ bạn" có thêm dòng ĐẾM "Hôm nay {người ấy} đã nhớ bạn N lần" — N là
+ *    tổng số nhịp người ấy đã gửi HÔM NAY tính cả nhịp này (lib/features
+ *    .pingsToday — bộ đếm ngày theo người gửi của chính state đã đồng bộ).
  * 3) useStageUp — giai đoạn cây đi theo NGÀY YÊU: khi giai đoạn suy ra từ ngày
  *    yêu vượt mọi giai đoạn đã ăn mừng (couple.celebratedStages), dispatch
  *    CELEBRATE_TREE_STAGE đúng 1 lần để rơi lá thư xác định của giai đoạn đó.
@@ -140,13 +144,25 @@ export function PingPop() {
 
   if (!show) return null;
   const partner = personOf(state, partnerSlot);
+  // Số nhịp người ấy đã gửi HÔM NAY, tính cả nhịp đang bật pop này: reducer
+  // cộng nhịp vào bộ đếm ngày (theo người gửi) trong cùng sự kiện làm mới
+  // lastBurstAt, nên khi pop hiện thì bộ đếm đã gồm nhịp này. Nhịp vắt qua
+  // nửa đêm (bộ đếm đã lăn sang ngày mới) -> 0 -> ẩn dòng đếm, chỉ giữ dòng chính.
+  const partnerPingsTodayCount = pingsToday(state.pings, partnerSlot);
   return (
     <View pointerEvents="none" style={{ position: "absolute", top: 54, left: 20, right: 20, alignItems: "center", zIndex: 50 }}>
-      <Animated.View style={{ flexDirection: "row", alignItems: "center", gap: 10, backgroundColor: "#fff", borderRadius: 999, paddingHorizontal: 16, paddingVertical: 10, borderWidth: 1, borderColor: COLOR.border, opacity: popOpacity, transform: [{ scale: popScale }], ...SHADOW_FLOAT }}>
-        <Ionicons name="heart" size={20} color={COLOR.primary} />
-        <Text style={{ fontFamily: FONT.bold, fontSize: 14, color: COLOR.text }}>
-          {partner.name} đang nhớ bạn
-        </Text>
+      <Animated.View style={{ backgroundColor: "#fff", borderRadius: 26, paddingHorizontal: 18, paddingVertical: 11, borderWidth: 1, borderColor: COLOR.border, opacity: popOpacity, transform: [{ scale: popScale }], ...SHADOW_FLOAT }}>
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
+          <Ionicons name="heart" size={20} color={COLOR.primary} />
+          <Text style={{ fontFamily: FONT.bold, fontSize: 14, color: COLOR.text }}>
+            {partner.name} đang nhớ bạn
+          </Text>
+        </View>
+        {partnerPingsTodayCount > 0 ? (
+          <Text style={{ fontFamily: FONT.medium, fontSize: 12.5, color: COLOR.textSoft, marginTop: 3, marginLeft: 30 }}>
+            Hôm nay {partner.name} đã nhớ bạn {partnerPingsTodayCount} lần
+          </Text>
+        ) : null}
       </Animated.View>
     </View>
   );

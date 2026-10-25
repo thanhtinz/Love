@@ -23,8 +23,9 @@ SplashScreen.preventAutoHideAsync().catch(() => {});
 
 /**
  * Bản rebuild 5 lõi — bản đồ route TOÀN APP:
- * index (cổng) · auth · pair · (tabs)[Nhà index / Cây tree / (+) quick / Note notes /
- * Hai đứa couple] · location (định vị tạm thời) · account (tài khoản) ·
+ * index (cổng) · auth · pair · (tabs)[Nhà index / Cây tree / Note notes /
+ * Hai đứa couple — giữa thanh tab là NÚT TIM gửi nhịp nhớ, không phải route] ·
+ * location (định vị tạm thời) · account (tài khoản) ·
  * letters (Hộp thư đã giữ — kỷ vật thư tình, đợt "chất app" 2) ·
  * memories (Dây kỷ niệm — kho ảnh treo trên dây thừng).
  */

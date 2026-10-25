@@ -8,8 +8,8 @@ import { success } from "../lib/feedback";
 import { COLOR, FONT, RADIUS, SHADOW_FLOAT } from "./theme";
 
 /**
- * Trình đặt TRẠNG THÁI CỦA MÌNH (đợt "hiện diện sống") — sheet dưới dùng
- * chung ngôn ngữ với QuickActions: chọn 1 mood trong bộ preset + một dòng
+ * Trình đặt TRẠNG THÁI CỦA MÌNH (đợt "hiện diện sống") — sheet dưới mở từ
+ * thẻ Hai đứa: chọn 1 mood trong bộ preset + một dòng
  * ngắn tùy chọn (<= 40 ký tự) + Lưu / Xoá. Chỉ ghi vào ĐÚNG slot của người
  * đang đặt (reducer STATUS_SET khóa cứng) — người ấy sẽ thấy trạng thái này
  * ở hero Trang Nhà và thẻ Hai đứa gần như ngay khi đồng bộ tới. Trạng thái

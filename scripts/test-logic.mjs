@@ -235,6 +235,12 @@ console.log("\n--- E) Nhịp tim Nhớ bạn ---");
   let spam = fresh();
   for (let i = 0; i < 45; i++) spam = R.gardenReducer(spam, { type: "PING_SEND", user: "A", actor: "An" });
   check("E8 gửi 45 nhịp liền: đếm đủ 45 nhưng nhật ký vẫn chặn ở 40 dòng như mọi hoạt động", spam.pings.day.A === 45 && spam.pings.A.total === 45 && spam.activities.length === 40);
+  // pingsToday (lib/features) — helper dùng chung cho dòng đếm của PingPop
+  // phía người nhận: đọc bộ đếm ngày THEO NGƯỜI GỬI, gồm cả nhịp vừa tới.
+  check("E9 pingsToday: đọc đúng số theo slot trong ngày hiện tại (A=45 sau 45 nhịp, B=0)", F.pingsToday(spam.pings, "A") === 45 && F.pingsToday(spam.pings, "B") === 0);
+  check("E10 pingsToday: bộ đếm thuộc NGÀY KHÁC (chưa lăn) -> 0, không mượn số hôm qua", F.pingsToday(stale.pings, "A") === 0);
+  const oneMore = R.gardenReducer(spam, { type: "PING_SEND", user: "A", actor: "An" });
+  check("E11 pingsToday: nhịp vừa gửi ĐÃ nằm trong số đếm (phía người nhận thấy N gồm nhịp này)", F.pingsToday(oneMore.pings, "A") === 46);
 }
 
 /* ================= F) VỊ TRÍ TRỰC TIẾP =================
@@ -534,19 +540,23 @@ console.log("\n--- J) Push từng nhịp nhớ ---");
   const PUSH = require("./.build/push.js");
 
   const calls = [];
-  PUSH.setFunctionsInvokerForTest(async (name) => { calls.push(name); });
-  // Mô phỏng ĐÚNG luồng UI (QuickActions + trang Nhà): dispatch xong là gọi notify.
+  const bodies = [];
+  PUSH.setFunctionsInvokerForTest(async (name, body) => { calls.push(name); bodies.push(body); });
+  // Mô phỏng ĐÚNG luồng UI (nút tim ở thanh tab): dispatch xong là gọi notify
+  // kèm tổng nhịp hôm nay GỒM nhịp vừa gửi — state ở đây đã sau dispatch nên
+  // đọc thẳng pingsToday (nơi gọi thật dùng state trước dispatch + 1, cùng kết quả).
   let st = fresh();
   for (let i = 0; i < 3; i++) {
     st = R.gardenReducer(st, { type: "PING_SEND", user: "A", actor: "An" });
-    PUSH.notifyPartnerOfHeartbeat();
+    PUSH.notifyPartnerOfHeartbeat(F.pingsToday(st.pings, "A"));
   }
   check("J1 3 lần gửi liên tiếp = 3 sự kiện riêng + ĐÚNG 3 lần thử gọi notify-heartbeat", st.pings.A.total === 3 && calls.length === 3 && calls.every((n) => n === "notify-heartbeat"), calls.join(","));
+  check("J1b body invoke mang countToday chạy đúng 1, 2, 3 (gồm chính nhịp vừa gửi)", JSON.stringify(bodies.map((b) => b?.countToday)) === "[1,2,3]", JSON.stringify(bodies));
   PUSH.notifyPartnerOfNote();
-  check("J2 đường note không đổi: notifyPartnerOfNote vẫn gọi notify-note", calls.length === 4 && calls[3] === "notify-note");
+  check("J2 đường note không đổi: notifyPartnerOfNote vẫn gọi notify-note với body rỗng", calls.length === 4 && calls[3] === "notify-note" && JSON.stringify(bodies[3]) === "{}");
   PUSH.setFunctionsInvokerForTest(async () => { throw new Error("function chưa deploy"); });
   let threw = false;
-  try { PUSH.notifyPartnerOfHeartbeat(); } catch { threw = true; }
+  try { PUSH.notifyPartnerOfHeartbeat(1); } catch { threw = true; }
   check("J3 invoke lỗi (chưa deploy/mất mạng) -> nuốt êm, không ném ra ngoài", threw === false);
   PUSH.setFunctionsInvokerForTest(null);
 }

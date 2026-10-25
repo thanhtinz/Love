@@ -1,6 +1,6 @@
 import {
   AppState, KEPT_LETTERS_CAP, KeptLetter, KeptLetterKind, LetterMoment, MilestoneRecord,
-  PersonId, TreePestEvent, dayKeyLocal, localDayNumber, parseDateKey,
+  PersonId, PingsState, TreePestEvent, dayKeyLocal, localDayNumber, parseDateKey, today,
 } from "./types";
 import { PEST_EXPIRE_MS, decayedStats, isPestActive, treeStageForDay } from "./tree";
 import { makeLetterMoment, messageById, seeded01 } from "./content";
@@ -279,6 +279,20 @@ export function freshnessText(locAt: string, nowMs: number = Date.now()): string
   if (age < 90 * 1000) return "Vừa cập nhật";
   if (age < 3600000) return `Cập nhật ${Math.max(1, Math.floor(age / 60000))} phút trước`;
   return `Vị trí gần nhất · ${timeAgoText(locAt, nowMs)}`;
+}
+
+/* ================= CORE 4 — NHỊP NHỚ: ĐẾM THEO NGÀY ================= */
+/**
+ * Số nhịp một người ĐÃ GỬI trong "hôm nay" (ngày địa phương) — đọc từ bộ đếm
+ * ngày của pings (reducer cộng dồn theo NGƯỜI GỬI và tự lăn ngày khi sang
+ * ngày mới). Bộ đếm thuộc về ngày khác (chưa kịp lăn) -> 0: nhịp nhớ là
+ * MỘT CHIỀU (người gửi là người đang nhớ) nên số này luôn là số nhịp CỦA
+ * SLOT ĐÓ gửi đi — phía người nhận dùng nó cho dòng "Hôm nay {người ấy} đã
+ * nhớ bạn N lần" trong PingPop, gồm cả chính nhịp vừa tới (reducer đã cộng
+ * nhịp đó vào bộ đếm ngày trước khi state đồng bộ sang máy người nhận).
+ */
+export function pingsToday(pings: PingsState, slot: PersonId): number {
+  return pings.day.date === today() ? pings.day[slot] : 0;
 }
 
 /* ================= TRẠNG THÁI CỦA NHAU — HẠN HIỆN 24 GIỜ ================= */

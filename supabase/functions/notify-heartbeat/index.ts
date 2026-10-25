@@ -19,6 +19,13 @@
 // "đang nhớ bạn") nên KHÔNG có cổng công tắc/widgetPrefs nào — tên người gửi
 // luôn được phép hiện trong thông báo.
 //
+// Body invoke (TUỲ CHỌN, app đời mới gửi): { countToday?: number } — tổng số
+// nhịp người gửi đã gửi hôm nay GỒM nhịp này. Số hợp lệ (nguyên, 1..100000)
+// thì nội dung push thành "{tên} đang nhớ bạn · Hôm nay đã nhớ bạn N lần";
+// thiếu/hỏng (app đời cũ gửi body {}) -> giữ nguyên câu chữ cũ. Số này chỉ
+// là CHỮ HIỂN THỊ — danh tính người gửi/người nhận vẫn suy từ JWT + DB,
+// không tin thêm bất cứ điều gì khác từ client.
+//
 // Deploy (chủ dự án — xem cuối file): `supabase functions deploy notify-heartbeat`.
 // SUPABASE_URL / SUPABASE_ANON_KEY / SUPABASE_SERVICE_ROLE_KEY được Supabase
 // tự bơm vào môi trường function — không cần khai báo secret thủ công.
@@ -51,6 +58,17 @@ Deno.serve(async (req) => {
   const { data: userData, error: userErr } = await userClient.auth.getUser();
   const author = userData?.user;
   if (userErr || !author) return json({ error: "unauthorized" }, 401);
+
+  // 1b) countToday tuỳ chọn trong body — đọc PHÒNG THỦ: body trống/không phải
+  // JSON/số ngoài khoảng đều coi như "không có số" (không bao giờ lỗi nhịp).
+  let countToday: number | null = null;
+  try {
+    const payload: unknown = await req.json();
+    const raw = (payload as { countToday?: unknown } | null)?.countToday;
+    if (typeof raw === "number" && Number.isInteger(raw) && raw >= 1 && raw <= 100000) {
+      countToday = raw;
+    }
+  } catch { /* không có body hợp lệ -> dùng câu chữ cũ */ }
 
   const admin = createClient(supabaseUrl, serviceKey);
 
@@ -87,7 +105,12 @@ Deno.serve(async (req) => {
 
   const createdAt = new Date().toISOString();
   const title = "Nhịp nhớ";
-  const body = `${authorName} vừa gửi bạn một nhịp nhớ`;
+  // Có số lần hợp lệ -> câu kèm số đếm hôm nay (một chiều: người gửi là
+  // người đang nhớ); không có -> câu chữ cũ NGUYÊN VĂN (app đời cũ). Biến
+  // `body` này dùng chung cho cả đường Expo lẫn Web Push ở dưới.
+  const body = countToday !== null
+    ? `${authorName} đang nhớ bạn · Hôm nay đã nhớ bạn ${countToday} lần`
+    : `${authorName} vừa gửi bạn một nhịp nhớ`;
 
   let sent = 0;
   if (tokens.length > 0) {
