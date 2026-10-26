@@ -1,4 +1,5 @@
 import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { getSupabase } from "./supabase";
 import { genRoomCode } from "./types";
 
@@ -11,8 +12,46 @@ export interface CoupleMemberInfo { userId: string; slot: "A" | "B"; displayName
 export interface CoupleInfo { id: string; code: string; createdBy: string; mySlot: "A" | "B"; members: CoupleMemberInfo[] }
 export interface AuthResult { error?: string }
 
+/** Gợi ý định tuyến lưu CỤC BỘ (AsyncStorage): cặp {uid, coupleId} đã xác nhận
+ *  ở lần mở app trước. Chỉ là GỢI Ý để cổng điều hướng + hydrate cache không
+ *  phải chờ mạng ở những lần mở sau (quyết định "chưa đăng nhập" vẫn dựa vào
+ *  PHIÊN Supabase cục bộ, và thông tin vườn thật vẫn được tải về đối chiếu
+ *  ngay sau đó) — gợi ý sai lệch tối đa khiến app phải điều hướng lại một
+ *  nhịp khi kết quả mạng về, không bao giờ tự nó cấp quyền vào vườn. */
+export interface RouteHint { uid: string; coupleId: string }
+const ROUTE_HINT_KEY = "love-route-hint";
+export async function loadRouteHint(): Promise<RouteHint | null> {
+  try {
+    const raw = await AsyncStorage.getItem(ROUTE_HINT_KEY);
+    if (!raw) return null;
+    const h = JSON.parse(raw) as Partial<RouteHint>;
+    return typeof h?.uid === "string" && typeof h?.coupleId === "string" ? { uid: h.uid, coupleId: h.coupleId } : null;
+  } catch { return null; }
+}
+/** Hook đọc gợi ý định tuyến cho uid phiên hiện tại (undefined = đang đọc). */
+export function useRouteHint(sessionUid: string | null | undefined): RouteHint | null | undefined {
+  const [loaded, setLoaded] = useState<{ uid: string; hint: RouteHint | null } | null>(null);
+  useEffect(() => {
+    if (!sessionUid) return;
+    let cancelled = false;
+    loadRouteHint()
+      .then((h) => { if (!cancelled) setLoaded({ uid: sessionUid, hint: h && h.uid === sessionUid ? h : null }); })
+      .catch(() => { if (!cancelled) setLoaded({ uid: sessionUid, hint: null }); });
+    return () => { cancelled = true; };
+  }, [sessionUid]);
+  if (sessionUid === undefined) return undefined;
+  if (sessionUid === null) return null;
+  return loaded && loaded.uid === sessionUid ? loaded.hint : undefined;
+}
+
 interface AuthCtxValue {
   ready: boolean;
+  /** UID của PHIÊN Supabase cục bộ — biết được NGAY từ AsyncStorage, không
+   *  chờ mạng: undefined = chưa đọc xong phiên, null = chắc chắn chưa đăng
+   *  nhập, string = đã có phiên (hồ sơ/vườn vẫn có thể đang tải). Cổng điều
+   *  hướng dùng cờ này để quyết "vào thẳng màn Đăng nhập" mà không cần đợi
+   *  profile/couple tải về. */
+  sessionUid: string | null | undefined;
   /** Đã tải xong thông tin vườn cho user hiện tại (kể cả kết quả "không có vườn").
    *  Cổng điều hướng phải chờ cờ này — trước đây user được set trước, couple set sau
    *  một vòng mạng nên cổng thấy "có user, chưa có vườn" và chớp qua màn Ghép cặp. */
@@ -71,6 +110,7 @@ const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [ready, setReady] = useState(false);
+  const [sessionUid, setSessionUid] = useState<string | null | undefined>(undefined);
   const [user, setUser] = useState<Profile | null>(null);
   const [couple, setCouple] = useState<CoupleInfo | null>(null);
   const [coupleReady, setCoupleReady] = useState(true);
@@ -86,6 +126,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setUser(null);
       setCouple(null);
       setCoupleReady(true);
+      AsyncStorage.removeItem(ROUTE_HINT_KEY).catch(() => {});
       return;
     }
     const sameUser = appliedUserId.current === profile.id;
@@ -104,6 +145,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         if (seq !== applySeq.current) return; // đã có lời gọi mới hơn — bỏ kết quả này
         setCouple(c);
         setCoupleReady(true);
+        // Ghi gợi ý định tuyến cho lần mở sau: có vườn -> {uid, coupleId};
+        // chắc chắn không có vườn -> xoá gợi ý (tránh gợi ý vườn đã rời).
+        if (c) AsyncStorage.setItem(ROUTE_HINT_KEY, JSON.stringify({ uid: profile.id, coupleId: c.id } satisfies RouteHint)).catch(() => {});
+        else AsyncStorage.removeItem(ROUTE_HINT_KEY).catch(() => {});
         return;
       } catch {
         if (seq !== applySeq.current) return;
@@ -123,6 +168,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     (async () => {
       try {
         const { data } = await sb.auth.getSession();
+        // UID phiên biết được ngay từ bộ nhớ cục bộ — công bố TRƯỚC khi tải
+        // hồ sơ/vườn (mạng) để cổng điều hướng quyết được ngay lập tức.
+        if (!cancelled) setSessionUid(data.session?.user?.id ?? null);
         if (!cancelled && data.session?.user) {
           let p = await sbEnsureProfile(sb, data.session.user);
           // Hồ sơ chưa sẵn sàng (insert lỗi tạm thời): thử lại 1 lần trước khi bỏ cuộc,
@@ -133,12 +181,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       } catch {
         // Mạng lỗi khi khôi phục phiên: KHÔNG được treo ở màn hình chờ mãi (bản cũ
         // setReady nằm sau await nên getSession ném lỗi là ready không bao giờ bật).
+        // Đọc phiên thất bại -> coi như chưa đăng nhập để cổng quyết được (người
+        // dùng vẫn đăng nhập lại được ở màn hình Đăng nhập).
+        if (!cancelled) setSessionUid(null);
       } finally {
         if (!cancelled) setReady(true);
       }
     })();
     const { data: sub } = sb.auth.onAuthStateChange(async (_event, session) => {
       if (cancelled) return;
+      setSessionUid(session?.user?.id ?? null);
       try {
         if (session?.user) {
           if (appliedUserId.current !== session.user.id) { const p = await sbEnsureProfile(sb, session.user); if (!cancelled && p) await applyUser(p); }
@@ -266,6 +318,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return {};
   }, [user, applyUser]);
 
-  const value: AuthCtxValue = { ready, coupleReady, user, couple, signUp, signIn, signOut, createCouple, joinCouple, leaveCouple, updateMyProfile, refreshCouple };
+  const value: AuthCtxValue = { ready, sessionUid, coupleReady, user, couple, signUp, signIn, signOut, createCouple, joinCouple, leaveCouple, updateMyProfile, refreshCouple };
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }

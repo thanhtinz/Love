@@ -44,4 +44,8 @@ yarn-error.*
 scripts/.build/
 # Icon thông báo Web Push — sinh bởi `npm run icons` trước khi export web
 public/push-icon.png
+# Icon PWA (favicon + apple-touch-icon + manifest icons) — cùng pipeline icons
+assets/favicon.png
+public/apple-touch-icon.png
+public/icons/
 assets/art/**/*.webp

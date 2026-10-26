@@ -1,29 +1,36 @@
-import React, { useEffect, useState } from "react";
-import { ScrollView, Text, TouchableOpacity, View } from "react-native";
+import React, { useEffect, useRef, useState } from "react";
+import { Text, TouchableOpacity, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { router } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { useLove } from "../lib/store";
-import { distanceText, freshnessText, haversineKm } from "../lib/features";
+import { distanceText, freshnessText, haversineKm, visibleStatus } from "../lib/features";
+import { statusMoodById } from "../lib/content";
 import { captureLocationFix, foregroundPermissionGranted, getBatteryPct, requestForegroundPermission } from "../components/presenceService";
 import CoupleMap, { type CoupleMapPoint } from "../components/CoupleMap";
 import Avatar from "../components/Avatar";
 import { partnerOf, selfOf } from "../components/PersonChip";
-import { COLOR, FONT, RADIUS, ROLE, SPACE, TYPE } from "../components/theme";
-import { ScreenHeader, StatusChip, s, useNow } from "../components/ui";
+import { COLOR, FONT, RADIUS, SHADOW_FLOAT, SPACE, TYPE } from "../components/theme";
+import { s, useNow } from "../components/ui";
 
 /**
  * BẢN ĐỒ HAI ĐỨA (lõi 5 — VỊ TRÍ TRỰC TIẾP, route Stack /location).
- * Không phiên, không công tắc: mở màn này là THẤY LUÔN vị trí của hai đứa.
- * - Publish chạy TOÀN APP khi app đang mở (LocationSync ở layout gốc): máy
+ * Dáng TOÀN MÀN HÌNH kiểu Jagat (mẫu A đã duyệt): bản đồ gạch OpenStreetMap
+ * tràn cạnh-tới-cạnh, ghim avatar của hai đứa + đường đứt nét nối hai điểm,
+ * chrome nổi toàn pill trắng — nút back tròn, pill khoảng cách ở trên, nút
+ * định vị góc dưới-phải, thanh người ấy mỏng ở đáy.
+ * - Không phiên, không công tắc: mở màn này là THẤY LUÔN vị trí của hai đứa.
+ *   Publish chạy TOÀN APP khi app đang mở (LocationSync ở layout gốc): máy
  *   nào đã cấp quyền vị trí thì tự gửi điểm mới nhất của mình (tiết lưu
- *   >= 10 giây và >= 20m), ghim của người ấy vì thế chạy theo thời gian
- *   thực qua kênh đồng bộ sẵn có.
- * - Cổng DUY NHẤT là quyền vị trí của hệ điều hành: chưa cấp thì hiện lời
- *   giải thích ấm + nút "Cấp quyền vị trí"; cấp xong là publish tự chạy.
- * - Người ấy đóng app thì điểm của họ đứng yên — nhãn độ tươi nói thật điều
- *   đó ("Vị trí gần nhất · ..."), không chữ nào gây hoang mang.
+ *   >= 10 giây và >= 20m), ghim của người ấy chạy theo qua kênh đồng bộ.
+ * - Camera lúc mở fit CẢ HAI điểm; sau đó KHÔNG tự giật theo — chỉ nút định
+ *   vị mới fit lại (qua fitSignal của CoupleMap).
+ * - Cổng DUY NHẤT là quyền vị trí của hệ điều hành: chưa cấp thì hiện thẻ
+ *   giải thích ấm ở giữa màn + nút "Cấp quyền vị trí"; cấp xong publish tự chạy.
+ * - Người ấy CHƯA TỪNG có điểm nào (chưa mở bản mới / chưa cấp quyền): thanh
+ *   đáy thành thẻ CHỜ nói thật điều kiện đó — không màn trống khó hiểu.
  * - Chỉ giữ điểm mới nhất của mỗi người — không lịch sử, không theo dõi nền.
- *   Gạch bản đồ chỉ tải khi màn này đang mở và có ít nhất một ghim.
+ *   Gạch bản đồ chỉ tải khi có ít nhất một ghim.
  */
 export default function LocationScreen() {
   const { state, dispatch } = useLove();
@@ -32,6 +39,8 @@ export default function LocationScreen() {
   const [perm, setPerm] = useState<boolean | null>(null);
   const [err, setErr] = useState("");
   const [busy, setBusy] = useState(false);
+  const [fitSignal, setFitSignal] = useState(0);
+  const triedFixRef = useRef(false);
 
   const me = state.currentUser;
   const self = selfOf(state);
@@ -49,17 +58,30 @@ export default function LocationScreen() {
   const myHasPos = mySlot.lat != null && mySlot.lng != null;
   const bothFix = partnerHasPos && myHasPos;
   const distKm = bothFix ? haversineKm({ lat: partnerSlot.lat!, lng: partnerSlot.lng! }, { lat: mySlot.lat!, lng: mySlot.lng! }) : null;
-  const partnerAgeMs = partnerSlot.locAt ? now - new Date(partnerSlot.locAt).getTime() : Number.POSITIVE_INFINITY;
-  const partnerChip = !partnerHasPos
-    ? { label: "Chưa có vị trí", variant: "neutral" as const }
-    : partnerAgeMs < 5 * 60000
-      ? { label: "Trực tiếp", variant: "partner" as const }
-      : { label: "Gần nhất", variant: "waiting" as const };
+  const distLabel = distKm == null ? "" : distKm < 0.3 ? distanceText(distKm) : `Cách nhau ${distanceText(distKm)}`;
+  const partnerStatus = visibleStatus(state.status[partner.slot], now);
+  const partnerMood = partnerStatus ? statusMoodById(partnerStatus.mood) : undefined;
+  const partnerFresh = partnerHasPos ? freshnessText(partnerSlot.locAt, now) : "";
+
+  /* Đã có quyền mà máy này chưa từng có điểm (mới cấp quyền ở nơi khác /
+   * watch chưa kịp nhịp đầu): chụp một điểm ngay khi vào màn cho ghim của
+   * mình hiện luôn, khỏi chờ. Vẫn là PRESENCE_SNAPSHOT như mọi publish khác. */
+  useEffect(() => {
+    if (perm !== true || myHasPos || triedFixRef.current) return;
+    triedFixRef.current = true;
+    void (async () => {
+      const battery = await getBatteryPct();
+      const fix = await captureLocationFix();
+      if (fix) {
+        dispatch({ type: "PRESENCE_SNAPSHOT", user: me, lat: fix.lat, lng: fix.lng, acc: fix.acc, battery, at: new Date().toISOString() });
+      }
+    })();
+  }, [perm, myHasPos, me, dispatch]);
 
   /* Ghim bản đồ: phía nào đã có điểm mới nhất thì có ghim. Mảng rỗng ->
    * không gắn CoupleMap -> không tải bất kỳ gạch nào. */
   const points: CoupleMapPoint[] = [];
-  if (myHasPos) points.push({ key: "me", lat: mySlot.lat!, lon: mySlot.lng!, name: self.name, avatarId: self.avatar });
+  if (myHasPos) points.push({ key: "me", lat: mySlot.lat!, lon: mySlot.lng!, name: "Bạn", avatarId: self.avatar });
   if (partnerHasPos) points.push({ key: "partner", lat: partnerSlot.lat!, lon: partnerSlot.lng!, name: partner.name, avatarId: partner.avatar });
 
   async function grantPermission() {
@@ -80,105 +102,137 @@ export default function LocationScreen() {
     } finally { setBusy(false); }
   }
 
+  const goBack = () => { if (router.canGoBack()) router.back(); else router.replace("/(tabs)/couple" as never); };
+
   return (
-    <View style={s.screen}>
-      <ScreenHeader title="Bản đồ hai đứa" subtitle="Vị trí trực tiếp của hai đứa — cập nhật khi app đang mở" fallback="/(tabs)/couple" />
-      <ScrollView contentContainerStyle={{ paddingHorizontal: SPACE.screenX, paddingTop: 6, paddingBottom: insets.bottom + 32, gap: SPACE.cardGap }} showsVerticalScrollIndicator={false}>
-        {err ? (
-          <View style={{ flexDirection: "row", gap: 8, backgroundColor: COLOR.dangerSoft, borderRadius: RADIUS.tile, padding: 12 }}>
-            <Ionicons name="alert-circle-outline" size={17} color={COLOR.danger} />
-            <Text style={{ flex: 1, fontFamily: FONT.regular, fontSize: 13.5, color: COLOR.danger, lineHeight: 19 }}>{err}</Text>
-          </View>
-        ) : null}
+    <View style={{ flex: 1, backgroundColor: COLOR.gardenWash }}>
+      {/* Bản đồ tràn toàn màn hình — chỉ khi có ít nhất một ghim */}
+      {points.length > 0 ? (
+        <CoupleMap points={points} distanceKm={distKm} variant="full" fitSignal={fitSignal} />
+      ) : null}
 
-        {/* Bản đồ thật — chỉ khi có ít nhất một ghim */}
-        {points.length > 0 ? (
-          <CoupleMap points={points} distanceKm={distKm} height={340} />
-        ) : (
-          <View style={{ borderWidth: 1.5, borderStyle: "dashed", borderColor: COLOR.border, borderRadius: RADIUS.scene, padding: 22, alignItems: "center", backgroundColor: COLOR.gardenWash }}>
-            <Ionicons name="map-outline" size={30} color={COLOR.textFaint} />
-            <Text style={{ fontFamily: FONT.semibold, fontSize: 14.5, color: COLOR.text, marginTop: 10, textAlign: "center" }}>
-              Chưa có điểm vị trí nào trên bản đồ
-            </Text>
-            <Text style={{ fontFamily: FONT.regular, fontSize: 13, color: COLOR.textSoft, marginTop: 4, textAlign: "center", lineHeight: 19 }}>
-              Khi cả hai cùng mở app và cấp quyền vị trí, ghim của hai đứa sẽ hiện ở đây và chạy theo từng bước di chuyển.
+      {/* Nút back nổi */}
+      <TouchableOpacity
+        onPress={goBack}
+        accessibilityRole="button"
+        accessibilityLabel="Quay lại"
+        style={{ position: "absolute", top: insets.top + 10, left: 16, width: 40, height: 40, borderRadius: 20, backgroundColor: "#fff", alignItems: "center", justifyContent: "center", ...SHADOW_FLOAT }}
+      >
+        <Ionicons name="chevron-back" size={21} color={COLOR.text} />
+      </TouchableOpacity>
+
+      {/* Pill khoảng cách + độ tươi ở trên */}
+      {bothFix ? (
+        <View pointerEvents="none" style={{ position: "absolute", top: insets.top + 10, left: 64, right: 16, alignItems: "center" }}>
+          <View style={{ backgroundColor: "#fff", borderRadius: 999, paddingHorizontal: 14, paddingVertical: 8, maxWidth: "100%", ...SHADOW_FLOAT }}>
+            <Text numberOfLines={1} style={{ fontFamily: FONT.bold, fontSize: 13, color: COLOR.text }}>
+              {distLabel}{partnerFresh ? ` · ${partnerFresh}` : ""}
             </Text>
           </View>
-        )}
+        </View>
+      ) : null}
 
-        {/* Thẻ người ấy kiểu Jagat */}
-        <View style={s.card}>
-          <View style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
-            <Avatar id={partner.avatar} size={48} ring={partner.main} />
-            <View style={{ flex: 1, minWidth: 0 }}>
-              <Text style={{ ...TYPE.cardTitle, color: COLOR.text }} numberOfLines={1}>{partner.name}</Text>
-              <Text style={{ fontFamily: FONT.regular, fontSize: 13, color: COLOR.textSoft, marginTop: 1 }}>
-                {partnerHasPos ? freshnessText(partnerSlot.locAt, now) : "Chưa có vị trí"}
-              </Text>
+      {perm === false ? (
+        /* Cổng quyền vị trí: thẻ giải thích ở giữa màn (hành vi như cũ —
+           đây là nơi DUY NHẤT xin quyền). */
+        <View style={{ flex: 1, alignItems: "center", justifyContent: "center", paddingHorizontal: SPACE.screenX }}>
+          <View style={{ width: "100%", maxWidth: 380, backgroundColor: "#fff", borderRadius: RADIUS.card, padding: 22, alignItems: "center", ...SHADOW_FLOAT }}>
+            <View style={{ width: 56, height: 56, borderRadius: 28, backgroundColor: COLOR.primarySoft, alignItems: "center", justifyContent: "center" }}>
+              <Ionicons name="map-outline" size={28} color={COLOR.primary} />
             </View>
-            <StatusChip label={partnerChip.label} variant={partnerChip.variant} />
-          </View>
-          {partnerHasPos ? (
-            <View style={{ marginTop: 12, gap: 6 }}>
-              {distKm != null ? (
-                <Text style={{ fontFamily: FONT.extrabold, fontSize: 19, color: COLOR.text }}>{distanceText(distKm)}</Text>
-              ) : (
-                <Text style={{ ...TYPE.body, color: COLOR.textSoft }}>
-                  Cấp quyền vị trí ở phần của bạn để app tính khoảng cách giữa hai đứa.
-                </Text>
-              )}
-              {partnerSlot.battery != null ? (
-                <Text style={{ fontFamily: FONT.regular, fontSize: 13.5, color: COLOR.textSoft }}>Pin {partnerSlot.battery}%</Text>
-              ) : null}
-            </View>
-          ) : (
-            <Text style={{ ...TYPE.body, color: COLOR.textSoft, marginTop: 10 }}>
-              {partner.name} chưa có điểm vị trí nào — khi {partner.name} mở app và cấp quyền vị trí, ghim của họ sẽ hiện ở đây và di chuyển theo thời gian thực.
+            <Text style={{ ...TYPE.cardTitle, color: COLOR.text, marginTop: 14, textAlign: "center" }}>Bản đồ hai đứa cần quyền vị trí</Text>
+            <Text style={{ ...TYPE.body, color: COLOR.textSoft, marginTop: 8, textAlign: "center" }}>
+              Bạn cấp quyền vị trí một lần, từ đó mỗi khi mở app, {partner.name} sẽ thấy vị trí của bạn trên bản đồ này — và bạn cũng thấy {partner.name} như vậy. Vị trí chỉ publish khi app đang mở, không theo dõi nền, không lưu lịch sử đường đi.
             </Text>
-          )}
-        </View>
-
-        {/* Phần của mình: chỉ còn cổng quyền vị trí */}
-        <View style={s.card}>
-          <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
-            <Text style={{ ...TYPE.cardTitle, color: COLOR.text, flex: 1 }}>Vị trí của bạn</Text>
-            <StatusChip
-              label={perm === false ? "Chưa cấp quyền" : myHasPos ? "Trực tiếp" : "Đang chờ điểm đầu tiên"}
-              variant={perm === false ? "neutral" : myHasPos ? "done" : "waiting"}
-            />
+            {err ? (
+              <View style={{ flexDirection: "row", gap: 8, backgroundColor: COLOR.dangerSoft, borderRadius: RADIUS.tile, padding: 12, marginTop: 14, alignSelf: "stretch" }}>
+                <Ionicons name="alert-circle-outline" size={17} color={COLOR.danger} />
+                <Text style={{ flex: 1, fontFamily: FONT.regular, fontSize: 13.5, color: COLOR.danger, lineHeight: 19 }}>{err}</Text>
+              </View>
+            ) : null}
+            <TouchableOpacity style={[s.btn, { marginTop: 16, alignSelf: "stretch", opacity: busy ? 0.6 : 1 }]} onPress={grantPermission} disabled={busy} accessibilityRole="button" accessibilityLabel="Cấp quyền vị trí">
+              <Ionicons name="location" size={18} color="#fff" />
+              <Text style={s.btnText}>{busy ? "Đang xin quyền..." : "Cấp quyền vị trí"}</Text>
+            </TouchableOpacity>
           </View>
-          {perm === false ? (
-            <>
-              <Text style={{ ...TYPE.body, color: COLOR.textSoft, marginTop: 6 }}>
-                Bản đồ hai đứa là bản đồ trực tiếp của riêng hai đứa: bạn cấp quyền vị trí một lần, từ đó mỗi khi mở app, {partner.name} sẽ thấy vị trí của bạn chạy theo thời gian thực — và bạn cũng thấy {partner.name} như vậy.
-              </Text>
-              <TouchableOpacity style={[s.btn, { marginTop: 14, opacity: busy ? 0.6 : 1 }]} onPress={grantPermission} disabled={busy} accessibilityRole="button" accessibilityLabel="Cấp quyền vị trí">
-                <Ionicons name="location" size={18} color="#fff" />
-                <Text style={s.btnText}>{busy ? "Đang xin quyền..." : "Cấp quyền vị trí"}</Text>
-              </TouchableOpacity>
-            </>
-          ) : (
-            <>
-              <Text style={{ ...TYPE.body, color: COLOR.text, marginTop: 6 }}>
-                {myHasPos
-                  ? `Đã publish điểm mới nhất · ${freshnessText(mySlot.locAt, now)}`
-                  : "Đang chờ điểm vị trí đầu tiên — giữ app đang mở một chút nhé."}
-              </Text>
-              <Text style={{ fontFamily: FONT.regular, fontSize: 13, color: COLOR.textSoft, marginTop: 4 }}>
-                Vị trí tự cập nhật trong lúc app đang mở: bạn di chuyển, ghim của bạn trên máy {partner.name} chạy theo. Không cần bật tắt gì thêm.
-              </Text>
-            </>
-          )}
         </View>
+      ) : (
+        <>
+          {/* Chưa có điểm nào của mình (đã cấp quyền, đang chờ điểm đầu) */}
+          {points.length === 0 ? (
+            <View pointerEvents="none" style={{ position: "absolute", top: insets.top + 64, left: 0, right: 0, alignItems: "center" }}>
+              <View style={{ backgroundColor: "#fff", borderRadius: 999, paddingHorizontal: 14, paddingVertical: 8, ...SHADOW_FLOAT }}>
+                <Text style={{ fontFamily: FONT.bold, fontSize: 13, color: COLOR.textSoft }}>Đang xác định vị trí của bạn…</Text>
+              </View>
+            </View>
+          ) : null}
 
-        {/* Nói rõ cách hoạt động */}
-        <View style={{ flexDirection: "row", gap: 8, backgroundColor: ROLE.sharedSoft, borderRadius: RADIUS.tile, padding: 12 }}>
-          <Ionicons name="shield-checkmark-outline" size={17} color={ROLE.shared} />
-          <Text style={{ flex: 1, fontFamily: FONT.regular, fontSize: 13, color: ROLE.sharedDark, lineHeight: 19 }}>
-            Vị trí chỉ publish khi app của mỗi người đang mở và đã cấp quyền vị trí — không theo dõi nền, không lưu lịch sử đường đi, chỉ giữ điểm mới nhất của mỗi người. Người ấy đóng app thì ghim đứng yên ở điểm cuối cùng và nhãn thời gian sẽ nói rõ. Bản đồ dùng gạch ảnh OpenStreetMap, chỉ tải khi màn này đang mở. Trên web, vị trí chạy khi tab đang mở và cần bạn cho phép trong trình duyệt.
-          </Text>
-        </View>
-      </ScrollView>
+          {/* Cụm dưới: nút định vị (phải) + thanh người ấy / thẻ chờ */}
+          <View pointerEvents="box-none" style={{ position: "absolute", left: 0, right: 0, bottom: 0, paddingHorizontal: 16, paddingBottom: insets.bottom + 12 }}>
+            {points.length > 0 ? (
+              <View style={{ alignItems: "flex-end", marginBottom: 10 }}>
+                <TouchableOpacity
+                  onPress={() => setFitSignal((v) => v + 1)}
+                  accessibilityRole="button"
+                  accessibilityLabel="Về giữa hai đứa"
+                  style={{ width: 44, height: 44, borderRadius: 22, backgroundColor: "#fff", alignItems: "center", justifyContent: "center", ...SHADOW_FLOAT }}
+                >
+                  <Ionicons name="locate" size={22} color={COLOR.text} />
+                </TouchableOpacity>
+              </View>
+            ) : null}
+
+            {partnerHasPos ? (
+              <View pointerEvents="none" style={{ backgroundColor: "#fff", borderRadius: RADIUS.card, paddingHorizontal: 14, paddingVertical: 12, ...SHADOW_FLOAT }}>
+                <View style={{ flexDirection: "row", alignItems: "center", gap: 11 }}>
+                  <Avatar id={partner.avatar} size={42} ring={partner.main} />
+                  <View style={{ flex: 1, minWidth: 0 }}>
+                    <Text style={{ fontFamily: FONT.bold, fontSize: 15, color: COLOR.text }} numberOfLines={1}>{partner.name}</Text>
+                    {partnerStatus && partnerMood ? (
+                      <View style={{ flexDirection: "row", alignItems: "center", gap: 4, marginTop: 1 }}>
+                        <Ionicons name={partnerMood.icon as never} size={13} color={partner.main} />
+                        <Text numberOfLines={1} style={{ flex: 1, fontFamily: FONT.medium, fontSize: 12.5, color: COLOR.textSoft }}>
+                          {partnerMood.label}{partnerStatus.text ? ` — “${partnerStatus.text}”` : ""}
+                        </Text>
+                      </View>
+                    ) : distLabel ? (
+                      <Text numberOfLines={1} style={{ fontFamily: FONT.medium, fontSize: 12.5, color: COLOR.textSoft, marginTop: 1 }}>{distLabel}</Text>
+                    ) : null}
+                  </View>
+                  <View style={{ alignItems: "flex-end" }}>
+                    <Text style={{ fontFamily: FONT.semibold, fontSize: 12.5, color: COLOR.text }}>{partnerFresh}</Text>
+                    {partnerSlot.battery != null ? (
+                      <Text style={{ fontFamily: FONT.regular, fontSize: 11.5, color: COLOR.textFaint, marginTop: 1 }}>Pin {partnerSlot.battery}%</Text>
+                    ) : null}
+                  </View>
+                </View>
+                {points.length > 0 ? (
+                  <Text style={{ fontFamily: FONT.regular, fontSize: 9.5, color: COLOR.textFaint, textAlign: "right", marginTop: 6 }}>© OpenStreetMap contributors</Text>
+                ) : null}
+              </View>
+            ) : (
+              /* Người ấy chưa từng có điểm: thẻ CHỜ nói thật điều kiện —
+                 không để màn hình trống khó hiểu. */
+              <View pointerEvents="none" style={{ backgroundColor: "#fff", borderRadius: RADIUS.card, paddingHorizontal: 14, paddingVertical: 12, ...SHADOW_FLOAT }}>
+                <View style={{ flexDirection: "row", alignItems: "center", gap: 11 }}>
+                  <View style={{ width: 42, height: 42, borderRadius: 21, backgroundColor: partner.bg, alignItems: "center", justifyContent: "center" }}>
+                    <Ionicons name="time-outline" size={21} color={partner.main} />
+                  </View>
+                  <View style={{ flex: 1, minWidth: 0 }}>
+                    <Text style={{ fontFamily: FONT.bold, fontSize: 14.5, color: COLOR.text }} numberOfLines={1}>Đang chờ vị trí của {partner.name}</Text>
+                    <Text style={{ fontFamily: FONT.regular, fontSize: 12.5, color: COLOR.textSoft, marginTop: 1, lineHeight: 17 }}>
+                      Người ấy cần mở app (bản mới) và cho phép vị trí một lần — sau đó mở bản đồ là thấy nhau ngay.
+                    </Text>
+                  </View>
+                </View>
+                {points.length > 0 ? (
+                  <Text style={{ fontFamily: FONT.regular, fontSize: 9.5, color: COLOR.textFaint, textAlign: "right", marginTop: 6 }}>© OpenStreetMap contributors</Text>
+                ) : null}
+              </View>
+            )}
+          </View>
+        </>
+      )}
     </View>
   );
 }

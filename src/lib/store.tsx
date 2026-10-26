@@ -2,7 +2,7 @@ import React, { createContext, useCallback, useContext, useEffect, useReducer, u
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { AppState } from "./types";
 import { defaultState, normalizeState } from "./model";
-import { useAuth } from "./auth";
+import { useAuth, useRouteHint } from "./auth";
 import { SUPABASE_ANON_KEY, SUPABASE_URL, getSupabase } from "./supabase";
 import { dispatchWithStamps, type Action } from "./reducer";
 import { nowIso, refreshServerOffset } from "./time";
@@ -26,7 +26,17 @@ export function GardenProvider({ children }: { children: React.ReactNode }) {
   const [state, rawDispatch] = useReducer(dispatchWithStamps, defaultState);
   const [connected, setConnected] = React.useState(false);
   const [hydratedFor, setHydratedFor] = React.useState<string | null>(null);
-  const scope = coupleId ?? "lobby";
+  /* Vườn đích cho việc NẠP dữ liệu: vườn THẬT khi đã xác nhận; trước đó (hồ
+   * sơ/vườn còn đang tải qua mạng) dùng GỢI Ý ĐỊNH TUYẾN lưu từ lần mở trước
+   * để hydrate từ cache của chính vườn đó NGAY — giao diện không phải chờ
+   * mạng. Gợi ý bị vô hiệu ngay khi có kết luận vườn từ server (có couple
+   * thật thì coupleId thắng; kết luận "không có vườn" thì gợi ý là đồ cũ).
+   * Mọi đường GHI (upsert/broadcast/realtime) vẫn khoá theo coupleId THẬT ở
+   * các effect bên dưới — gợi ý chỉ phục vụ ĐỌC cache + tải đối chiếu. */
+  const hint = useRouteHint(auth.sessionUid);
+  const hintStale = auth.coupleReady && !auth.couple;
+  const targetCoupleId = coupleId ?? (hint && !hintStale ? hint.coupleId : null);
+  const scope = targetCoupleId ?? "lobby";
   const hydrated = hydratedFor === scope;
   const isRemote = useRef(false);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -47,6 +57,10 @@ export function GardenProvider({ children }: { children: React.ReactNode }) {
    * Thiếu điều kiện này mà vẫn upsert thì một lần đọc lỗi mạng sẽ ghi đè VƯỜN RỖNG lên dữ liệu thật.
    */
   const persistOkRef = useRef(false);
+  /** Scope đã dựng giao diện từ dữ liệu cục bộ/bản server trong phiên app này
+   *  — effect nạp chạy lại (vd couple vừa được xác nhận trùng gợi ý) phải bỏ
+   *  qua giai đoạn dựng-lại-để không ghi đè thao tác người dùng vừa làm. */
+  const localHydratedScopeRef = useRef<string | null>(null);
   useEffect(() => { stateRef.current = state; }, [state]);
 
   const dispatch = useCallback((action: Action) => {
@@ -65,40 +79,88 @@ export function GardenProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     let cancelled = false;
     (async () => {
-      persistOkRef.current = false;
-      let remoteState: AppState | null = null;
-      let cacheState: AppState | null = null;
-      if (coupleId) {
-        const sb = getSupabase();
+      const id = targetCoupleId;
+      if (!id) {
+        // Chưa có vườn đích (chưa đăng nhập / chưa ghép / chưa có gợi ý):
+        // state mặc định + hydrated ngay tại chỗ — không chờ mạng.
+        persistOkRef.current = false;
+        rawDispatch({ type: "RESET" });
+        rawDispatch({ type: "SET_STATE", state: defaultState });
+        isRemote.current = true;
+        remoteGenRef.current = localGenRef.current;
+        setHydratedFor("lobby");
+        return;
+      }
+      /* GIAI ĐOẠN 1 — CACHE CỤC BỘ TRƯỚC (thay đổi lớn về tốc độ mở app):
+       * bản cũ chờ fetch room_state qua MẠNG xong mới đọc cache — nhà đã có
+       * sẵn dữ liệu mà vẫn phải ngắm màn hình chờ. Nay: có cache của chính
+       * vườn này là dựng giao diện ngay (cache được coi là trạng thái đã
+       * biết -> persistOk = true, cùng luật cũ); mạng chỉ còn là bước đối
+       * chiếu chạy nền ở giai đoạn 2. */
+      if (localHydratedScopeRef.current !== id) {
+        let cacheState: AppState | null = null;
         try {
-          const { data } = await sb.from("room_state").select("state").eq("couple_id", coupleId).maybeSingle();
-          if (data) {
-            persistOkRef.current = true;
-            const remote = (data as { state?: AppState }).state;
-            if (remote && Object.keys(remote).length > 0) remoteState = normalizeState(remote);
-          }
-        } catch { /* lỗi mạng -> thử cache; persistOk giữ false để không ghi đè mù */ }
-        try {
-          const raw = await AsyncStorage.getItem(gardenKey(coupleId));
-          if (raw) { persistOkRef.current = true; cacheState = normalizeState(JSON.parse(raw)); }
+          const raw = await AsyncStorage.getItem(gardenKey(id));
+          if (raw) cacheState = normalizeState(JSON.parse(raw));
         } catch { /* bỏ qua */ }
+        if (cancelled) return;
+        if (cacheState) {
+          persistOkRef.current = true;
+          rawDispatch({ type: "RESET" });
+          rawDispatch({ type: "SET_STATE", state: cacheState });
+          // State vừa nạp là ECHO: đánh dấu để effect lưu không phát lại nguyên trạng.
+          isRemote.current = true;
+          remoteGenRef.current = localGenRef.current;
+          localHydratedScopeRef.current = id;
+          setHydratedFor(id);
+        } else {
+          persistOkRef.current = false;
+        }
       }
+      /* GIAI ĐOẠN 2 — MẠNG (chạy nền, không chặn giao diện): lấy bản server
+       * về đối chiếu. Giao diện đã dựng (từ cache) thì MERGE bản server vào:
+       * merge theo dấu thời gian từng mục nên thao tác cục bộ mới hơn —
+       * kể cả thao tác vừa làm trong lúc chờ fetch — luôn thắng. Chưa dựng
+       * được gì (máy mới, chưa có cache) thì bản server là nguồn đầu tiên,
+       * đúng như bản cũ. */
+      let remoteState: AppState | null = null;
+      try {
+        const sb = getSupabase();
+        const { data } = await sb.from("room_state").select("state").eq("couple_id", id).maybeSingle();
+        if (data) {
+          persistOkRef.current = true;
+          const remote = (data as { state?: AppState }).state;
+          if (remote && Object.keys(remote).length > 0) remoteState = normalizeState(remote);
+        }
+      } catch { /* lỗi mạng -> giữ bản cache đang hiển thị; persistOk giữ nguyên để không ghi đè mù */ }
       if (cancelled) return;
-      rawDispatch({ type: "RESET" });
-      rawDispatch({ type: "SET_STATE", state: remoteState ?? cacheState ?? defaultState });
-      // State vừa nạp là ECHO: đánh dấu để effect lưu không phát lại nguyên trạng.
-      isRemote.current = true;
-      remoteGenRef.current = localGenRef.current;
-      // Có cả hai nguồn: merge cache (thao tác offline của chính máy này chưa kịp
-      // upsert) vào bản server — tránh mất thao tác như bản thắng-tuyệt-đối cũ.
-      if (remoteState && cacheState) {
-        rawDispatch({ type: "MERGE_STATE", state: cacheState, mySlot: mySlot ?? undefined });
+      if (remoteState) {
+        if (localHydratedScopeRef.current === id) {
+          rawDispatch({ type: "MERGE_STATE", state: remoteState, mySlot: mySlot ?? undefined });
+        } else {
+          rawDispatch({ type: "RESET" });
+          rawDispatch({ type: "SET_STATE", state: remoteState });
+          isRemote.current = true;
+          remoteGenRef.current = localGenRef.current;
+          localHydratedScopeRef.current = id;
+          setHydratedFor(id);
+        }
+      } else if (localHydratedScopeRef.current !== id) {
+        // Không cache, không bản server: vườn mới tinh -> state mặc định.
+        rawDispatch({ type: "RESET" });
+        rawDispatch({ type: "SET_STATE", state: defaultState });
+        isRemote.current = true;
+        remoteGenRef.current = localGenRef.current;
+        localHydratedScopeRef.current = id;
+        setHydratedFor(id);
       }
-      setHydratedFor(scope);
     })();
     return () => { cancelled = true; };
+    // coupleId nằm trong deps để khi vườn được XÁC NHẬN (kể cả trùng gợi ý)
+    // effect chạy lại một vòng đối chiếu mạng; giai đoạn 1 tự bỏ qua nhờ
+    // localHydratedScopeRef nên không dựng lại giao diện.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [coupleId]);
+  }, [targetCoupleId, coupleId]);
 
   const refreshedScope = useRef<string | null>(null);
   useEffect(() => {

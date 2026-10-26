@@ -101,6 +101,16 @@
     ],
     "scheme": "lovecouple",
     "slug": "love-couple-app",
+    "web": {
+      "backgroundColor": "#FAECD2",
+      "description": "Khu vườn của hai đứa: đếm ngày yêu, cây tình yêu, note, nhịp nhớ và bản đồ hai đứa.",
+      "display": "standalone",
+      "favicon": "./assets/favicon.png",
+      "lang": "vi",
+      "name": "Khu Vườn Tình Yêu",
+      "shortName": "Khu Vườn",
+      "themeColor": "#FFF7F0"
+    },
     "userInterfaceStyle": "light",
     "version": "1.0.0"
   }

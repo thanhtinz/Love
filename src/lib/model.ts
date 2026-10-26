@@ -138,11 +138,19 @@ function normalizePersonStatus(raw: unknown): PersonStatus | null {
 function normalizePresenceSlot(raw: unknown): PresenceSlot {
   const base = defaultPresenceSlot();
   if (!isPlainObject(raw)) return base;
-  // Shape CŨ (phiên chia sẻ — có cờ `sharing`): VỨT HẾT, vị trí bắt đầu trống.
-  // Mô hình mới là vị trí TRỰC TIẾP: app tự publish lại điểm mới nhất khi đang
-  // mở, nên không cần (và không được) hồi sinh toạ độ của phiên cũ.
-  if (typeof raw.sharing === "boolean") return base;
   const num = (v: unknown): number | null => (typeof v === "number" && Number.isFinite(v) ? v : null);
+  // Shape CŨ (phiên chia sẻ — có cờ `sharing`): hai trường hợp phải khác nhau:
+  // - sharing === false: phiên đã TẮT hẳn — VỨT điểm, không hồi sinh toạ độ
+  //   của một phiên mà chính chủ nhân đã dừng chia sẻ.
+  // - sharing === true: chủ slot ĐANG publish điểm đó bằng bản cũ (lat/lng/
+  //   locAt/at dùng CÙNG tên trường với shape mới) — GIỮ điểm, chỉ bỏ phần
+  //   ngữ nghĩa phiên (startedAt/expiresAt). Trước đây vứt cả hai trường hợp
+  //   khiến điểm của người ấy bị xoá ngay trong normalize — mà MỌI đường nạp
+  //   state (SET_STATE lúc mở app, MERGE_STATE mỗi broadcast) đều qua
+  //   normalize — nên ghim không bao giờ tới được màn hình dù điểm vẫn được
+  //   publish và đồng bộ đều. Độ tươi thật của điểm vẫn do locAt quyết định
+  //   ở nhãn hiển thị, nên giữ điểm không bao giờ "nói dối" là trực tiếp.
+  if (typeof raw.sharing === "boolean" && raw.sharing === false) return base;
   return {
     lat: num(raw.lat), lng: num(raw.lng), acc: num(raw.acc),
     locAt: strOr(raw.locAt, ""),
@@ -297,7 +305,8 @@ export function normalizeState(rawInput: unknown): AppState {
   base.activities = objArray<unknown>(raw.activities).map(normalizeActivity).filter((a): a is Activity => Boolean(a && a.id))
     .sort((a, b) => (b.time || "").localeCompare(a.time || "")).slice(0, 40);
 
-  /* --- CORE 5: presence — shape mới (điểm mới nhất) được giữ; shape phiên cũ bị vứt về trống --- */
+  /* --- CORE 5: presence — điểm mới nhất được giữ; shape phiên cũ: đang chia
+   *     sẻ thì giữ điểm (đổi shape), đã tắt phiên thì vứt (xem normalizePresenceSlot) --- */
   const rawPresence = isPlainObject(raw.presence) ? raw.presence : {};
   base.presence = { A: normalizePresenceSlot(rawPresence.A), B: normalizePresenceSlot(rawPresence.B) };
 

@@ -34,6 +34,11 @@ import { COLOR, FONT, RADIUS, SHADOW_FLOAT } from "./theme";
  * - Khung nhìn TỰ fit khi gắn và mỗi khi TẬP ghim đổi — TRỪ khi người dùng đã
  *   tự kéo/zoom (cờ userMoved): không bao giờ giật bản đồ lúc họ đang xem.
  *   Nút về-giữa xoá cờ và fit lại ngay.
+ * - HAI DÁNG: "framed" (mặc định — thẻ bo góc có nút zoom/bong bóng khoảng
+ *   cách/ghi công OSM) và "full" (màn Bản đồ toàn màn hình kiểu Jagat: bản đồ
+ *   tràn cạnh-tới-cạnh, KHÔNG nút zoom/bong bóng/ghi công riêng — chrome nổi
+ *   do màn hình tự vẽ; fitSignal tăng số là ra lệnh fit lại từ bên ngoài, vd
+ *   nút định vị nổi của màn hình).
  * - Gạch CHỈ tải khi component được gắn — nơi gọi (màn /location) chỉ gắn khi
  *   có ít nhất một phía đang chia sẻ và đã có snapshot; không ai chia sẻ ->
  *   không một request gạch nào.
@@ -54,12 +59,17 @@ interface MapView_ {
   zoom: number;
 }
 
-export default function CoupleMap({ points, distanceKm, height = 340 }: {
+export default function CoupleMap({ points, distanceKm, height = 340, variant = "framed", fitSignal }: {
   points: CoupleMapPoint[];
   distanceKm: number | null;
   height?: number;
+  /** "framed": thẻ bo góc (mặc định) · "full": tràn toàn màn hình, không khung */
+  variant?: "framed" | "full";
+  /** Tăng số này = ra lệnh fit lại khung quanh các ghim từ bên ngoài */
+  fitSignal?: number;
 }) {
   const [size, setSize] = useState({ w: 0, h: 0 });
+  const full = variant === "full";
 
   return (
     <View
@@ -67,23 +77,27 @@ export default function CoupleMap({ points, distanceKm, height = 340 }: {
         const { width, height: hh } = e.nativeEvent.layout;
         if (width !== size.w || hh !== size.h) setSize({ w: width, h: hh });
       }}
-      style={{ height, borderRadius: RADIUS.card, borderWidth: 1, borderColor: COLOR.border, overflow: "hidden", backgroundColor: "#E7EFE3" }}
+      style={full
+        ? { position: "absolute", left: 0, top: 0, right: 0, bottom: 0, backgroundColor: "#E7EFE3" }
+        : { height, borderRadius: RADIUS.card, borderWidth: 1, borderColor: COLOR.border, overflow: "hidden", backgroundColor: "#E7EFE3" }}
     >
       {size.w > 0 && points.length > 0 ? (
-        <InteractiveMap points={points} distanceKm={distanceKm} width={size.w} height={size.h} />
+        <InteractiveMap points={points} distanceKm={distanceKm} width={size.w} height={size.h} full={full} fitSignal={fitSignal} />
       ) : null}
     </View>
   );
 }
 
-function InteractiveMap({ points, distanceKm, width, height }: {
+function InteractiveMap({ points, distanceKm, width, height, full, fitSignal }: {
   points: CoupleMapPoint[];
   distanceKm: number | null;
   width: number;
   height: number;
+  full?: boolean;
+  fitSignal?: number;
 }) {
   const fitOf = (pts: CoupleMapPoint[]): MapView_ =>
-    fitMapPoints(pts.map((p) => ({ lat: p.lat, lon: p.lon })), width, height, 56);
+    fitMapPoints(pts.map((p) => ({ lat: p.lat, lon: p.lon })), width, height, full ? 100 : 56);
 
   const [view, setView] = useState<MapView_ | null>(null);
   const active: MapView_ = view ?? fitOf(points);
@@ -107,6 +121,17 @@ function InteractiveMap({ points, distanceKm, width, height }: {
     if (!userMovedRef.current) commitView(fitOf(points));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fitKey]);
+
+  /* Lệnh fit từ bên ngoài (nút định vị nổi của màn hình): xoá cờ userMoved
+   * và fit lại ngay quanh tập ghim hiện tại. */
+  const lastFitSignalRef = useRef(fitSignal);
+  useEffect(() => {
+    if (fitSignal === undefined || fitSignal === lastFitSignalRef.current) return;
+    lastFitSignalRef.current = fitSignal;
+    userMovedRef.current = false;
+    commitView(fitOf(points));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fitSignal]);
 
   const frameRef = useRef<React.ElementRef<typeof View>>(null);
 
@@ -285,17 +310,21 @@ function InteractiveMap({ points, distanceKm, width, height }: {
           ) : null}
 
           {projected.map((p) => (
-            <View key={p.key} style={{ position: "absolute", left: p.x - 38, top: p.y - 47, width: 76, alignItems: "center" }}>
-              <View style={{ borderRadius: 999, ...SHADOW_FLOAT }}>
-                <Avatar id={p.avatarId} size={44} ring="#fff" />
+            /* Ghim kiểu Jagat: đĩa trắng chứa avatar + đuôi nhọn chạm ĐÚNG
+               điểm địa lý (đầu đuôi ở y = 52 + 9 = 61 từ đỉnh ghim), chip tên
+               treo ngay dưới đuôi. */
+            <View key={p.key} style={{ position: "absolute", left: p.x - 42, top: p.y - 61, width: 84, alignItems: "center" }}>
+              <View style={{ width: 52, height: 52, borderRadius: 26, backgroundColor: "#fff", alignItems: "center", justifyContent: "center", ...SHADOW_FLOAT }}>
+                <Avatar id={p.avatarId} size={46} />
               </View>
-              <View style={{ marginTop: 3, backgroundColor: "#fff", borderRadius: 999, paddingHorizontal: 8, paddingVertical: 2.5, borderWidth: 1, borderColor: COLOR.border, maxWidth: 76 }}>
+              <View style={{ width: 0, height: 0, marginTop: -1, borderLeftWidth: 7, borderRightWidth: 7, borderTopWidth: 9, borderLeftColor: "transparent", borderRightColor: "transparent", borderTopColor: "#fff" }} />
+              <View style={{ marginTop: 3, backgroundColor: "#fff", borderRadius: 999, paddingHorizontal: 8, paddingVertical: 2.5, borderWidth: 1, borderColor: COLOR.border, maxWidth: 84, ...SHADOW_FLOAT }}>
                 <Text numberOfLines={1} style={{ fontFamily: FONT.bold, fontSize: 11, color: COLOR.text }}>{p.name}</Text>
               </View>
             </View>
           ))}
 
-          {two && mid && distanceKm != null ? (
+          {two && mid && distanceKm != null && !full ? (
             <View style={{ position: "absolute", left: mid.x - 62, top: mid.y - 15, width: 124, alignItems: "center" }}>
               <View style={{ backgroundColor: COLOR.primary, borderRadius: 999, paddingHorizontal: 11, paddingVertical: 5, ...SHADOW_FLOAT }}>
                 <Text numberOfLines={1} style={{ fontFamily: FONT.bold, fontSize: 12, color: "#fff" }}>
@@ -308,16 +337,22 @@ function InteractiveMap({ points, distanceKm, width, height }: {
       </View>
 
       {/* Nút zoom + về giữa hai đứa — anh em của lớp gesto, không phải con,
-          nên bấm nút không kéo bản đồ. */}
-      <View style={{ position: "absolute", left: 10, bottom: 10, gap: 8 }}>
-        <MapBtn icon="add" label="Phóng to" disabled={zoom >= MAP_ZOOM_INTERACTIVE_MAX} onPress={() => zoomStep(1)} />
-        <MapBtn icon="remove" label="Thu nhỏ" disabled={zoom <= MAP_ZOOM_MIN} onPress={() => zoomStep(-1)} />
-        <MapBtn icon="locate" label="Về giữa hai đứa" onPress={recenter} />
-      </View>
+          nên bấm nút không kéo bản đồ. Dáng "full": màn hình tự vẽ chrome
+          nổi (nút định vị của nó gọi recenter qua fitSignal) và dòng ghi
+          công OSM nằm trong thanh dưới của màn hình — ở đây không vẽ nữa. */}
+      {!full ? (
+        <>
+          <View style={{ position: "absolute", left: 10, bottom: 10, gap: 8 }}>
+            <MapBtn icon="add" label="Phóng to" disabled={zoom >= MAP_ZOOM_INTERACTIVE_MAX} onPress={() => zoomStep(1)} />
+            <MapBtn icon="remove" label="Thu nhỏ" disabled={zoom <= MAP_ZOOM_MIN} onPress={() => zoomStep(-1)} />
+            <MapBtn icon="locate" label="Về giữa hai đứa" onPress={recenter} />
+          </View>
 
-      <View pointerEvents="none" style={{ position: "absolute", right: 8, bottom: 6, backgroundColor: "rgba(255,255,255,0.88)", borderRadius: 6, paddingHorizontal: 6, paddingVertical: 2 }}>
-        <Text style={{ fontFamily: FONT.regular, fontSize: 10, color: COLOR.textSoft }}>© OpenStreetMap contributors</Text>
-      </View>
+          <View pointerEvents="none" style={{ position: "absolute", right: 8, bottom: 6, backgroundColor: "rgba(255,255,255,0.88)", borderRadius: 6, paddingHorizontal: 6, paddingVertical: 2 }}>
+            <Text style={{ fontFamily: FONT.regular, fontSize: 10, color: COLOR.textSoft }}>© OpenStreetMap contributors</Text>
+          </View>
+        </>
+      ) : null}
     </>
   );
 }

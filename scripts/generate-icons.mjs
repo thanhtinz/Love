@@ -76,3 +76,52 @@ await sharp(cleanBuf)
   .png()
   .toFile(path.join(root, "public", "push-icon.png"));
 console.log("generated public/push-icon.png");
+
+// ===== Bộ icon cho bản WEB / PWA (ghim ra màn hình chính) =====
+// favicon.png ở assets/: app.json trỏ web.favicon vào đây — Expo CLI tự sinh
+// favicon.ico + thẻ <link rel="icon"> trong index.html khi export web.
+await sharp(cleanBuf)
+  .resize(256, 256, { fit: "cover", position: "centre" })
+  .flatten({ background: CREAM })
+  .png()
+  .toFile(path.join(root, "assets", "favicon.png"));
+console.log("generated assets/favicon.png");
+
+// apple-touch-icon 180x180: iOS Safari dùng file này cho biểu tượng khi người
+// dùng "Thêm vào Màn hình chính" (iOS KHÔNG đọc icon trong manifest). Phải
+// phẳng trên nền kem — iOS không tôn trọng kênh alpha của touch icon.
+await sharp(cleanBuf)
+  .resize(180, 180, { fit: "cover", position: "centre" })
+  .flatten({ background: CREAM })
+  .png()
+  .toFile(path.join(root, "public", "apple-touch-icon.png"));
+console.log("generated public/apple-touch-icon.png");
+
+// Icon cho public/manifest.json (Android/Chrome khi cài PWA): 192 + 512
+// "any" tràn viền như icon thường, và bản 512 "maskable": tranh thu về ~76%
+// giữa một khung kem đặc #FAECD2 để vùng an toàn của mặt nạ cắt (tròn, giọt
+// nước...) không bao giờ cắt mất hai mầm + trái tim.
+mkdirSync(path.join(root, "public", "icons"), { recursive: true });
+for (const size of [192, 512]) {
+  await sharp(cleanBuf)
+    .resize(size, size, { fit: "cover", position: "centre" })
+    .flatten({ background: CREAM })
+    .png()
+    .toFile(path.join(root, "public", "icons", `icon-${size}.png`));
+  console.log(`generated public/icons/icon-${size}.png`);
+}
+const maskSize = 512;
+const maskInner = Math.round(maskSize * 0.76);
+const maskInnerBuf = await sharp(cleanBuf)
+  .resize(maskInner, maskInner, { fit: "cover", position: "centre" })
+  .flatten({ background: CREAM })
+  .png()
+  .toBuffer();
+await sharp({
+  create: { width: maskSize, height: maskSize, channels: 4, background: { r: CREAM.r, g: CREAM.g, b: CREAM.b, alpha: 1 } },
+})
+  .composite([{ input: maskInnerBuf, gravity: "centre" }])
+  .flatten({ background: CREAM })
+  .png()
+  .toFile(path.join(root, "public", "icons", "icon-maskable-512.png"));
+console.log("generated public/icons/icon-maskable-512.png");

@@ -250,7 +250,8 @@ console.log("\n--- E) Nhịp tim Nhớ bạn ---");
  * phần đó là thấy luôn vị trí của nhau"). Các test F1–F6/F9/F10 của bản cũ
  * (PRESENCE_START/STOP, shareStatus, SHARE_DURATIONS, hết hạn phiên) được
  * THAY bằng test cho cổng tiết lưu publish + publish/lưu điểm mới nhất +
- * nhãn độ tươi + migration vứt phiên cũ; F7/F8 (haversine/distanceText) giữ
+ * nhãn độ tươi + migration phiên cũ (đang chia sẻ thì giữ điểm, đã tắt thì
+ * vứt — F11/F12); F7/F8 (haversine/distanceText) giữ
  * nguyên vì toán khoảng cách không đổi. */
 console.log("\n--- F) Vị trí trực tiếp: tiết lưu publish + điểm mới nhất + độ tươi ---");
 {
@@ -284,11 +285,27 @@ console.log("\n--- F) Vị trí trực tiếp: tiết lưu publish + điểm m�
     && F.freshnessText(iso(NOW - 10 * MIN), NOW) === "Cập nhật 10 phút trước"
     && F.freshnessText(iso(NOW - 3 * H), NOW).startsWith("Vị trí gần nhất · "));
 
-  const oldSession = MO.normalizeState({ presence: { A: { sharing: true, startedAt: iso(NOW), expiresAt: "", lat: 21.5, lng: 105.5, locAt: iso(NOW), battery: 50, at: iso(NOW) }, B: { sharing: false } } });
+  const oldSession = MO.normalizeState({ presence: { A: { sharing: true, startedAt: iso(NOW), expiresAt: "", lat: 21.5, lng: 105.5, locAt: iso(NOW), battery: 50, at: iso(NOW) }, B: { sharing: false, lat: 21.5, lng: 105.5, locAt: iso(NOW), at: iso(NOW) } } });
   const newShape = MO.normalizeState({ presence: { A: { lat: 21.5, lng: 105.5, acc: 8, battery: 50, locAt: iso(NOW), at: iso(NOW) } } });
-  check("F11 migration: state PHIÊN cũ -> vị trí bị vứt, bắt đầu trống; shape trực tiếp mới -> giữ nguyên điểm",
-    oldSession.presence.A.lat === null && oldSession.presence.A.locAt === ""
+  check("F11 migration: phiên cũ ĐANG chia sẻ (sharing:true) -> GIỮ điểm khi đổi shape mới; phiên đã tắt (sharing:false) -> vứt điểm; shape trực tiếp mới -> giữ nguyên điểm",
+    oldSession.presence.A.lat === 21.5 && oldSession.presence.A.lng === 105.5 && oldSession.presence.A.locAt === iso(NOW) && oldSession.presence.A.battery === 50
+    && oldSession.presence.B.lat === null && oldSession.presence.B.locAt === ""
     && newShape.presence.A.lat === 21.5 && newShape.presence.A.locAt === iso(NOW));
+
+  // F12: đường NHẬN đầu-cuối thật (broadcast của BẢN CŨ -> MERGE_STATE ->
+  // normalize -> merge): slot người ấy mang shape phiên (cờ sharing) nhưng
+  // đang publish điểm — sau merge, máy này PHẢI có điểm của người ấy. Đây là
+  // hồi quy của lỗi "không hiện đối phương trên map": trước bản sửa,
+  // normalize vứt điểm trước khi merge nên ghim không bao giờ xuất hiện.
+  const localA = fresh();
+  const oldBuildBroadcast = {
+    currentUser: "B",
+    updatedAt: iso(NOW),
+    presence: { B: { sharing: true, startedAt: iso(NOW), expiresAt: "", lat: 10.7769, lng: 106.7009, acc: 15, locAt: iso(NOW), battery: 64, at: iso(NOW) } },
+  };
+  const mergedF12 = R.gardenReducer(localA, { type: "MERGE_STATE", state: oldBuildBroadcast, mySlot: "A" });
+  check("F12 nhận broadcast bản cũ: điểm người ấy (shape phiên, sharing:true) sống sót qua normalize + merge -> có ghim",
+    mergedF12.presence.B.lat === 10.7769 && mergedF12.presence.B.lng === 106.7009 && mergedF12.presence.B.locAt === iso(NOW));
 }
 
 /* ================= G) MERGE 2 MÁY + NORMALIZE + STAMP ================= */
