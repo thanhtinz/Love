@@ -1,5 +1,5 @@
 import {
-  AppState, Activity, CouplePhoto, DailyQuestsState, KeptLetter, LoveNote, MemoryPhoto, PersonId, PersonStatus, PingsState, PresenceSlot, QuestProgress, TreePestEvent, WidgetPrefs, QUEST_HISTORY_CAP,
+  AppState, Activity, CouplePhoto, DailyQuestsState, KeptLetter, LoveNote, MemoryPhoto, PersonId, PersonStatus, PingsState, PresenceSlot, QuestProgress, SpecialDate, TreePestEvent, WidgetPrefs, QUEST_HISTORY_CAP,
   AVATARS, boolOr, defaultPresenceSlot, defaultWidgetPrefs, finiteNum, isPlainObject, isValidDateKey,
   objArray, strArray, strOr, today,
 } from "./types";
@@ -7,6 +7,7 @@ import { createTree, normalizeTree } from "./tree";
 import { STATUS_TEXT_MAX, isMoodId, messageById, statusMoodById } from "./content";
 import { MILESTONES, unionKeptLetters, unionMilestoneHistory } from "./features";
 import { materializeMemories, sanitizeMemory, unionRemovedMemoryIds } from "./memories";
+import { materializeSpecialDates, sanitizeBirthday, sanitizeSpecialDate, unionRemovedSpecialDateIds } from "./specialDays";
 import { emptyDailyQuests } from "./quests";
 
 /**
@@ -53,6 +54,9 @@ export const defaultState: AppState = {
   couplePhoto: null,
   memories: [],
   removedMemoryIds: [],
+  birthdays: { A: null, B: null },
+  specialDates: [],
+  removedSpecialDateIds: [],
 };
 
 const avatarOr = (v: unknown, fallback: string): string =>
@@ -168,7 +172,7 @@ function normalizeNote(raw: unknown): LoveNote | null {
   };
 }
 
-const ACTIVITY_ICONS = new Set(["water", "sunny", "heart", "bug", "sparkles", "mail", "location", "document-text", "people", "leaf", "images"]);
+const ACTIVITY_ICONS = new Set(["water", "sunny", "heart", "bug", "sparkles", "mail", "location", "document-text", "people", "leaf", "images", "calendar"]);
 function normalizeActivity(raw: unknown): Activity | null {
   if (!isPlainObject(raw) || typeof raw.text !== "string" || typeof raw.time !== "string") return null;
   return {
@@ -320,6 +324,20 @@ export function normalizeState(rawInput: unknown): AppState {
   base.memories = materializeMemories(
     objArray<unknown>(raw.memories).map(sanitizeMemory).filter((m): m is MemoryPhoto => Boolean(m)),
     base.removedMemoryIds,
+  );
+
+  /* --- Ngày kỷ niệm: sinh nhật RIÊNG theo slot (bản cũ không có -> null cả
+   *  hai); ngày đặc biệt tự thêm theo đúng khuôn dây kỷ niệm — sanitize từng
+   *  mục, mộ union/khử trùng, rồi HIỆN THỰC HOÁ ngay tại nạp. --- */
+  const rawBirthdays = isPlainObject(raw.birthdays) ? raw.birthdays : {};
+  base.birthdays = {
+    A: sanitizeBirthday(rawBirthdays.A),
+    B: sanitizeBirthday(rawBirthdays.B),
+  };
+  base.removedSpecialDateIds = unionRemovedSpecialDateIds([], strArray(raw.removedSpecialDateIds));
+  base.specialDates = materializeSpecialDates(
+    objArray<unknown>(raw.specialDates).map(sanitizeSpecialDate).filter((d): d is SpecialDate => Boolean(d)),
+    base.removedSpecialDateIds,
   );
 
   /* --- Thư rơi gần nhất: messageId phải thuộc kho 36 thư --- */

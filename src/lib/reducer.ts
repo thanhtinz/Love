@@ -1,12 +1,13 @@
 import {
-  AppState, CouplePhoto, LetterMoment, LoveNote, MEMORIES_CAP, MemoryPhoto, NOTE_MIN_INTERVAL_MS, NOTE_TEXT_MAX, NOTES_CAP,
-  PersonId, PersonStatus, PresenceSlot, TreePestEvent, WidgetPrefs, formatDateVN, isValidDateKey,
+  AppState, Birthday, CouplePhoto, LetterMoment, LoveNote, MEMORIES_CAP, MemoryPhoto, NOTE_MIN_INTERVAL_MS, NOTE_TEXT_MAX, NOTES_CAP,
+  PersonId, PersonStatus, PresenceSlot, SPECIAL_DATES_CAP, SpecialDate, TreePestEvent, WidgetPrefs, formatDateVN, isValidDateKey,
   parseDateKey, today, uid,
 } from "./types";
 import { defaultState, normalizeState } from "./model";
 import { applyCare, applyVitalityBonus, careStatus, isPestActive, pestAdjustedTree } from "./tree";
 import { addKeptLetter, keptLetterFromMoment, recordMilestone } from "./features";
 import { materializeMemories, sanitizeMemory, sanitizeMemoryCaption } from "./memories";
+import { materializeSpecialDates, sanitizeBirthday, sanitizeSpecialDate, sanitizeSpecialTitle } from "./specialDays";
 import { advanceDailyQuests, emptyDailyQuests, unionQuestHistory, type QuestEvent } from "./quests";
 import { STATUS_TEXT_MAX, statusMoodById } from "./content";
 import { mergeStates, stampSections } from "./merge";
@@ -42,7 +43,11 @@ export type Action =
   | { type: "COUPLE_PHOTO_SET"; photo: CouplePhoto; user: PersonId; actor: string }
   | { type: "MEMORY_ADD"; memory: MemoryPhoto; user: PersonId; actor: string }
   | { type: "MEMORY_UPDATE"; id: string; caption: string; dateKey: string; user: PersonId }
-  | { type: "MEMORY_REMOVE"; id: string; user: PersonId; actor: string };
+  | { type: "MEMORY_REMOVE"; id: string; user: PersonId; actor: string }
+  | { type: "BIRTHDAY_SET"; slot: PersonId; user: PersonId; birthday: Birthday | null }
+  | { type: "SPECIAL_ADD"; item: SpecialDate; user: PersonId; actor: string }
+  | { type: "SPECIAL_UPDATE"; id: string; title: string; dateKey: string; yearly: boolean; user: PersonId }
+  | { type: "SPECIAL_REMOVE"; id: string; user: PersonId; actor: string };
 
 function pushAct(s: AppState, actor: string, text: string, icon: string, slot?: PersonId): AppState["activities"] {
   return [{ id: uid(), actor, text, icon, time: nowIso(), slot }, ...s.activities].slice(0, 40);
@@ -383,6 +388,69 @@ export function gardenReducer(state: AppState, action: Action): AppState {
         removedMemoryIds,
         memories: materializeMemories(state.memories, removedMemoryIds),
         activities: pushAct(state, action.actor, "vừa gỡ một ảnh kỷ niệm khỏi dây", "images", action.user),
+      };
+    }
+
+    /* ---------- NGÀY KỶ NIỆM: sinh nhật riêng theo slot + ngày đặc biệt chung ---------- */
+    case "BIRTHDAY_SET": {
+      // Sinh nhật là dữ kiện RIÊNG theo slot (như trạng thái): CHỈ chính chủ
+      // slot mới ghi được — action mang slot khác user bị từ chối thẳng, nên
+      // không có đường nào đặt hộ sinh nhật của người ấy. birthday null = xoá.
+      // Ngày/tháng qua sanitize (29/02 hợp lệ; 30/02, 31/04 bị loại) — dữ kiện
+      // cá nhân nên KHÔNG ghi dòng dấu vết như các hành động chung.
+      if (action.slot !== action.user) return state;
+      const clean = action.birthday === null ? null : sanitizeBirthday(action.birthday);
+      if (action.birthday !== null && !clean) return state;
+      if (JSON.stringify(state.birthdays[action.slot]) === JSON.stringify(clean)) return state;
+      return { ...state, birthdays: { ...state.birthdays, [action.slot]: clean } };
+    }
+    case "SPECIAL_ADD": {
+      // Thêm ngày đặc biệt — CẢ HAI người đều thêm được (kho chung "chúng
+      // mình", tiền lệ MEMORY_ADD) nhưng bySlot phải đúng người thao tác.
+      // Khóa cứng: shape qua sanitize (tiêu đề trim + trần 40, ngày phải tồn
+      // tại), id đã có hoặc đã nằm trong MỘ thì không thêm lại được, đủ
+      // SPECIAL_DATES_CAP thì từ chối (UI báo thân thiện từ trước).
+      const clean = sanitizeSpecialDate(action.item);
+      if (!clean || clean.bySlot !== action.user) return state;
+      if (state.removedSpecialDateIds.includes(clean.id)) return state;
+      if (state.specialDates.some((d) => d.id === clean.id)) return state;
+      if (state.specialDates.length >= SPECIAL_DATES_CAP) return state;
+      return {
+        ...state,
+        specialDates: materializeSpecialDates([...state.specialDates, clean], state.removedSpecialDateIds),
+        activities: pushAct(state, action.actor, `vừa thêm ngày kỷ niệm “${clean.title}”`, "calendar", action.user),
+      };
+    }
+    case "SPECIAL_UPDATE": {
+      // Sửa tiêu đề/ngày/cờ lặp — CẢ HAI người đều sửa được. Ngày không tồn
+      // tại hoặc tiêu đề rỗng sau trim -> từ chối cả hành động; không đổi gì
+      // -> no-op. updatedAt = mốc sửa này là khóa LWW khi merge 2 máy.
+      if (!isValidDateKey(action.dateKey)) return state;
+      const title = sanitizeSpecialTitle(action.title);
+      if (!title) return state;
+      const prev = state.specialDates.find((d) => d.id === action.id);
+      if (!prev) return state;
+      if (prev.title === title && prev.dateKey === action.dateKey && prev.yearly === action.yearly) return state;
+      const next: SpecialDate = { ...prev, title, dateKey: action.dateKey, yearly: action.yearly, updatedAt: nowIso() };
+      return {
+        ...state,
+        specialDates: materializeSpecialDates(state.specialDates.map((d) => (d.id === action.id ? next : d)), state.removedSpecialDateIds),
+      };
+    }
+    case "SPECIAL_REMOVE": {
+      // Xoá ngày đặc biệt — CẢ HAI người đều xoá được. Xoá = ghi id vào MỘ
+      // rồi hiện thực hoá lại (đúng khuôn MEMORY_REMOVE): mộ đi cùng state
+      // qua mọi lần merge nên bản sao cũ ở máy kia không hồi sinh được ngày.
+      const prev = state.specialDates.find((d) => d.id === action.id);
+      if (!prev) return state;
+      const removedSpecialDateIds = state.removedSpecialDateIds.includes(action.id)
+        ? state.removedSpecialDateIds
+        : [...state.removedSpecialDateIds, action.id];
+      return {
+        ...state,
+        removedSpecialDateIds,
+        specialDates: materializeSpecialDates(state.specialDates, removedSpecialDateIds),
+        activities: pushAct(state, action.actor, `vừa xoá ngày kỷ niệm “${prev.title}”`, "calendar", action.user),
       };
     }
 

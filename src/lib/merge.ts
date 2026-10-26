@@ -4,6 +4,7 @@ import {
 import { totalGrowthMs } from "./tree";
 import { unionKeptLetters, unionMilestoneHistory } from "./features";
 import { mergeMemories } from "./memories";
+import { mergeSpecialDates } from "./specialDays";
 import { mergeDailyQuests, unionQuestHistory } from "./quests";
 
 /**
@@ -29,6 +30,9 @@ import { mergeDailyQuests, unionQuestHistory } from "./quests";
  * 8) Dây kỷ niệm: bộ sưu tập union theo id + LWW từng ảnh theo updatedAt;
  *    danh sách MỘ xoá hợp nhất union và áp khi hiện thực hoá — một lần xoá ở
  *    máy nào cũng thắng mọi bản sao cũ ở máy kia (lib/memories.ts).
+ * 9) Ngày kỷ niệm: SINH NHẬT riêng theo slot như trạng thái (chủ slot thắng
+ *    tuyệt đối); NGÀY ĐẶC BIỆT là bộ sưu tập chung — đúng khuôn dây kỷ niệm
+ *    (union theo id + LWW + mộ xoá) ở lib/specialDays.ts.
  */
 
 const SLOTS: PersonId[] = ["A", "B"];
@@ -229,6 +233,18 @@ export function mergeStates(local: AppState, remote: AppState, mySlot: PersonId)
     local.removedMemoryIds ?? [], remote.removedMemoryIds ?? [],
   );
 
+  /* --- Ngày kỷ niệm: sinh nhật RIÊNG theo slot (chủ slot thắng như trạng
+   *  thái); ngày đặc biệt: union theo id + LWW + mộ xoá (bản cũ thiếu
+   *  trường -> trống/null). --- */
+  const birthdays = {
+    A: pickSlot("birthdays", "A", local.birthdays?.A ?? null, remote.birthdays?.A ?? null),
+    B: pickSlot("birthdays", "B", local.birthdays?.B ?? null, remote.birthdays?.B ?? null),
+  };
+  const { specialDates, removedSpecialDateIds } = mergeSpecialDates(
+    local.specialDates ?? [], remote.specialDates ?? [],
+    local.removedSpecialDateIds ?? [], remote.removedSpecialDateIds ?? [],
+  );
+
   /* --- Sự kiện sâu trên cây: hội tụ xác định (xem mergeTreePest) --- */
   const treePest = mergeTreePest(local.treePest ?? null, remote.treePest ?? null);
 
@@ -243,7 +259,7 @@ export function mergeStates(local: AppState, remote: AppState, mySlot: PersonId)
     roomCode: newer.roomCode,
     personA: newer.personA, personB: newer.personB,
     avatarA: newer.avatarA, avatarB: newer.avatarB,
-    couple, tree, treePest, dailyQuests, questHistory, notes, noteLog, pings, activities, presence, widgetPrefs, status, lastLetter, keptLetters, couplePhoto, memories, removedMemoryIds,
+    couple, tree, treePest, dailyQuests, questHistory, notes, noteLog, pings, activities, presence, widgetPrefs, status, lastLetter, keptLetters, couplePhoto, memories, removedMemoryIds, birthdays, specialDates, removedSpecialDateIds,
     updatedAt: lt >= rt ? lt : rt,
     secTs,
   };
@@ -257,6 +273,7 @@ const SLOT_SPECS: SlotSpec[] = [
   { key: "noteLog", get: (s, slot) => s.noteLog[slot] },
   { key: "widgetPrefs", get: (s, slot) => s.widgetPrefs[slot] },
   { key: "status", get: (s, slot) => s.status[slot] },
+  { key: "birthdays", get: (s, slot) => s.birthdays[slot] },
 ];
 const SHARED_SPECS: { key: string; get: (s: AppState) => unknown }[] = [
   { key: "couple", get: (s) => s.couple },
@@ -271,6 +288,8 @@ const SHARED_SPECS: { key: string; get: (s: AppState) => unknown }[] = [
   { key: "couplePhoto", get: (s) => s.couplePhoto },
   { key: "memories", get: (s) => s.memories },
   { key: "removedMemoryIds", get: (s) => s.removedMemoryIds },
+  { key: "specialDates", get: (s) => s.specialDates },
+  { key: "removedSpecialDateIds", get: (s) => s.removedSpecialDateIds },
 ];
 
 function sameValue(a: unknown, b: unknown): boolean {

@@ -27,7 +27,8 @@ SplashScreen.preventAutoHideAsync().catch(() => {});
  * Hai đứa couple — giữa thanh tab là NÚT TIM gửi nhịp nhớ, không phải route] ·
  * location (định vị tạm thời) · account (tài khoản) ·
  * letters (Hộp thư đã giữ — kỷ vật thư tình, đợt "chất app" 2) ·
- * memories (Dây kỷ niệm — kho ảnh treo trên dây thừng).
+ * memories (Dây kỷ niệm — kho ảnh treo trên dây thừng) ·
+ * special-days (Ngày kỷ niệm — sinh nhật, ngày đặc biệt + sửa ngày yêu).
  */
 function Navigator() {
   return (
@@ -40,6 +41,7 @@ function Navigator() {
       <Stack.Screen name="account" />
       <Stack.Screen name="letters" />
       <Stack.Screen name="memories" />
+      <Stack.Screen name="special-days" />
     </Stack>
   );
 }

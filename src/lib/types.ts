@@ -300,6 +300,46 @@ export interface MemoryPhoto {
 export const MEMORIES_CAP = 30;
 export const MEMORY_CAPTION_MAX = 60;
 
+/* ================= NGÀY KỶ NIỆM (sinh nhật + ngày đặc biệt) ================= */
+/**
+ * Sinh nhật của MỘT người — chỉ lưu NGÀY + THÁNG (không lưu năm sinh): đủ để
+ * đếm ngược hằng năm, và là dữ kiện RIÊNG theo slot như trạng thái (chỉ chính
+ * chủ slot ghi — reducer khoá BIRTHDAY_SET theo slot === user, merge ưu tiên
+ * chủ slot). null = chưa đặt. 29/02 hợp lệ: năm không nhuận thì lần xuất hiện
+ * lùi về 28/02 (xem occurrenceDayNumber ở lib/specialDays.ts).
+ */
+export interface Birthday { day: number; month: number }
+
+/**
+ * MỘT ngày đặc biệt TỰ THÊM của hai đứa (màn /special-days): tiêu đề + một
+ * ngày gốc + cờ lặp hằng năm. Mô hình đồng bộ Y HỆT dây kỷ niệm (xem
+ * lib/specialDays.ts): bộ sưu tập union theo id + LWW theo `updatedAt` + xoá
+ * qua DANH SÁCH MỘ (removedSpecialDateIds) — CẢ HAI người đều thêm/sửa/xoá
+ * được (kho chung của "chúng mình", tiền lệ MEMORY_*).
+ * - `yearly: true`: đếm ngược tới LẦN XUẤT HIỆN TIẾP THEO của ngày/tháng đó
+ *   (năm nay nếu chưa qua, không thì sang năm) — không bao giờ "đã qua".
+ * - `yearly: false`: ngày một lần — tương lai thì "Còn X ngày", đúng ngày thì
+ *   "Hôm nay", đã qua thì "Đã X ngày".
+ */
+export interface SpecialDate {
+  id: string;
+  /** Tiêu đề (đã trim, tối đa SPECIAL_DATE_TITLE_MAX ký tự) */
+  title: string;
+  /** Ngày gốc của sự kiện (yyyy-mm-dd, giờ địa phương) */
+  dateKey: string;
+  /** true = lặp lại hằng năm theo ngày/tháng của dateKey */
+  yearly: boolean;
+  /** Người đã thêm ngày này */
+  bySlot: PersonId;
+  /** ISO thời điểm thêm */
+  addedAt: string;
+  /** ISO lần sửa gần nhất — khóa LWW khi merge */
+  updatedAt: string;
+}
+/** Trần số ngày đặc biệt tự thêm — đủ chỗ thì báo thân thiện, không thêm nữa. */
+export const SPECIAL_DATES_CAP = 20;
+export const SPECIAL_DATE_TITLE_MAX = 40;
+
 /* ================= NHIỆM VỤ MỖI NGÀY (đợt "nhiệm vụ chăm cây") ================= */
 export type QuestKind = "water" | "sun" | "love" | "ping" | "note" | "care3" | "bothcare";
 
@@ -410,6 +450,16 @@ export interface AppState {
    *  ảnh hai đứa: state là nơi quyết định hiển thị; mộ làm ảnh vô hình vĩnh
    *  viễn trên cả 2 máy). */
   removedMemoryIds: string[];
+  /** NGÀY KỶ NIỆM: sinh nhật RIÊNG theo slot (chỉ chính chủ ghi, như status);
+   *  bản lưu cũ chưa có trường -> null cả hai (chưa đặt). */
+  birthdays: { A: Birthday | null; B: Birthday | null };
+  /** NGÀY KỶ NIỆM: các ngày đặc biệt tự thêm đã HIỆN THỰC HOÁ (đã áp mộ +
+   *  sắp theo dateKey + chặn SPECIAL_DATES_CAP — xem lib/specialDays.ts).
+   *  Bản lưu cũ chưa có trường -> []. */
+  specialDates: SpecialDate[];
+  /** MỘ XOÁ của ngày đặc biệt: union giữa 2 máy, áp khi hiện thực hoá — một
+   *  lần xoá thắng mọi bản sao cũ (y hệt removedMemoryIds của dây kỷ niệm). */
+  removedSpecialDateIds: string[];
   updatedAt?: string;
   secTs?: Record<string, SecStamp>;
 }

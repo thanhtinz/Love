@@ -19,6 +19,7 @@ const MT = require("./.build/maptiles.js");
 const WG = require("./.build/widget.js");
 const Q = require("./.build/quests.js");
 const MEM = require("./.build/memories.js");
+const SD = require("./.build/specialDays.js");
 
 const H = 3600000;
 const MIN = 60000;
@@ -1113,6 +1114,193 @@ console.log("\n--- S) Dây kỷ niệm: thêm/sửa/xoá + mộ xoá + merge uni
   const mergedCap = M.mergeStates({ ...fresh(), memories: half1 }, { ...fresh(), memories: half2 }, "A");
   check("S13 merge tràn trần: union 40 ảnh -> giữ đúng 30 (phần đầu câu chuyện theo ngày)",
     mergedCap.memories.length === 30 && mergedCap.memories.every((m) => m.id.startsWith("cap-a-") || m.dateKey <= "2026-04-15"));
+}
+
+/* ================= T) NGÀY KỶ NIỆM: đếm ngược + sinh nhật theo slot + ngày đặc biệt ================= */
+console.log("\n--- T) Ngày kỷ niệm: toán đếm ngược + sinh nhật chủ slot + ngày đặc biệt union/LWW/mộ ---");
+{
+  // "Hôm nay" cố định cho toán đếm: 25/10/2026 (giờ địa phương của máy test).
+  const T_NOW = new Date(2026, 9, 25, 12, 0, 0).getTime();
+  const tDayNum = (y, m, d) => T.localDayNumber(new Date(y, m - 1, d));
+
+  // T1: đếm tới lần xuất hiện tiếp theo — hôm nay = 0, ngày mai = 1, đã qua thì cuộn sang năm sau
+  check("T1 daysUntilYearly: đúng hôm nay -> 0; ngày mai -> 1; 14/02 đã qua -> cuộn sang 14/02/2027 = 112 ngày",
+    SD.daysUntilYearly(25, 10, T_NOW) === 0
+    && SD.daysUntilYearly(26, 10, T_NOW) === 1
+    && SD.daysUntilYearly(14, 2, T_NOW) === 112
+    && SD.daysUntilYearly(14, 2, T_NOW) === tDayNum(2027, 2, 14) - tDayNum(2026, 10, 25));
+
+  // T2: 29/02 — năm KHÔNG nhuận mừng vào 28/02; năm nhuận đúng 29/02 (cả đếm lẫn khóa ngày)
+  const jan15_2025 = new Date(2025, 0, 15, 12).getTime();
+  const jan15_2024 = new Date(2024, 0, 15, 12).getTime();
+  check("T2 sinh nhật 29/02: năm thường (2025) xuất hiện 28/02 (còn 44 ngày từ 15/01); năm nhuận (2024) đúng 29/02 (còn 45 ngày)",
+    SD.daysUntilYearly(29, 2, jan15_2025) === 44 && SD.nextOccurrenceKey(29, 2, jan15_2025) === "2025-02-28"
+    && SD.daysUntilYearly(29, 2, jan15_2024) === 45 && SD.nextOccurrenceKey(29, 2, jan15_2024) === "2024-02-29");
+
+  // T3: biên tháng/năm — 31/12 -> 01/01 năm sau chỉ còn 1 ngày; 01/01 từ 31/12 năm trước
+  const dec31 = new Date(2026, 11, 31, 12).getTime();
+  check("T3 biên năm: 31/12/2026 -> 01/01 còn 1 ngày; -> 31/12 sang năm còn 365 ngày (2027 không nhuận)",
+    SD.daysUntilYearly(1, 1, dec31) === 1 && SD.daysUntilYearly(31, 12, dec31) === 0
+    && SD.daysUntilYearly(30, 12, dec31) === 364);
+
+  // T4: đếm cho ngày đặc biệt — một lần: tương lai/hôm nay/đã qua; lặp hằng năm luôn upcoming
+  check("T4 countdownForSpecial: một lần 04/11 -> còn 10; đúng 25/10 -> 0 (hôm nay); 20/10 -> đã 5; lặp 14/02/2020 -> còn 112 (không bao giờ elapsed)",
+    (() => { const c = SD.countdownForSpecial({ dateKey: "2026-11-04", yearly: false }, T_NOW); return c.mode === "upcoming" && c.days === 10; })()
+    && (() => { const c = SD.countdownForSpecial({ dateKey: "2026-10-25", yearly: false }, T_NOW); return c.mode === "upcoming" && c.days === 0; })()
+    && (() => { const c = SD.countdownForSpecial({ dateKey: "2026-10-20", yearly: false }, T_NOW); return c.mode === "elapsed" && c.days === 5; })()
+    && (() => { const c = SD.countdownForSpecial({ dateKey: "2020-02-14", yearly: true }, T_NOW); return c.mode === "upcoming" && c.days === 112; })());
+
+  // T5: BIRTHDAY_SET — chính chủ đặt được sinh nhật của mình; đặt HỘ slot kia bị từ chối (trả nguyên state)
+  let stB = fresh();
+  stB = R.gardenReducer(stB, { type: "BIRTHDAY_SET", slot: "A", user: "A", birthday: { day: 22, month: 7 } });
+  const preHijack = stB;
+  const hijack = R.gardenReducer(stB, { type: "BIRTHDAY_SET", slot: "B", user: "A", birthday: { day: 1, month: 1 } });
+  stB = R.gardenReducer(stB, { type: "BIRTHDAY_SET", slot: "B", user: "B", birthday: { day: 25, month: 9 } });
+  check("T5 BIRTHDAY_SET: A đặt cho A được, B đặt cho B được; A đặt HỘ slot B -> bị từ chối (trả đúng state cũ, B vẫn trống)",
+    stB.birthdays.A?.day === 22 && stB.birthdays.A?.month === 7
+    && stB.birthdays.B?.day === 25 && stB.birthdays.B?.month === 9
+    && hijack === preHijack && hijack.birthdays.B === null);
+
+  // T6: sinh nhật không tồn tại bị loại (31/04, 30/02); 29/02 hợp lệ; null = xoá sinh nhật của mình
+  const badApr = R.gardenReducer(fresh(), { type: "BIRTHDAY_SET", slot: "A", user: "A", birthday: { day: 31, month: 4 } });
+  const badFeb = R.gardenReducer(fresh(), { type: "BIRTHDAY_SET", slot: "A", user: "A", birthday: { day: 30, month: 2 } });
+  let leap = R.gardenReducer(fresh(), { type: "BIRTHDAY_SET", slot: "A", user: "A", birthday: { day: 29, month: 2 } });
+  const leapOk = leap.birthdays.A?.day === 29 && leap.birthdays.A?.month === 2;
+  leap = R.gardenReducer(leap, { type: "BIRTHDAY_SET", slot: "A", user: "A", birthday: null });
+  check("T6 ngày/tháng không tồn tại (31/04, 30/02) -> từ chối; 29/02 -> nhận; birthday null -> xoá đúng slot mình",
+    badApr.birthdays.A === null && badFeb.birthdays.A === null && leapOk && leap.birthdays.A === null);
+
+  // T7: merge sinh nhật — CHỦ SLOT thắng tuyệt đối từng slot (như trạng thái)
+  const bLocal = { ...fresh(), currentUser: "A", birthdays: { A: { day: 22, month: 7 }, B: { day: 1, month: 1 } } };
+  const bRemote = { ...fresh(), currentUser: "B", birthdays: { A: { day: 9, month: 9 }, B: { day: 25, month: 9 } } };
+  const bMerged = M.mergeStates(bLocal, bRemote, "A");
+  check("T7 merge sinh nhật: slot A lấy của máy A (22/07), slot B lấy của máy B (25/09) — không máy nào đè được sinh nhật của chủ slot kia",
+    bMerged.birthdays.A?.day === 22 && bMerged.birthdays.A?.month === 7
+    && bMerged.birthdays.B?.day === 25 && bMerged.birthdays.B?.month === 9);
+
+  const mkSpecial = (id, over = {}) => ({
+    id, title: "Ngày đặc biệt", dateKey: "2026-12-24", yearly: false,
+    bySlot: "A", addedAt: iso(NOW - 24 * H), updatedAt: iso(NOW - 24 * H), ...over,
+  });
+
+  // T8: SPECIAL_ADD hợp lệ + tiêu đề qua sanitize + 1 dấu vết icon calendar; các đường bị chặn
+  const sp1 = mkSpecial("sp-1", { title: "  Noel đầu tiên bên nhau  " });
+  const stSp = R.gardenReducer(fresh(), { type: "SPECIAL_ADD", item: sp1, user: "A", actor: "An" });
+  const spBadSlot = R.gardenReducer(fresh(), { type: "SPECIAL_ADD", item: sp1, user: "B", actor: "Bình" });
+  const spNoTitle = R.gardenReducer(fresh(), { type: "SPECIAL_ADD", item: mkSpecial("sp-x", { title: "   " }), user: "A", actor: "An" });
+  const spBadDate = R.gardenReducer(fresh(), { type: "SPECIAL_ADD", item: mkSpecial("sp-y", { dateKey: "2026-02-31" }), user: "A", actor: "An" });
+  const spDup = R.gardenReducer(stSp, { type: "SPECIAL_ADD", item: sp1, user: "A", actor: "An" });
+  check("T8 SPECIAL_ADD: hợp lệ -> vào state, tiêu đề được trim, 1 dấu vết icon 'calendar'; bySlot lệch / tiêu đề rỗng / ngày 31-02 / trùng id -> bị chặn",
+    stSp.specialDates.length === 1 && stSp.specialDates[0].title === "Noel đầu tiên bên nhau"
+    && stSp.activities.length === 1 && stSp.activities[0].icon === "calendar"
+    && spBadSlot.specialDates.length === 0 && spNoTitle.specialDates.length === 0
+    && spBadDate.specialDates.length === 0 && spDup === stSp);
+
+  // T9: tiêu đề bị cắt đúng trần 40 ký tự tại tầng reducer
+  const stTitle = R.gardenReducer(fresh(), { type: "SPECIAL_ADD", item: mkSpecial("sp-cap", { title: "d".repeat(55) }), user: "A", actor: "An" });
+  check("T9 tiêu đề dài bị cắt đúng 40 ký tự", stTitle.specialDates[0].title.length === 40);
+
+  // T10: SPECIAL_UPDATE — đổi cả tiêu đề/ngày/cờ lặp + updatedAt tiến lên; ngày sai và sửa y hệt -> no-op
+  const stUpdSp = R.gardenReducer(stSp, { type: "SPECIAL_UPDATE", id: "sp-1", title: " Noel ở Đà Lạt ", dateKey: "2026-12-20", yearly: true, user: "B" });
+  const updSpBad = R.gardenReducer(stSp, { type: "SPECIAL_UPDATE", id: "sp-1", title: "x", dateKey: "2026-02-31", yearly: false, user: "A" });
+  const updSpSame = R.gardenReducer(stSp, { type: "SPECIAL_UPDATE", id: "sp-1", title: "Noel đầu tiên bên nhau", dateKey: "2026-12-24", yearly: false, user: "A" });
+  check("T10 SPECIAL_UPDATE: người ấy cũng sửa được (trim + đổi ngày + bật lặp + updatedAt mới hơn); ngày sai / y hệt -> giữ nguyên",
+    stUpdSp.specialDates[0].title === "Noel ở Đà Lạt" && stUpdSp.specialDates[0].dateKey === "2026-12-20"
+    && stUpdSp.specialDates[0].yearly === true && stUpdSp.specialDates[0].updatedAt > sp1.updatedAt
+    && updSpBad === stSp && updSpSame === stSp);
+
+  // T11: SPECIAL_REMOVE — biến khỏi danh sách + id vào mộ; thêm lại cùng id -> bị mộ chặn
+  const stRmSp = R.gardenReducer(stSp, { type: "SPECIAL_REMOVE", id: "sp-1", user: "B", actor: "Bình" });
+  const reAdd = R.gardenReducer(stRmSp, { type: "SPECIAL_ADD", item: sp1, user: "A", actor: "An" });
+  check("T11 SPECIAL_REMOVE: ngày biến mất + id vào mộ + dấu vết; thêm lại cùng id bị mộ chặn (không hồi sinh)",
+    stRmSp.specialDates.length === 0 && stRmSp.removedSpecialDateIds.includes("sp-1") && stRmSp.activities.length === 2
+    && reAdd.specialDates.length === 0);
+
+  // T12: trần 20 — đủ 20 ngày thì ngày thứ 21 bị từ chối ở reducer
+  const full20 = Array.from({ length: 20 }, (_, i) => mkSpecial(`sp-full-${i}`, { dateKey: `2027-01-${String((i % 28) + 1).padStart(2, "0")}` }));
+  const stFullSp = { ...fresh(), specialDates: SD.materializeSpecialDates(full20, []) };
+  const add21 = R.gardenReducer(stFullSp, { type: "SPECIAL_ADD", item: mkSpecial("sp-21"), user: "A", actor: "An" });
+  check("T12 trần SPECIAL_DATES_CAP: đủ 20 ngày thì SPECIAL_ADD thứ 21 bị từ chối",
+    stFullSp.specialDates.length === 20 && add21 === stFullSp);
+
+  // T13: merge union + MỘ thắng bản sao cũ ở CẢ hai chiều (như S7/S8 của dây kỷ niệm)
+  const spB = mkSpecial("sp-2", { bySlot: "B", dateKey: "2027-03-08", title: "Ngày của Bình" });
+  const mergedSpUnion = M.mergeStates({ ...fresh(), specialDates: [sp1] }, { ...fresh(), specialDates: [spB] }, "A");
+  const tombSideSp = { ...fresh(), specialDates: [], removedSpecialDateIds: ["sp-1"] };
+  const staleSideSp = { ...fresh(), specialDates: [sp1], removedSpecialDateIds: [] };
+  const mgSpT1 = M.mergeStates(staleSideSp, tombSideSp, "A");
+  const mgSpT2 = M.mergeStates(tombSideSp, staleSideSp, "A");
+  check("T13 merge ngày đặc biệt: union đủ hai máy; id trong mộ bị lọc ở cả hai chiều + mộ được giữ",
+    mergedSpUnion.specialDates.length === 2
+    && mgSpT1.specialDates.length === 0 && mgSpT2.specialDates.length === 0
+    && mgSpT1.removedSpecialDateIds.includes("sp-1") && mgSpT2.removedSpecialDateIds.includes("sp-1"));
+
+  // T14: LWW từng ngày theo updatedAt ở cả hai chiều; hoà mốc -> hai chiều hội tụ cùng một bản
+  const spOld = mkSpecial("sp-lww", { title: "tên cũ", updatedAt: iso(NOW - 2 * H) });
+  const spNew = mkSpecial("sp-lww", { title: "tên mới", updatedAt: iso(NOW) });
+  const lwwSp1 = M.mergeStates({ ...fresh(), specialDates: [spOld] }, { ...fresh(), specialDates: [spNew] }, "A");
+  const lwwSp2 = M.mergeStates({ ...fresh(), specialDates: [spNew] }, { ...fresh(), specialDates: [spOld] }, "A");
+  const tieSpA = mkSpecial("sp-tie", { title: "aaa", updatedAt: iso(NOW) });
+  const tieSpB = mkSpecial("sp-tie", { title: "bbb", updatedAt: iso(NOW) });
+  const tieSp1 = M.mergeStates({ ...fresh(), specialDates: [tieSpA] }, { ...fresh(), specialDates: [tieSpB] }, "A");
+  const tieSp2 = M.mergeStates({ ...fresh(), specialDates: [tieSpB] }, { ...fresh(), specialDates: [tieSpA] }, "A");
+  check("T14 merge LWW theo updatedAt cả hai chiều; hoà mốc -> hai chiều cho cùng một bản thắng",
+    lwwSp1.specialDates[0].title === "tên mới" && lwwSp2.specialDates[0].title === "tên mới"
+    && tieSp1.specialDates[0].title === tieSp2.specialDates[0].title);
+
+  // T15: trần khi hợp nhất — 15 + 15 ngày rời nhau -> hiện thực hoá giữ đúng 20
+  const halfSp1 = Array.from({ length: 15 }, (_, i) => mkSpecial(`spc-a-${i}`, { dateKey: `2027-0${(i % 9) + 1}-10` }));
+  const halfSp2 = Array.from({ length: 15 }, (_, i) => mkSpecial(`spc-b-${i}`, { dateKey: `2028-0${(i % 9) + 1}-10` }));
+  const mergedSpCap = M.mergeStates({ ...fresh(), specialDates: halfSp1 }, { ...fresh(), specialDates: halfSp2 }, "A");
+  check("T15 merge tràn trần: union 30 ngày -> giữ đúng 20 (phần ngày sớm hơn theo dateKey)",
+    mergedSpCap.specialDates.length === 20);
+
+  // T16: normalize — bản cũ không có trường -> trống/null; sinh nhật hỏng bị rơi; ngày trong mộ bị lọc ngay khi nạp
+  const normOldSp = MO.normalizeState(null);
+  const normMixSp = MO.normalizeState({
+    birthdays: { A: { day: 22, month: 7 }, B: { day: 31, month: 4 } },
+    specialDates: [
+      mkSpecial("n-ok", { dateKey: "2027-01-01" }),
+      mkSpecial("n-bad-date", { dateKey: "2026-02-31" }),
+      mkSpecial("n-tombed", { dateKey: "2027-02-02" }),
+      { id: "n-no-title", title: " ", dateKey: "2027-03-03", yearly: false, bySlot: "A", addedAt: iso(NOW), updatedAt: iso(NOW) },
+    ],
+    removedSpecialDateIds: ["n-tombed", "n-tombed"],
+  });
+  check("T16 normalize: bản cũ -> sinh nhật null + ngày đặc biệt []; sinh nhật 31/04 bị rơi; ngày hỏng/rỗng tiêu đề/mộ bị lọc; mộ khử trùng",
+    normOldSp.birthdays.A === null && normOldSp.birthdays.B === null && normOldSp.specialDates.length === 0
+    && normMixSp.birthdays.A?.day === 22 && normMixSp.birthdays.B === null
+    && normMixSp.specialDates.map((d) => d.id).join(",") === "n-ok"
+    && normMixSp.removedSpecialDateIds.length === 1);
+
+  // T17: dựng danh sách thẻ — thứ tự: sắp tới theo số ngày tăng dần (sinh nhật
+  // 22/07 còn 270, 25/09 còn 335 — đúng số trong ảnh mẫu ở mốc 25/10), rồi đã
+  // qua theo độ mới qua (ngày một lần vừa qua 5 ngày đứng trước thẻ kỷ niệm
+  // yêu nhau 255 ngày); lời mời sinh nhật của CHÍNH MÌNH đứng cuối, của người
+  // ấy chưa đặt thì không có thẻ nào.
+  const listFull = SD.buildSpecialDayList({
+    birthdays: { A: { day: 22, month: 7 }, B: { day: 25, month: 9 } },
+    specialDates: [mkSpecial("sp-past", { dateKey: "2026-10-20", title: "Ngày tỏ tình" })],
+    startDate: "2026-02-14", loveDayCount: 255, nameA: "An", nameB: "Bình", mySlot: "A", nowMs: T_NOW,
+  });
+  const listInvite = SD.buildSpecialDayList({
+    birthdays: { A: { day: 22, month: 7 }, B: null },
+    specialDates: [], startDate: "2026-02-14", loveDayCount: 255, nameA: "An", nameB: "Bình", mySlot: "B", nowMs: T_NOW,
+  });
+  check("T17 buildSpecialDayList: thứ tự birthday-A(270) -> birthday-B(335) -> custom đã qua(5) -> kỷ niệm(255); tiêu đề + nhãn ngày đúng; chưa đặt sinh nhật: chỉ slot của MÌNH có thẻ mời ở cuối",
+    listFull.map((e) => e.key).join(",") === "birthday-A,birthday-B,custom-sp-past,anniversary"
+    && listFull[0].days === 270 && listFull[1].days === 335
+    && listFull[0].title === "Sinh nhật của An" && listFull[0].dateLabel === "22/07"
+    && listFull[2].group === 1 && listFull[2].days === 5
+    && listFull[3].title === "Kỷ niệm yêu nhau" && listFull[3].days === 255 && listFull[3].dateLabel === "14/02/2026"
+    && listInvite.map((e) => e.key).join(",") === "birthday-A,anniversary,birthday-invite-B");
+
+  // T18: SET_START_DATE vẫn là đường sửa ngày yêu duy nhất — sửa xong thì
+  // dayCount (và mọi thứ suy từ startDate) đi theo ngay
+  let stDate = fresh();
+  stDate = R.gardenReducer(stDate, { type: "SET_START_DATE", date: dayKeyAgo(253), user: "B", actor: "Bình" });
+  check("T18 sửa ngày bắt đầu qua SET_START_DATE (từ màn Ngày kỷ niệm): startDate đổi + dayCount thành 254 ngay",
+    stDate.couple.startDate === dayKeyAgo(253) && F.dayCount(stDate.couple.startDate) === 254);
 }
 
 console.log(`\n===== TỔNG: ${count - failures}/${count} PASS =====`);

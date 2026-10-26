@@ -1,5 +1,5 @@
-import React, { useEffect, useState } from "react";
-import { ActivityIndicator, ScrollView, Text, TextInput, TouchableOpacity, View, useWindowDimensions } from "react-native";
+import React, { useState } from "react";
+import { ActivityIndicator, ScrollView, Text, TouchableOpacity, View, useWindowDimensions } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import * as ImagePicker from "expo-image-picker";
@@ -7,8 +7,9 @@ import { myName, useLove } from "../../lib/store";
 import { useAuth } from "../../lib/auth";
 import { uploadCouplePhoto, useCouplePhotoUrl } from "../../lib/photo";
 import { success } from "../../lib/feedback";
-import { formatDateVN, isValidDateKey } from "../../lib/types";
+import { formatDateVN } from "../../lib/types";
 import { dayCount, freshnessText, milestoneDateKey, nextMilestone, timeAgoText, visibleStatus } from "../../lib/features";
+import { buildSpecialDayList } from "../../lib/specialDays";
 import { statusMoodById } from "../../lib/content";
 import { StatusEditor } from "../../components/StatusEditor";
 import Avatar from "../../components/Avatar";
@@ -24,25 +25,16 @@ import { ClosingBand, FeatureCard, ProgressBar, s, tabBarPad } from "../../compo
  * - Ảnh của hai đứa (đợt 3) ngay trong thẻ navy: ảnh thật khổ lớn 4:3 phủ kín
  *   bề ngang thẻ (Storage, bucket riêng tư), chưa đặt thì tranh couple-hero
  *   cùng khổ + nút thêm ảnh dạng pill nhỏ đè ở góc ảnh.
- * - Sửa ngày bắt đầu yêu ngay tại đây (cả hai đều sửa được, máy kia thấy qua nhật ký).
+ * - Ngày bắt đầu yêu chỉ còn HIỆN ở thẻ hồ sơ (đọc) — sửa ngày yêu đã chuyển
+ *   hẳn vào màn Ngày kỷ niệm (/special-days), nơi duy nhất còn sửa được.
  * - Hàng Bản đồ hai đứa (kèm trạng thái phiên đang chạy) -> /location.
  * - Hàng Tài khoản & ghép cặp -> /account.
  * - Nhật ký hoạt động của 5 lõi (chăm cây, note, nhịp nhớ, cột mốc, vị trí).
  */
-function displayToKey(text: string): string | null {
-  const m = text.trim().match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
-  if (!m) return null;
-  const key = `${m[3]}-${m[2].padStart(2, "0")}-${m[1].padStart(2, "0")}`;
-  return isValidDateKey(key) ? key : null;
-}
-
 export default function CoupleScreen() {
-  const { state, dispatch, hydrated } = useLove();
+  const { state, dispatch } = useLove();
   const { couple } = useAuth();
   const insets = useSafeAreaInsets();
-  const [dateText, setDateText] = useState("");
-  const [dateDirty, setDateDirty] = useState(false);
-  const [dateMsg, setDateMsg] = useState("");
   const [photoBusy, setPhotoBusy] = useState(false);
   const [photoMsg, setPhotoMsg] = useState("");
   const [photoOk, setPhotoOk] = useState(false);
@@ -52,9 +44,6 @@ export default function CoupleScreen() {
   // lề ScrollView (SPACE.screenX x2) và padding thẻ (20 x2).
   const { width: windowWidth } = useWindowDimensions();
   const photoH = Math.round((windowWidth - SPACE.screenX * 2 - 40) * 0.75);
-
-  // eslint-disable-next-line react-hooks/set-state-in-effect -- đồng bộ ô ngày từ state, trừ khi đang sửa
-  useEffect(() => { if (!dateDirty && hydrated) setDateText(formatDateVN(state.couple.startDate)); }, [state.couple.startDate, dateDirty, hydrated]);
 
   const me = state.currentUser;
   const self = selfOf(state);
@@ -101,14 +90,23 @@ export default function CoupleScreen() {
     }
   }
 
-  function saveStartDate() {
-    const key = displayToKey(dateText);
-    if (!key) { setDateMsg("Ngày chưa đúng định dạng DD/MM/YYYY hoặc không tồn tại."); return; }
-    if (new Date(`${key}T00:00:00`).getTime() > Date.now()) { setDateMsg("Ngày bắt đầu không thể ở tương lai nhé."); return; }
-    dispatch({ type: "SET_START_DATE", date: key, user: me, actor: myName(state) });
-    setDateDirty(false);
-    setDateMsg("Đã lưu — người ấy sẽ thấy thay đổi này trong nhật ký.");
-  }
+  /* Huy hiệu cho thẻ vào Ngày kỷ niệm: sự kiện sắp tới gần nhất (buildSpecialDayList
+   *  đã sắp sẵn — mục group 0 đầu tiên), để hub nhìn một cái là biết sắp tới ngày gì. */
+  const specialList = buildSpecialDayList({
+    birthdays: state.birthdays,
+    specialDates: state.specialDates,
+    startDate: state.couple.startDate,
+    loveDayCount: count,
+    nameA: state.personA,
+    nameB: state.personB,
+    mySlot: me,
+  });
+  const nextSpecial = specialList.find((e) => e.group === 0);
+  const specialBadge = nextSpecial
+    ? nextSpecial.isToday
+      ? "Hôm nay có ngày đặc biệt"
+      : `Còn ${nextSpecial.days} ngày tới ${nextSpecial.title.charAt(0).toLowerCase()}${nextSpecial.title.slice(1)}`
+    : undefined;
 
   return (
     <View style={s.screen}>
@@ -263,28 +261,6 @@ export default function CoupleScreen() {
           )}
         </View>
 
-        {/* Sửa ngày bắt đầu */}
-        <View style={s.card}>
-          <Text style={{ ...TYPE.micro, color: COLOR.textSoft }}>Ngày bắt đầu yêu</Text>
-          <Text style={{ ...TYPE.body, color: COLOR.textSoft, marginTop: 6 }}>
-            {"Bộ đếm \"Ngày N\" tính từ ngày này. Ai trong hai đứa cũng sửa được — lần sửa gần nhất là lần được tính."}
-          </Text>
-          <View style={{ flexDirection: "row", gap: 10, marginTop: 12 }}>
-            <TextInput
-              style={[s.input, { flex: 1 }]}
-              placeholder="DD/MM/YYYY"
-              placeholderTextColor={COLOR.textFaint}
-              keyboardType="numbers-and-punctuation"
-              value={dateText}
-              onChangeText={(t) => { setDateText(t); setDateDirty(true); setDateMsg(""); }}
-            />
-            <TouchableOpacity onPress={saveStartDate} style={{ backgroundColor: COLOR.primary, borderRadius: RADIUS.control, paddingHorizontal: 20, alignItems: "center", justifyContent: "center", minHeight: 48 }} accessibilityRole="button" accessibilityLabel="Lưu ngày bắt đầu yêu">
-              <Text style={{ color: "#fff", fontFamily: FONT.bold, fontSize: 14.5 }}>Lưu</Text>
-            </TouchableOpacity>
-          </View>
-          {dateMsg ? <Text style={{ marginTop: 8, fontFamily: FONT.regular, fontSize: 13, color: dateMsg.startsWith("Đã lưu") ? COLOR.successText : COLOR.danger }}>{dateMsg}</Text> : null}
-        </View>
-
         {/* Điều hướng lõi 5 + tài khoản */}
         <View style={{ gap: SPACE.cardGap }}>
           <FeatureCard
@@ -321,6 +297,14 @@ export default function CoupleScreen() {
               : "Treo ảnh của hai đứa lên sợi dây kỷ niệm — mỗi tấm một khung, một ngày, một câu chuyện."}
             route="/memories"
             badge={state.memories.length > 0 ? `${state.memories.length} kỷ niệm đã treo` : undefined}
+            badgeVariant="accent"
+          />
+          <FeatureCard
+            icon="calendar"
+            title="Ngày kỷ niệm"
+            desc="Sinh nhật của hai đứa, kỷ niệm yêu nhau và những ngày riêng — đếm ngược từng ngày. Sửa ngày bắt đầu yêu cũng ở ngay đây."
+            route="/special-days"
+            badge={specialBadge}
             badgeVariant="accent"
           />
         </View>
