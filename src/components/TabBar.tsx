@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { Animated, Text, TouchableOpacity, View } from "react-native";
+import { Animated, Pressable, Text, View } from "react-native";
 import type { BottomTabBarProps } from "expo-router/tabs";
 import { Ionicons } from "@expo/vector-icons";
 import { COLOR, FONT, ROLE, SHADOW_FLOAT } from "./theme";
@@ -67,16 +67,24 @@ function TabHeartButton() {
   return (
     <View style={{ flex: 1, alignItems: "center" }}>
       <View style={{ position: "relative", marginTop: -20 }}>
-        <TouchableOpacity
+        {/* KHÔNG khung vuông khi bấm (báo lỗi của chủ app 2026-10-25): Pressable
+            thay TouchableOpacity + outlineWidth: 0 + outlineColor trong suốt (web: trình duyệt vẽ
+            outline mặc định thành KHUNG VUÔNG quanh nút tròn khi nút được
+            focus sau cú chạm) + android_ripple trong suốt, borderless (ripple
+            mặc định vẽ trên hộp chữ nhật bao nút). Phản hồi bấm CHỈ còn pulse
+            scale + mưa tim — không nền/viền nào khác được phép hiện. Đừng gỡ
+            ba lớp này khi "dọn code": gỡ là khung vuông quay lại. */}
+        <Pressable
           onPress={sendPing}
           accessibilityLabel="Gửi nhịp nhớ cho người ấy"
           accessibilityRole="button"
-          style={{ alignItems: "center", justifyContent: "center", width: 56, height: 56, borderRadius: 28, backgroundColor: COLOR.primary, borderWidth: 5, borderColor: COLOR.bg, ...SHADOW_FLOAT, shadowColor: COLOR.primary, shadowOpacity: 0.28, shadowRadius: 10, shadowOffset: { width: 0, height: 6 } }}
+          android_ripple={{ color: "transparent", borderless: true }}
+          style={({ pressed }) => ({ alignItems: "center", justifyContent: "center", width: 56, height: 56, borderRadius: 28, backgroundColor: COLOR.primary, borderWidth: 5, borderColor: COLOR.bg, opacity: pressed ? 0.2 : 1, outlineWidth: 0, outlineColor: "transparent", ...SHADOW_FLOAT, shadowColor: COLOR.primary, shadowOpacity: 0.28, shadowRadius: 10, shadowOffset: { width: 0, height: 6 } })}
         >
           <Animated.View style={{ transform: [{ scale }] }}>
             <Ionicons name="heart" size={28} color="#fff" />
           </Animated.View>
-        </TouchableOpacity>
+        </Pressable>
         <HeartBurst burstKey={burst} />
       </View>
     </View>
@@ -95,13 +103,17 @@ function TabItem({
   onLongPress: () => void;
 }) {
   return (
-    <TouchableOpacity
+    // Cùng vệ sinh chống khung như nút tim: Pressable + outline tắt hẳn trên
+    // web + ripple trong suốt — phản hồi bấm là mờ opacity (như TouchableOpacity
+    // cũ), hình nền "pill" chỉ theo trạng thái focused, không theo cú bấm.
+    <Pressable
       onPress={onPress}
       onLongPress={onLongPress}
       accessibilityRole="button"
       accessibilityLabel={label}
       accessibilityState={{ selected: focused }}
-      style={{ flex: 1, alignItems: "center", justifyContent: "center", paddingTop: 2 }}
+      android_ripple={{ color: "transparent", borderless: true }}
+      style={({ pressed }) => ({ flex: 1, alignItems: "center", justifyContent: "center", paddingTop: 2, opacity: pressed ? 0.2 : 1, outlineWidth: 0, outlineColor: "transparent" })}
     >
       <View style={{ width: 48, height: 32, borderRadius: 999, alignItems: "center", justifyContent: "center", backgroundColor: focused ? ROLE.selfSoft : "transparent" }}>
         <Ionicons name={(focused ? iconOn : iconOff) as never} size={22} color={focused ? COLOR.primary : COLOR.textFaint} />
@@ -114,7 +126,7 @@ function TabItem({
       <Text style={{ fontSize: 11, lineHeight: 14, fontFamily: focused ? FONT.extrabold : FONT.semibold, color: focused ? COLOR.primary : COLOR.textSoft, marginTop: 1 }}>
         {label}
       </Text>
-    </TouchableOpacity>
+    </Pressable>
   );
 }
 
